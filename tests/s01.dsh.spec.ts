@@ -24,6 +24,7 @@ describe('S01 DSH existing slots and lifecycle',()=>{
  });
  it('Host uses the dedicated authenticated RPC channel and unloads without launch',async()=>{
   const ctx=new Context();let handler:any,unregistered=false;
+  ctx.provide('webServer',{});
   ctx.provide('connection',{rpc:{handle:(channel:string,fn:any)=>{expect(channel).toBe('/zcode-bridge');handler=fn;return async()=>{unregistered=true}}}});
   const fiber=ctx.plugin({inject:hostInject,apply:hostApply});await fiber.await();
   expect((await handler('status',{},new AbortController().signal)).value.reason).toBe('not-connected');
@@ -49,6 +50,7 @@ describe('S01 DSH existing slots and lifecycle',()=>{
       },
     },
   });
+  ctx.provide('webServer',{});
   ctx.connection.rpc.intercept('/api',()=>true,async()=>({ok:true,value:{gateway:true}}));
   const fiber=ctx.plugin({inject:hostInject,apply:hostApply});
   await fiber.await();
@@ -85,6 +87,7 @@ it('official response travels through Host RPC and DSH production slot renderer'
    rpc:{handle:(_channel:any,handler:any)=>{dispatch=handler;return async()=>{}},call:async(_channel:any,endpoint:any,payload:any,signal:any)=>dispatch(endpoint,payload,signal??new AbortController().signal)},
    state:{subscribe:()=>()=>{}},
  });
+ runtime.ctx.provide('webServer',{});
  try{
   const fiber=runtime.ctx.plugin({inject:hostInject,apply:hostApply},{workspacePath:resolve('../.agent-work/tmp/s01-probe/zcode-test-workspace')});await fiber.await();
   await dispatch('connect',{},new AbortController().signal);

@@ -202,6 +202,7 @@ it('Host queries only the exact official process/workspace and rejects cross-run
 
 it('official catalog travels through the existing Host RPC and runtime source without native hooks',async()=>{
   const ctx=new Context(),native=nativeFixture();let dispatch:any
+  ctx.provide('webServer',{})
   ctx.provide('connection',{rpc:{handle:(_channel:any,handler:any)=>{dispatch=handler;return ()=>{}},call:async(_channel:any,endpoint:any,payload:any,signal:any)=>dispatch(endpoint,payload,signal)}})
   const hostFiber=ctx.plugin({inject:hostInject,apply:hostApply},{workspacePath:resolve('../.agent-work/tmp/s01-probe/zcode-test-workspace')})
   let sources:RuntimeSessions|undefined

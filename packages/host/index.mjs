@@ -1,5 +1,5 @@
 import { BridgeHost } from './runtime.mjs';
-export const inject=['connection'];
+export const inject=['connection','webServer'];
 export const CHANNEL='/zcode-bridge';
 const sourceEndpoint='sessions';
 /** Uses DSH's authenticated carrier and plugin lifecycle; no DSH loop is registered. */
