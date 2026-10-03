@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { realpath } from 'node:fs/promises';
 import { inspectInstallation, runtimeEnv, BridgeError } from './installation.mjs';
 import { ProtocolPeer } from './protocol.mjs';
@@ -8,6 +9,23 @@ export class BridgeHost {
   #status=initialStatus(); #peer; #child; #operation; #disposed=false; #stop; #disposePromise;
   constructor({appPath,workspacePath,inspect=inspectInstallation,spawnProcess=spawn,onStatus=()=>{}}={}){this.appPath=appPath;this.workspacePath=workspacePath;this.inspect=inspect;this.spawnProcess=spawnProcess;this.onStatus=onStatus}
   get status(){return structuredClone(this.#status)}
+  /** Read official catalog facts only. An address query never activates a Session. */
+  async listSessions({address,signal}={}){
+    const peer=this.#peer,status=this.status;
+    if(this.#disposed||!status.connected||!peer||peer.closed)throw new BridgeError('source-unavailable');
+    if(address!==undefined&&(!address||address.runtime!=='zcode'||address.authority!==status.sessionAuthority||address.workspace!==status.workspacePath||typeof address.sessionId!=='string'||!address.sessionId))throw new BridgeError('source-address-mismatch');
+    const result=await peer.request('session/list',{
+      workspace:{workspacePath:status.workspacePath,workspaceKey:status.workspacePath},
+      ...(address?{sessionIds:[address.sessionId]}:{}),
+    },{signal});
+    if(this.#disposed||peer!==this.#peer||peer.closed||!this.#status.connected)throw new BridgeError('source-unavailable');
+    if(!result||!Array.isArray(result.sessions))throw new BridgeError('sessions-invalid');
+    const sessions=result.sessions.map(session=>{
+      if(!session||typeof session.sessionId!=='string'||!session.sessionId||typeof session.title!=='string'||session.workspace?.workspacePath!==status.workspacePath||session.workspace?.workspaceKey!==status.workspacePath||typeof session.status!=='string'||(address&&session.sessionId!==address.sessionId))throw new BridgeError('sessions-invalid');
+      return {address:{runtime:'zcode',authority:status.sessionAuthority,workspace:status.workspacePath,sessionId:session.sessionId},title:session.title,cwd:session.workspace.workspacePath,running:undefined};
+    });
+    return {sessions,scope:{authority:status.sessionAuthority,workspace:status.workspacePath},availability:{state:status.state,reason:status.reason,capabilities:{create:false,open:false,nativeAgent:false}}};
+  }
   #publish(change){this.#status={...this.#status,...change};this.onStatus(this.status)}
   connect(){
     if(this.#disposed)return Promise.reject(new BridgeError('disposed'));
@@ -24,7 +42,7 @@ export class BridgeHost {
       if(!this.workspacePath)throw new BridgeError('workspace-required');
       let workspacePath;try{workspacePath=await realpath(this.workspacePath)}catch{throw new BridgeError('workspace-missing')}
       if(this.#disposed)throw new BridgeError('disposed');
-      this.#publish({installation,workspacePath});
+      this.#publish({installation,workspacePath,sessionAuthority:'official-headless:'+randomUUID()});
       const child=this.spawnProcess(installation.launcher,[installation.cjs,'app-server','--stdio'],{cwd:workspacePath,env:runtimeEnv(installation.providerConfig),stdio:['pipe','pipe','pipe']});
       this.#child=child;
       const exited=new Promise(resolve=>child.once('close',resolve));

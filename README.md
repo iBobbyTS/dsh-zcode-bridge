@@ -24,9 +24,18 @@ protocol failure and missing official auth source have distinct status reasons.
 Only App-owned Electron Node and cjs are launched, with the official bundled
 provider config. Cleanup targets the owned child only and never session/close.
 There is no attach, private credential parsing, model call, fallback agent,
-native factory registration or session seam patch in this slice.
+native factory registration. The runtime source adapter exposes native references
+unchanged and reads official ZCode summaries through `session/list`. It never
+creates a DSH Agent Context for ZCode. ZCode creation and execution remain
+unready; the connected status stays restricted. Creation defaults belong to
+the UI settings owner and never reinterpret a saved runtime address.
+
+The Client plugin is emitted as a DSH classic-script factory; its ESM artifact
+is used only by Node/jsdom checks. `@dsh-zcode/bridge-client/sources` publishes the
+`RuntimeSessions` types used by the next UI section. See the DSH
+`docs/seam/zcode-runtime-source.md` reference for address and ownership rules.
 
 Evidence and limits: [probes](docs/probes/S01-PROBES.md),
 [carrier inventory](docs/probes/S01-CARRIERS.md),
 [handoff](docs/handoff/S01-HANDOFF.md). The local workflow authority remains the
-parent workspace's `.agent-work/PLAN-FULL.md` and S01 TASK.
+parent workspace's `.agent-work/PLAN-FULL.md` and bounded TASK files.

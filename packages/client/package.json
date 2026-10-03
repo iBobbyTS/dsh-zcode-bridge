@@ -1,1 +1,42 @@
-{"name":"@dsh-zcode/client","version":"0.1.0","type":"module","main":"index.mjs","exports":{".":"./index.mjs","./client":"./lib/client.js"},"dsh":{"client":{"inject":["@deepseek-ai/dsh-client-ui-plugin-manager","@deepseek-ai/dsh-client-locale","@deepseek-ai/dsh-client-connection"],"platform":"web"}},"peerDependencies":{"@deepseek-ai/cordis":"~4.0.0","react":"^18.2.0"}}
+{
+  "name": "@dsh-zcode/bridge-client",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "index.mjs",
+  "exports": {
+    ".": "./index.mjs",
+    "./client": "./lib/client.js",
+    "./sources": {
+      "types": "./sources.d.ts",
+      "default": "./sources.mjs"
+    }
+  },
+  "dsh": {
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-plugin-manager",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-api-session-controller"
+      ],
+      "platform": "web",
+      "external": [
+        "@deepseek-ai/dsh-api-session-controller/client"
+      ]
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "~4.0.0",
+    "react": "^18.2.0",
+    "@deepseek-ai/dsh-api-session-controller": "^0.2.0-rc.2",
+    "@deepseek-ai/dsh-client-store": "^0.2.0-rc.2"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-api-session-controller": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-client-store": {
+      "optional": true
+    }
+  }
+}

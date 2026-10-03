@@ -3,4 +3,4 @@
     - id: zcode-bridge-host
       name: '@dsh-zcode/host'
     - id: zcode-bridge-client
-      name: '@dsh-zcode/client'
+      name: '@dsh-zcode/bridge-client'
