@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useSyncExternalStore } from 'react';
+import { ZCodeInputControls } from './input-controls.jsx';
 
 /**
  * Controller wrapping a V4Conversation instance for reactive React rendering and actions.
@@ -89,6 +90,15 @@ export class ConversationController {
   async queryCommand(commandId, options) {
     if (this.#disposed) throw new Error('Controller is disposed');
     return this.#conversation?.queryCommand?.(commandId, options);
+  }
+
+  async submitInputCommand(command) {
+    if (this.#disposed) throw new Error('Controller is disposed');
+    return this.#conversation.submit(command);
+  }
+  async workspaceConfiguration(kind, preferences) {
+    if (this.#disposed) throw new Error('Controller is disposed');
+    return this.#conversation.workspaceConfiguration(kind, preferences);
   }
 
   async respondWorkspaceHookReview(target, reviewItemIds) {
@@ -2514,6 +2524,7 @@ export function ZCodeConversationView({ conversation, controller, reference }) {
       <div style={{ flex: 1, overflowY: 'auto' }}>
         <ZCodeRowsList state={state} />
       </div>
+      <ZCodeInputControls key={sessionIdentity ?? 'default'} state={state} controller={activeController} />
     </div>
   );
 }

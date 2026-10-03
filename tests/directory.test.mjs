@@ -49,7 +49,7 @@ test('controlled official CAS conflict keeps the winning revision and does not r
 });
 test('restricted management never grants model execution, and unverified installations fail before writes',async()=>{
  const store=controlledStore(),host=await create(store,{inspect:async()=>({...await inspect(),verified:false})});
- try{const address=(await host.listSessions()).sessions[0].address,opened=await host.openConversation(address);await assert.rejects(host.conversationOperation({handle:opened.handle,operation:'command',command:{type:'renameSession',payload:{title:'invalid'}}}),{code:'management-unverified'});await assert.rejects(host.conversationOperation({handle:opened.handle,operation:'command',command:{type:'sendText',payload:{text:'forbidden'}}}),{code:'management-command-unavailable'});assert.equal(store.requests.filter(r=>r.method==='v4/command').length,0)}finally{await host.dispose()}
+ try{const address=(await host.listSessions()).sessions[0].address,opened=await host.openConversation(address);await assert.rejects(host.conversationOperation({handle:opened.handle,operation:'command',command:{type:'renameSession',payload:{title:'invalid'}}}),{code:'management-unverified'});await assert.rejects(host.conversationOperation({handle:opened.handle,operation:'command',command:{type:'sendText',payload:{text:'forbidden'}}}),{code:'runtime-restricted'});assert.equal(store.requests.filter(r=>r.method==='v4/command').length,0)}finally{await host.dispose()}
 });
 
 test('lost official delete ACK stays unknown until same-id query confirms removal without resend',async t=>{

@@ -8,11 +8,21 @@ import {
   v4ConversationResyncParamsSchema, v4ConversationResyncResultSchema,
   v4ConversationUnsubscribeParamsSchema, TopicWireFrameAssembler, applyConversationDeltas,
   helloMessageSchema, clientHelloSchema,
+  zcodeWorkspaceUpdateInteractionPreferencesParamsSchema, zcodeWorkspaceUpdateInteractionPreferencesResultSchema,
+  zcodeWorkspaceUpdateModelIoPreferencesParamsSchema, zcodeWorkspaceUpdateModelIoPreferencesResultSchema,
+  zcodeWorkspaceReadPresentationParamsSchema, zcodeWorkspacePresentationSchema,
 } from './vendor/zcode/v4.mjs';
 const nonempty=x=>typeof x==='string'&&x.trim().length>0;
 const int=x=>Number.isSafeInteger(x)&&x>=0;
 const managementCommands=new Set(['renameSession','deleteSession']);
+const availabilityCommands={editQueueItem:'queueEdit',reorderQueueItem:'queueEdit',deleteQueueItem:'queueEdit',sendQueuedNow:'sendQueuedNow',switchModelConfig:'switchModelConfig',setFollowupMode:'setFollowupMode',pauseGoal:'pauseGoal',resumeGoal:'resumeGoal'};
 const terminal=new Set(['completed','failed','interrupted','rejected','stale','noop','not-sent']);
+export const INPUT_COMMANDS=new Set(['sendText','sendGoalCommand','stop','sendQueuedNow','editQueueItem','reorderQueueItem','deleteQueueItem','setAutoDrain','switchModelConfig','switchCollaborationMode','setFollowupMode','pauseGoal','resumeGoal']);
+const workspaceCarriers={
+  presentation:['workspace/readPresentation',zcodeWorkspaceReadPresentationParamsSchema,zcodeWorkspacePresentationSchema],
+  interaction:['workspace/updateInteractionPreferences',zcodeWorkspaceUpdateInteractionPreferencesParamsSchema,zcodeWorkspaceUpdateInteractionPreferencesResultSchema],
+  modelIo:['workspace/updateModelIoPreferences',zcodeWorkspaceUpdateModelIoPreferencesParamsSchema,zcodeWorkspaceUpdateModelIoPreferencesResultSchema],
+};
 /** RFC 9562 UUIDv7; retries/query use the stored id, never this generator again. */
 export function newCommandId(){
   const b=randomBytes(16);b.writeUIntBE(Date.now(),0,6);b[6]=(b[6]&15)|0x70;b[8]=(b[8]&63)|0x80;
@@ -170,6 +180,18 @@ export class V4Conversation {
     throw new BridgeError('command-pending-limit');
   }
   command(commandId){const record=this.#commands.get(commandId);return record?structuredClone(record):null}
+  /** Scoped official workspace carrier. No local persistence, defaults, or automatic retry. */
+  async workspaceConfiguration(kind,preferences,{signal}={}){
+    const carrier=Object.hasOwn(workspaceCarriers,kind)?workspaceCarriers[kind]:null;
+    if(!carrier)throw new BridgeError('workspace-config-unavailable');
+    const admission=kind==='presentation'?this.managementAdmission:this.admission;
+    if(!admission.allowed)throw new BridgeError(admission.reason);
+    const parsed=carrier[1].safeParse({workspace:this.workspace,...(kind==='presentation'?{}:{preferences})});
+    if(!parsed.success)throw new BridgeError('workspace-config-invalid');
+    const result=carrier[2].parse(await this.peer.request(carrier[0],parsed.data,{signal}));
+    if(result.workspace.workspacePath!==this.workspace.workspacePath||result.workspace.workspaceKey!==this.workspace.workspaceKey)throw new BridgeError('workspace-config-identity-mismatch');
+    return result;
+  }
   async submit({type,payload,commandId=newCommandId(),baseRevision}={}, {signal}={}){
     const admission=managementCommands.has(type)?this.managementAdmission:this.admission;
     if(!admission.allowed)throw new BridgeError(admission.reason);
@@ -178,6 +200,20 @@ export class V4Conversation {
     if(this.#commands.has(commandId))throw new BridgeError('command-already-tracked');
     if(signal?.aborted)throw new BridgeError('cancelled');
     const snapshot=this.#state.snapshot;
+    const availability=availabilityCommands[type];
+    if(availability&&snapshot.availability?.[availability]?.allowed!==true)throw new BridgeError(snapshot.availability?.[availability]?.reasonCode??'action-unavailable');
+    if(['editQueueItem','reorderQueueItem','deleteQueueItem','sendQueuedNow'].includes(type)){
+      const item=snapshot.queue.items.find(x=>x.queueItemId===payload?.queueItemId);
+      if(!item)throw new BridgeError('queue-item-unconfirmed');
+      if(item.dispatch.state!=='queued')throw new BridgeError('guard.queueItemReserved');
+      if(type==='editQueueItem'&&item.kind==='compact')throw new BridgeError('guard.queueItemNotEditable');
+      if(type==='reorderQueueItem'&&payload.beforeQueueItemId!==null&&!snapshot.queue.items.some(x=>x.queueItemId===payload.beforeQueueItemId))throw new BridgeError('queue-target-unconfirmed');
+    }
+    if(['sendText','sendGoalCommand'].includes(type)&&snapshot.inputRouting.mode==='choice'){
+      const ids=payload?.expectedHeldQueueItemIds;
+      if(!payload?.heldQueueDisposition||!Array.isArray(ids))throw new BridgeError('held-queue-confirmation-required');
+      if(new Set(ids).size!==ids.length||ids.length!==snapshot.queue.items.length||ids.some(id=>!snapshot.queue.items.some(x=>x.queueItemId===id)))throw new BridgeError('held-queue-confirmation-stale');
+    }
     if(type==='stop'){
       const executionId=payload?.expectedForegroundExecutionId;
       if(!snapshot.control.canStop||!executionId||!snapshot.control.activeWorks.some(x=>x.foregroundExecutionId===executionId))throw new BridgeError('stop-target-unconfirmed');

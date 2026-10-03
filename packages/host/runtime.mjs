@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { realpath } from 'node:fs/promises';
 import { inspectInstallation, runtimeEnv, BridgeError } from './installation.mjs';
-import { V4Conversation } from './conversation.mjs';
+import { V4Conversation, INPUT_COMMANDS } from './conversation.mjs';
 import { ProtocolPeer } from './protocol.mjs';
 export const initialStatus=()=>({state:'unavailable',reason:'not-connected',auth:'unconfirmed',connected:false});
 /** Owns only children it launches; there is no attach or shared-process killer. */
@@ -61,14 +61,15 @@ export class BridgeHost {
     catch(error){this.#handles.delete(handle);await conversation.cancel();throw error}
     finally{signal?.removeEventListener('abort',abort)}
   }
-  async conversationOperation({handle,operation,command,commandId},signal){
+  async conversationOperation({handle,operation,command,commandId,kind,preferences},signal){
     const conversation=this.#handles.get(handle);
     if(!conversation)throw new BridgeError('conversation-handle-invalid');
     if(operation==='release'){this.#handles.delete(handle);await conversation.cancel();return {released:true}}
     if(operation==='state')return conversation.state;
     if(operation==='connect'){await conversation.connect();return conversation.state}
     if(operation==='query'){const result=await conversation.queryCommand(commandId,{signal});await this.#acceptLifecycle(conversation,result);return result}
-    if(operation!=='command'||!command||!['renameSession','deleteSession'].includes(command.type))throw new BridgeError('management-command-unavailable');
+    if(operation==='workspaceConfig')return conversation.workspaceConfiguration(kind,preferences,{signal});
+    if(operation!=='command'||!command||!(['renameSession','deleteSession'].includes(command.type)||INPUT_COMMANDS.has(command.type)))throw new BridgeError('management-command-unavailable');
     const result=await conversation.submit(command,{signal});
     await this.#acceptLifecycle(conversation,result);return result;
   }

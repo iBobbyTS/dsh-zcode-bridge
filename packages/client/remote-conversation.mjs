@@ -50,6 +50,10 @@ export class RemoteConversation {
     if(this.#released||!this.#handle||!this.#commands.has(commandId))throw new Error('command-untracked');
     const result=await this.#call({operation:'query',handle:this.#handle,commandId});this.#commands.set(commandId,result);await this.refresh();this.#publish(this.state);return result;
   }
+  workspaceConfiguration(kind,preferences){
+    if(this.#released||!this.#handle)return Promise.reject(new Error('projection-unconfirmed'));
+    return this.#call({operation:'workspaceConfig',handle:this.#handle,kind,...(preferences===undefined?{}:{preferences})});
+  }
   resync(){return this.connect()}
   async cancel(){if(this.#released)return;this.#released=true;clearTimeout(this.#timer);this.#listeners.clear();if(this.#handle)await this.#call({operation:'release',handle:this.#handle});else await this.#opening?.catch(()=>{})}
 }
