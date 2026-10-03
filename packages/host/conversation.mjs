@@ -182,7 +182,8 @@ export class V4Conversation {
       const executionId=payload?.expectedForegroundExecutionId;
       if(!snapshot.control.canStop||!executionId||!snapshot.control.activeWorks.some(x=>x.foregroundExecutionId===executionId))throw new BridgeError('stop-target-unconfirmed');
     }
-    if(type==='resolveInteraction'&&!snapshot.pendingInteractions.some(x=>x.interactionId===payload?.interactionId))throw new BridgeError('interaction-unconfirmed');
+    if((type==='resolveInteraction'||type==='snoozeInteractionAutoResolution'||type==='respondWorkspaceHookReview'||type==='toggleWorkspaceHookReviewItem')&&!snapshot.pendingInteractions.some(x=>x.interactionId===payload?.interactionId))throw new BridgeError('interaction-unconfirmed');
+    if(type==='revokeWorkspaceHookTrust'&&payload?.interactionId&&!snapshot.pendingInteractions.some(x=>x.interactionId===payload.interactionId))throw new BridgeError('interaction-unconfirmed');
     const envelope={commandId,clientId:this.clientId,sessionId:this.address.sessionId,type,payload,issuedAt:Date.now(),...(COMMANDS_REQUIRING_BASE_REVISION.has(type)?{baseRevision:baseRevision??snapshot.revision}:{}),...(ROW_TARGETING_COMMANDS.has(type)?{baseLogEpoch:snapshot.logEpoch}:{})};
     const parsed=parseCommandEnvelope(envelope);
     if(!parsed.ok)throw new BridgeError('command-invalid');
