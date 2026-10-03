@@ -1,0 +1,10 @@
+{
+  "repository": "https://github.com/zai-org/ZCode",
+  "revision": "29628c9acdb81b703bbd4080c207a0e7ce5e276e",
+  "license": "Apache-2.0",
+  "source": "packages/ui/src/v4/slashCommands.ts",
+  "sha256": "23da23f671dea32904d759b4aef49fe3b3847fda7a561446a5a58dd2e3246660",
+  "exports": [
+    "parseV4VisibleSlashCommand"
+  ]
+}

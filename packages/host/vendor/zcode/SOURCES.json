@@ -36,6 +36,14 @@
     ],
     "core": [
       "PROTOCOL_V4_LIMITS"
+    ],
+    "../zcode-protocol/index": [
+      "zcodeWorkspaceUpdateInteractionPreferencesParamsSchema",
+      "zcodeWorkspaceUpdateInteractionPreferencesResultSchema",
+      "zcodeWorkspaceUpdateModelIoPreferencesParamsSchema",
+      "zcodeWorkspaceUpdateModelIoPreferencesResultSchema",
+      "zcodeWorkspaceReadPresentationParamsSchema",
+      "zcodeWorkspacePresentationSchema"
     ]
   },
   "sources": [

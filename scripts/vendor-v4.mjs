@@ -18,6 +18,7 @@ const exports={
  'wire-codec':['encodeTopicWireFrames','measureTopicNotificationEnvelopeBytes'],
  'wire-binary':['crc32WireBytes'],
  'core':['PROTOCOL_V4_LIMITS'],
+ '../zcode-protocol/index':['zcodeWorkspaceUpdateInteractionPreferencesParamsSchema','zcodeWorkspaceUpdateInteractionPreferencesResultSchema','zcodeWorkspaceUpdateModelIoPreferencesParamsSchema','zcodeWorkspaceUpdateModelIoPreferencesResultSchema','zcodeWorkspaceReadPresentationParamsSchema','zcodeWorkspacePresentationSchema'],
 };
 const notice='/*! Derived from ZCode @'+revision+'; Copyright 2026 Z.AI Co., Ltd. Apache-2.0 (LICENSE).\n * Modified: selective ESM bundle of shared schemas/pure functions, TypeScript erased; services excluded.\n * Regenerate with scripts/vendor-v4.mjs; see SOURCES.json for provenance. */';
 const result=await build({stdin:{contents:Object.entries(exports).map(([file,names])=>`export {${names.join(',')}} from '${source}/${file}.ts';`).join('\n'),resolveDir:process.cwd(),loader:'ts'},bundle:true,format:'esm',platform:'neutral',treeShaking:true,external:['zod'],write:false,metafile:true,plugins:[{name:'read-only-shared',setup(b){b.onResolve({filter:/.*/},async args=>{

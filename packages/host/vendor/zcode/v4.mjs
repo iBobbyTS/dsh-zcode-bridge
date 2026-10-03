@@ -9685,6 +9685,2473 @@ var TopicWireFrameAssembler = class {
     };
   }
 };
+
+// ../reference/ZCode/packages/shared/src/zcode-protocol/index.ts
+import { z as z51 } from "zod";
+var ZCODE_PROTOCOL_NAME2 = "ZCode Protocol";
+var ZCODE_PROTOCOL_VERSION2 = 1;
+var zcodeRuntimeCapabilitiesSchema2 = z51.object({
+  independentPlanState: z51.boolean().optional()
+});
+var nonEmptyString4 = z51.string().trim().min(1);
+var jsonObjectSchema3 = z51.record(z51.string(), z51.unknown());
+var timestampMsSchema3 = z51.number().int().nonnegative();
+var protocolInstantSchema2 = z51.union([timestampMsSchema3, nonEmptyString4, z51.date()]);
+var zcodeNodeReplImageToolResultDisplaySchema2 = z51.object({
+  kind: z51.literal("node_repl_images"),
+  images: z51.array(
+    z51.object({
+      base64: z51.string().min(1).max(200 * 1024),
+      mimeType: z51.string().regex(/^image\/[a-z0-9.+-]+$/iu)
+    }).strict()
+  ).min(1).max(2),
+  truncated: z51.boolean().optional(),
+  source: z51.literal("browser_turn_end").optional()
+}).strict();
+var zcodeWorkflowNamePatternSchema2 = z51.object({
+  head: z51.string().min(1).max(128).optional(),
+  tail: z51.string().min(1).max(128).optional()
+}).strict();
+var zcodeWorkflowEdgeSchema2 = z51.object({
+  from: z51.string().min(1).max(64),
+  to: z51.string().min(1).max(64),
+  back: z51.literal(true).optional()
+}).strict();
+var zcodeCreateWorkflowCausalityGraphDisplaySchema2 = z51.object({
+  steps: z51.array(
+    z51.object({
+      id: z51.string().min(1).max(64),
+      kind: z51.enum(["ask", "world-read"]),
+      label: z51.string().min(1).max(128),
+      // 内联 `agent()` receiver 让 label 落到兜底串时，那个名字的静态形状。
+      labelPattern: zcodeWorkflowNamePatternSchema2.optional(),
+      line: z51.number().int().positive().optional(),
+      column: z51.number().int().positive().optional(),
+      lane: z51.string().min(1).max(64),
+      lanes: z51.array(z51.string().min(1).max(64)).max(32).optional(),
+      // 展开自的站点 id，只出现在 may-set 车道展开的拷贝上（实时叠加的关联键）；
+      // 加字段是 additive 的，不带它的旧载荷照常通过 .strict()。
+      source: z51.string().min(1).max(64).optional(),
+      // 作者用 `phase("…")` 标记划入的阶段。
+      // 与图的 phases / phaseEdges / exits 同进同退：全在场或全缺席。
+      phase: z51.string().min(1).max(64).optional(),
+      repeat: z51.enum(["stack", "serial"]).optional()
+    }).strict()
+  ).max(64),
+  lanes: z51.array(
+    z51.object({
+      id: z51.string().min(1).max(64),
+      name: z51.string().min(1).max(128).optional(),
+      // `name` 缺席而 agent() 首参是带洞的模板串时的静态形状；与 name 互斥。
+      namePattern: zcodeWorkflowNamePatternSchema2.optional(),
+      line: z51.number().int().positive().optional(),
+      column: z51.number().int().positive().optional()
+    }).strict()
+  ).max(32),
+  // 参与者与交接；镜像 v4。
+  participants: z51.array(
+    z51.object({
+      id: z51.string().min(1).max(64),
+      phase: z51.string().min(1).max(64),
+      lane: z51.string().min(1).max(64),
+      steps: z51.array(z51.string().min(1).max(64)).min(1).max(64),
+      member: z51.object({ index: z51.number().int().nonnegative(), of: z51.number().int().positive() }).strict().optional(),
+      many: z51.literal(true).optional()
+    }).strict()
+  ).max(64),
+  handoffs: z51.array(
+    zcodeWorkflowEdgeSchema2.extend({ types: z51.array(z51.string().min(1).max(128)).min(1).max(8).optional() }).strict()
+  ).max(256),
+  // 阶段词汇表：作者施加的分组结构，主画面以它为节点。与 phaseEdges / exits / Step.phase
+  // 全有或全无——零标记脚本全缺席，UI 据此退回 step/车道视图。零成员阶段也在表里。
+  // `unphased` 无 name，显示名由 UI 本地化。
+  phases: z51.array(
+    z51.object({
+      id: z51.string().min(1).max(64),
+      name: z51.string().min(1).max(128).optional(),
+      line: z51.number().int().positive().optional(),
+      column: z51.number().int().positive().optional(),
+      // 进入本阶段时还在跑的其他阶段（它们的 strand 尚未 join），阶段表序，不含自己，
+      // 为空时缺席。是节点事实而不是边——控制没有从那里转移过来，所以不进 phaseEdges。
+      // 时间轴据此把相邻阶段折成一条分叉的「带」，侧栏迷你轨道画成双线段。
+      alongside: z51.array(z51.string().min(1).max(64)).min(1).max(32).optional()
+    }).strict()
+  ).max(32).optional(),
+  phaseEdges: z51.array(zcodeWorkflowEdgeSchema2).max(128).optional(),
+  // 控制流可在其后正常完成的阶段（阶段视图的「阶段 → 返回物」箭头）；组内可为空数组。
+  exits: z51.array(z51.string().min(1).max(64)).max(32).optional(),
+  sink: z51.array(z51.string().min(1).max(64)).max(64).optional(),
+  truncated: z51.boolean().optional()
+}).strict();
+var zcodeCreateWorkflowToolResultDisplaySchema2 = z51.object({
+  kind: z51.literal("create_workflow"),
+  ok: z51.boolean(),
+  errorCount: z51.number().int().nonnegative(),
+  diagnostics: z51.array(
+    z51.object({
+      line: z51.number().int().nonnegative(),
+      column: z51.number().int().nonnegative(),
+      code: z51.number().int().nonnegative(),
+      message: z51.string().min(1).max(2048)
+    }).strict()
+  ).max(100),
+  causalityGraph: zcodeCreateWorkflowCausalityGraphDisplaySchema2.optional(),
+  truncated: z51.boolean().optional()
+}).strict();
+var zcodeToolResultObjectSchema2 = jsonObjectSchema3.superRefine((result, context) => {
+  const display = result.display;
+  if (typeof display !== "object" || display === null || Array.isArray(display)) {
+    return;
+  }
+  const kind = display.kind;
+  const schemaByKind = {
+    node_repl_images: zcodeNodeReplImageToolResultDisplaySchema2,
+    create_workflow: zcodeCreateWorkflowToolResultDisplaySchema2,
+    bash_output: bashOutputDisplaySchema
+  };
+  const schema = typeof kind === "string" ? schemaByKind[kind] : void 0;
+  if (!schema) return;
+  const parsed = schema.safeParse(display);
+  if (parsed.success) return;
+  for (const issue of parsed.error.issues) {
+    context.addIssue({ ...issue, path: ["display", ...issue.path] });
+  }
+});
+var zcodeProtocolRequestIdSchema2 = z51.union([z51.string(), z51.number().int()]);
+var zcodeProtocolTraceSchema2 = z51.object({
+  traceparent: nonEmptyString4.optional(),
+  traceId: nonEmptyString4.optional(),
+  parentId: nonEmptyString4.optional(),
+  spanId: nonEmptyString4.optional()
+}).strict();
+var zcodeProtocolRequestSchema2 = z51.object({
+  id: zcodeProtocolRequestIdSchema2,
+  method: nonEmptyString4,
+  params: z51.unknown().optional(),
+  trace: zcodeProtocolTraceSchema2.optional()
+}).strict();
+var zcodeProtocolNotificationSchema2 = z51.object({
+  method: nonEmptyString4,
+  params: z51.unknown().optional(),
+  trace: zcodeProtocolTraceSchema2.optional()
+}).strict();
+var zcodeProtocolResponseSchema2 = z51.object({
+  id: zcodeProtocolRequestIdSchema2,
+  result: z51.unknown()
+}).strict();
+var zcodeProtocolErrorSchema2 = z51.object({
+  id: zcodeProtocolRequestIdSchema2,
+  error: z51.object({
+    code: z51.number().int(),
+    message: nonEmptyString4,
+    data: z51.unknown().optional()
+  }).strict()
+}).strict();
+var zcodeProtocolMessageSchema2 = z51.union([
+  zcodeProtocolRequestSchema2,
+  zcodeProtocolNotificationSchema2,
+  zcodeProtocolResponseSchema2,
+  zcodeProtocolErrorSchema2
+]);
+var zcodeStorageStartupStateSchema2 = z51.object({
+  schemaVersion: z51.literal(1),
+  attemptId: z51.string().min(1).max(128),
+  sequence: z51.number().int().positive(),
+  databaseId: z51.string().min(1).max(128),
+  databaseKind: z51.enum(["session", "tasks-index"]),
+  phase: z51.enum(["checking", "waiting_for_lock", "migrating", "committing", "ready", "failed"]),
+  // 包含锁内、版本 SQL 之前的可选 lastAppliedMigrationId；旧通知仍可解析。
+  migration: databaseMigrationFactsSchema.optional(),
+  elapsedMs: z51.number().nonnegative().finite(),
+  completed: z51.number().int().nonnegative().optional(),
+  total: z51.number().int().nonnegative().optional(),
+  errorCode: databaseStartupErrorCodeSchema.optional(),
+  ...databaseStartupErrorDetailsSchema.shape
+}).strict().superRefine((state, context) => {
+  if (state.phase === "failed" && !state.errorCode)
+    context.addIssue({ code: "custom", message: "failed requires errorCode" });
+});
+var zcodeMcpTelemetryPlatformSchema2 = z51.enum([
+  "aix",
+  "android",
+  "darwin",
+  "freebsd",
+  "haiku",
+  "linux",
+  "netbsd",
+  "openbsd",
+  "sunos",
+  "win32",
+  "cygwin"
+]);
+var zcodeMcpTelemetryArchSchema2 = z51.enum([
+  "arm",
+  "arm64",
+  "ia32",
+  "loong64",
+  "mips",
+  "mipsel",
+  "ppc",
+  "ppc64",
+  "riscv64",
+  "s390",
+  "s390x",
+  "x64"
+]);
+var zcodeMcpTelemetryBaseSchema2 = z51.object({
+  arch: zcodeMcpTelemetryArchSchema2,
+  occurredAt: z51.number().int().nonnegative(),
+  platform: zcodeMcpTelemetryPlatformSchema2
+}).strict();
+var zcodeMcpProcessTelemetryBaseShape2 = {
+  mcpId: z51.string().regex(
+    /^(?:builtin:(?:[A-Za-z0-9._~-]|%[0-9A-F]{2})+(?::(?:[A-Za-z0-9._~-]|%[0-9A-F]{2})+)*|(?:plugin|custom):[a-f0-9]{12})$/
+  ),
+  mcpInstanceId: nonEmptyString4,
+  mcpIsolation: z51.enum(["session", "workspace"]),
+  mcpSource: z51.enum(["builtin", "plugin", "custom"])
+};
+var zcodeMcpTelemetryEventSchema2 = z51.discriminatedUnion("kind", [
+  zcodeMcpTelemetryBaseSchema2.extend({
+    kind: z51.literal("process_start"),
+    ...zcodeMcpProcessTelemetryBaseShape2
+  }).strict(),
+  zcodeMcpTelemetryBaseSchema2.extend({
+    kind: z51.literal("process_crash"),
+    ...zcodeMcpProcessTelemetryBaseShape2,
+    affectedSessionCount: z51.number().int().nonnegative().max(1e4),
+    exitCode: z51.number().int().nullable(),
+    signal: nonEmptyString4.nullable(),
+    uptimeMs: z51.number().finite().nonnegative().max(Number.MAX_SAFE_INTEGER)
+  }).strict(),
+  zcodeMcpTelemetryBaseSchema2.extend({
+    kind: z51.literal("session_startup"),
+    configuredCount: z51.number().int().nonnegative().max(1e4),
+    connectedCount: z51.number().int().nonnegative().max(1e4),
+    failedCount: z51.number().int().nonnegative().max(1e4),
+    processCount: z51.number().int().nonnegative().max(1e4),
+    sessionId: nonEmptyString4
+  }).strict(),
+  zcodeMcpTelemetryBaseSchema2.extend({
+    kind: z51.literal("memory"),
+    ...zcodeMcpProcessTelemetryBaseShape2,
+    memoryKb: z51.number().finite().nonnegative().max(Number.MAX_SAFE_INTEGER),
+    memoryScope: z51.enum(["process_tree", "direct_process"]),
+    orphanSuspected: z51.boolean(),
+    ownerSessionCount: z51.number().int().nonnegative().max(1e4),
+    unownedSeconds: z51.number().finite().nonnegative().max(Number.MAX_SAFE_INTEGER)
+  }).strict()
+]);
+var ZCODE_MCP_RESOURCE_SAMPLE_INTERVAL_MS2 = 5 * 6e4;
+var zcodeMcpResourceSampleSchema2 = z51.object({
+  mcpId: zcodeMcpProcessTelemetryBaseShape2.mcpId,
+  instanceToken: z51.string().regex(/^[A-Za-z0-9_-]{8,64}$/),
+  sampledAt: z51.number().int().nonnegative(),
+  intervalMs: z51.number().finite().positive(),
+  processCount: z51.number().int().positive().max(1e5),
+  rssKbTotal: z51.number().finite().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  rssKbMaxProcess: z51.number().finite().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  cpuTimeMsDelta: z51.number().finite().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  uptimeMinutes: z51.number().int().nonnegative(),
+  platform: zcodeMcpTelemetryPlatformSchema2,
+  arch: zcodeMcpTelemetryArchSchema2,
+  logicalCpuCount: z51.number().int().positive().max(4096),
+  totalMemoryGb: z51.number().int().nonnegative().max(1048576)
+}).strict();
+var zcodeMcpResourceSamplesSchema2 = z51.array(zcodeMcpResourceSampleSchema2).max(1024);
+var BASH_RESOURCE_SAMPLE_INTERVAL_MS2 = 15e3;
+var BASH_RESOURCE_MAX_SAMPLES2 = 20;
+var zcodeToolExecResourceSchema2 = z51.object({
+  // 同一完成事实可能经多个 Host 转发；随机标识仅供 main 去重，旧 CLI 缺字段仍兼容。
+  completionToken: z51.string().uuid().optional(),
+  platform: zcodeMcpTelemetryPlatformSchema2,
+  toolName: z51.literal("bash"),
+  durationMs: z51.number().finite().min(BASH_RESOURCE_SAMPLE_INTERVAL_MS2),
+  exitKind: z51.enum(["completed", "timeout", "killed", "error"]),
+  treeRssKbPeak: z51.number().finite().nonnegative().optional(),
+  treeCpuTimeMs: z51.number().finite().nonnegative().optional(),
+  sampleCount: z51.number().int().nonnegative().max(BASH_RESOURCE_MAX_SAMPLES2),
+  cliRssKb: z51.number().finite().nonnegative(),
+  systemFreeMemoryKb: z51.number().finite().nonnegative()
+}).strict();
+var zcodeProcessResourceSampleSchema2 = z51.object({
+  platform: z51.enum([
+    "aix",
+    "android",
+    "darwin",
+    "freebsd",
+    "haiku",
+    "linux",
+    "netbsd",
+    "openbsd",
+    "sunos",
+    "win32",
+    "cygwin"
+  ]),
+  arch: z51.enum([
+    "arm",
+    "arm64",
+    "ia32",
+    "loong64",
+    "mips",
+    "mipsel",
+    "ppc",
+    "ppc64",
+    "riscv64",
+    "s390",
+    "s390x",
+    "x64"
+  ]),
+  logicalCpuCount: z51.number().int().positive().max(4096),
+  intervalMs: z51.number().int().positive().max(7 * 24 * 60 * 60 * 1e3),
+  cpuCores: z51.number().finite().nonnegative().max(4096),
+  cpuPercent: z51.number().finite().nonnegative().max(1e5),
+  rssKb: z51.number().finite().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  /**
+   * 以下四项为遥测新增字段，全部可选：旧 CLI 发来的样本仍能通过校验，因此
+   * **不递增协议握手版本号**（握手版本是兼容性开关，不是字段版本）。
+   */
+  heapUsedKb: z51.number().finite().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
+  uptimeMinutes: z51.number().int().nonnegative().max(10 * 365 * 24 * 60).optional(),
+  totalMemoryGb: z51.number().int().nonnegative().max(1048576).optional(),
+  /**
+   * CLI 进程启动时随机生成的实例标识，仅供 app 侧 main 统计「同时存活几个 CLI 进程」
+   * 与「最大单进程 RSS」。不进 ARMS 属性、不含 pid。收紧字符集是隐私红线的机械保障：
+   * 路径、workspace 标识这类内容不可能通过校验。
+   */
+  instanceToken: z51.string().regex(/^[A-Za-z0-9_-]{8,64}$/).optional()
+}).strict();
+var zcodeProcessChildProcessesParamsSchema2 = z51.object({}).strict();
+var zcodeProcessChildProcessSchema2 = z51.object({
+  pid: z51.number().int().positive(),
+  serverName: nonEmptyString4,
+  mcpSource: z51.enum(["builtin", "plugin", "custom"]),
+  /** 官方/第三方插件的插件名（`plugin:<name>:<key>` 的 name，或官方 host MCP 对应插件）；custom 无 */
+  pluginName: nonEmptyString4.optional()
+}).strict();
+var zcodeProcessChildProcessesResultSchema2 = z51.object({
+  processes: z51.array(zcodeProcessChildProcessSchema2).max(1e4)
+}).strict();
+var zcodeTurnInputSourceSchema2 = zcodeSyntheticUserMessageSourceSchema;
+var zcodeSessionPersistenceSchema2 = z51.enum(["immediate", "deferred"]);
+var zcodePermissionOptionSchema2 = z51.object({
+  optionId: nonEmptyString4,
+  kind: nonEmptyString4,
+  name: nonEmptyString4,
+  description: z51.string().optional(),
+  response: zcodePermissionResponseSchema
+}).strict();
+var zcodeProtocolMcpEntrySchema2 = z51.object({
+  name: nonEmptyString4,
+  value: z51.string()
+}).strict();
+var zcodeProtocolMcpOAuthSchema2 = z51.union([
+  z51.object({
+    type: z51.literal("client_credentials"),
+    clientId: nonEmptyString4,
+    clientSecret: nonEmptyString4,
+    clientName: nonEmptyString4.optional(),
+    scope: z51.string().optional()
+  }).strict(),
+  z51.object({
+    type: z51.literal("authorization_code"),
+    clientId: nonEmptyString4.optional(),
+    clientSecret: nonEmptyString4.optional(),
+    clientName: nonEmptyString4.optional(),
+    redirectPath: nonEmptyString4.optional(),
+    scope: z51.string().optional()
+  }).strict()
+]);
+var zcodeProtocolMcpServerSchema2 = z51.union([
+  z51.object({
+    name: nonEmptyString4,
+    command: nonEmptyString4,
+    args: z51.array(z51.string()),
+    env: z51.array(zcodeProtocolMcpEntrySchema2),
+    isolation: z51.enum(["session", "workspace"]).optional(),
+    protocolVersion: z51.enum(["legacy", "auto", "2026-07-28"]).optional(),
+    timeoutMs: z51.number().int().positive().optional()
+  }).strict(),
+  z51.object({
+    name: nonEmptyString4,
+    type: z51.enum(["http", "sse"]),
+    url: nonEmptyString4,
+    headers: z51.array(zcodeProtocolMcpEntrySchema2),
+    oauth: zcodeProtocolMcpOAuthSchema2.optional(),
+    isolation: z51.enum(["session", "workspace"]).optional(),
+    protocolVersion: z51.enum(["legacy", "auto", "2026-07-28"]).optional(),
+    timeoutMs: z51.number().int().positive().optional()
+  }).strict()
+]);
+var zcodeMcpServerStatusKindSchema2 = z51.enum([
+  "connecting",
+  "connected",
+  "disabled",
+  "disconnected",
+  "failed",
+  "untrusted"
+]);
+var MCP_SERVER_FAILURE_KINDS2 = [
+  "config_invalid",
+  "runtime_unavailable",
+  "process_start_failed",
+  "network_unreachable",
+  "connection_timeout",
+  "protocol_negotiation_failed",
+  "tool_list_failed",
+  "unexpected_disconnect",
+  "oauth_authorization_failed",
+  "official_origin_untrusted",
+  "not_authenticated",
+  "coding_plan_required",
+  "server_not_found",
+  "server_unavailable",
+  "rate_limited",
+  "server_internal_error",
+  "protocol_error",
+  "status_unavailable",
+  "connection_failed"
+];
+var mcpServerFailureKindSchema2 = z51.enum(MCP_SERVER_FAILURE_KINDS2);
+var zcodeMcpServerStatusSnapshotSchema2 = z51.object({
+  status: zcodeMcpServerStatusKindSchema2,
+  transport: z51.enum(["stdio", "http", "sse"]),
+  toolCount: z51.number().int().nonnegative(),
+  updatedAt: nonEmptyString4,
+  error: z51.string().optional(),
+  failureKind: mcpServerFailureKindSchema2.optional(),
+  serverRequestId: nonEmptyString4.optional(),
+  protocolEra: z51.enum(["legacy", "modern"]).optional(),
+  authorization: z51.object({
+    type: z51.literal("oauth_authorization_code"),
+    authorizationUrl: nonEmptyString4,
+    startedAt: nonEmptyString4
+  }).strict().optional()
+}).strict();
+var zcodeMcpListModeSchema2 = z51.enum(["connect", "status"]);
+var zcodeMcpListParamsSchema2 = z51.object({
+  workspace: zcodeWorkspaceRefSchema,
+  mcpServers: z51.array(zcodeProtocolMcpServerSchema2).optional(),
+  mode: zcodeMcpListModeSchema2.default("connect")
+}).strict();
+var zcodeMcpListResultSchema2 = z51.object({
+  statuses: z51.record(z51.string(), zcodeMcpServerStatusSnapshotSchema2)
+}).strict();
+var zcodeSessionImportMessageSchema2 = z51.object({
+  role: z51.enum(["user", "assistant"]),
+  content: z51.string(),
+  timestamp: timestampMsSchema3.optional()
+}).strict();
+var zcodeSessionImportHistorySchema2 = z51.discriminatedUnion("source", [
+  z51.object({
+    source: z51.literal("claudeCode"),
+    title: z51.string().optional(),
+    createdAt: timestampMsSchema3.optional(),
+    updatedAt: timestampMsSchema3.optional(),
+    messages: z51.array(zcodeSessionImportMessageSchema2).min(1)
+  }).strict(),
+  z51.object({
+    source: z51.literal("sharedContext"),
+    title: z51.string().trim().min(1),
+    createdAt: timestampMsSchema3.optional(),
+    markdown: z51.string().min(1),
+    provenance: z51.object({
+      shareId: z51.string().trim().min(1),
+      contextId: z51.string().trim().min(1).optional(),
+      shareUrl: z51.string().url().optional(),
+      status: z51.enum(["pending", "reserved", "attached", "discarded"]).optional(),
+      projectionSha256: z51.string().regex(/^[0-9a-f]{64}$/u),
+      artifactSetSha256: z51.string().regex(/^[0-9a-f]{64}$/u),
+      formatterVersion: z51.literal(1),
+      markdownSha256: z51.string().regex(/^[0-9a-f]{64}$/u),
+      installedArtifacts: z51.array(
+        z51.object({
+          artifactId: z51.string().trim().min(1),
+          workspaceRelativePath: z51.string().trim().min(1)
+        }).strict()
+      )
+    }).strict()
+  }).strict()
+]);
+var zcodeThoughtLevelOptionSchema2 = z51.object({
+  value: nonEmptyString4,
+  label: nonEmptyString4,
+  description: z51.string().optional()
+}).strict();
+var zcodeModelReasoningOptionsSchema2 = z51.object({
+  levels: z51.array(zcodeThoughtLevelOptionSchema2),
+  defaultLevel: nonEmptyString4.optional()
+}).strict();
+var zcodeModelFormatPropertiesSchema2 = completeModelPropertiesDataSchema.pick({
+  inputFormat: true,
+  outputFormat: true
+});
+var zcodeModelOptionSchema2 = z51.object({
+  ref: modelSelectionSchema,
+  label: nonEmptyString4,
+  providerLabel: nonEmptyString4.optional(),
+  description: z51.string().optional(),
+  contextWindow: z51.number().int().positive().optional(),
+  maxOutputTokens: z51.number().int().positive().optional(),
+  reasoning: zcodeModelReasoningOptionsSchema2.optional(),
+  properties: zcodeModelFormatPropertiesSchema2,
+  disabledReason: z51.string().optional()
+}).strict();
+var zcodeAccountAccessSchema2 = z51.discriminatedUnion("planKind", [
+  z51.object({
+    type: z51.literal("zhipu-account"),
+    family: z51.enum(["zai", "bigmodel"]),
+    planKind: z51.literal("start-plan")
+  }).strict(),
+  z51.object({
+    type: z51.literal("zhipu-account"),
+    family: z51.enum(["zai", "bigmodel"]),
+    planKind: z51.literal("individual-coding-plan")
+  }).strict(),
+  z51.object({
+    type: z51.literal("zhipu-account"),
+    family: z51.enum(["zai", "bigmodel"]),
+    planKind: z51.literal("team-coding-plan"),
+    productId: nonEmptyString4,
+    organizationId: nonEmptyString4,
+    projectId: nonEmptyString4
+  }).strict()
+]);
+var zcodeProviderAccountAccessSchema2 = z51.object({
+  type: z51.literal("zhipu-account"),
+  accountType: z51.enum(["zai", "bigmodel"]),
+  mode: z51.enum(["start-plan", "individual-coding-plan", "team-coding-plan", "off-peak"]),
+  entitled: z51.boolean()
+}).strict();
+var zcodeSessionTodoItemSchema2 = z51.object({
+  content: nonEmptyString4,
+  status: z51.enum(["pending", "in_progress", "completed"]),
+  priority: z51.enum(["high", "medium", "low"])
+}).strict();
+var zcodeSessionGoalStatsSchema2 = z51.object({
+  timeUsedSeconds: z51.number().int().nonnegative(),
+  tokensUsed: z51.number().int().nonnegative(),
+  tokenBudget: z51.number().int().positive().nullable(),
+  contextUsed: z51.number().int().nonnegative(),
+  contextWindow: z51.number().int().nonnegative(),
+  toolCallCount: z51.number().int().nonnegative(),
+  iterationCount: z51.number().int().nonnegative()
+}).strict();
+var zcodeSessionTodoGroupSchema2 = z51.object({
+  id: nonEmptyString4,
+  source: z51.enum(["goal_iteration", "session"]),
+  goalIteration: z51.number().int().positive().optional(),
+  targetId: nonEmptyString4.optional(),
+  startedAt: timestampMsSchema3.optional(),
+  updatedAt: timestampMsSchema3.optional(),
+  todos: z51.array(zcodeSessionTodoItemSchema2)
+}).strict();
+var zcodeSessionSettingsStateSchema2 = z51.object({
+  model: z51.object({
+    // 未绑定是合法恢复状态；不能为满足协议而伪造模型或阻断历史读取。
+    current: modelSelectionSchema.optional(),
+    available: z51.array(zcodeModelOptionSchema2),
+    lastUsed: modelSelectionSchema.optional()
+  }).strict(),
+  thoughtLevel: z51.object({
+    enabled: z51.boolean(),
+    current: nonEmptyString4.optional(),
+    defaultLevel: nonEmptyString4.optional(),
+    available: z51.array(zcodeThoughtLevelOptionSchema2)
+  }).strict(),
+  mode: z51.object({
+    current: zcodeSessionModeSchema
+  }).strict(),
+  permission: z51.object({
+    mode: zcodeSessionModeSchema.optional(),
+    rulesRevision: z51.number().int().nonnegative().optional()
+  }).strict().optional()
+}).strict();
+var zcodePendingPermissionSchema2 = z51.object({
+  requestId: nonEmptyString4,
+  toolCallId: nonEmptyString4,
+  toolName: nonEmptyString4,
+  reason: z51.string(),
+  riskLevel: z51.enum(["low", "medium", "high", "critical"]),
+  input: z51.unknown().optional(),
+  origin: zcodeInteractionRequestOriginSchema.optional(),
+  options: z51.array(zcodePermissionOptionSchema2).min(1),
+  requestedAt: timestampMsSchema3
+}).strict();
+var zcodeActiveToolCallSchema2 = z51.object({
+  toolCallId: nonEmptyString4,
+  toolName: nonEmptyString4,
+  status: z51.enum(["pending", "running", "completed", "failed", "denied"]),
+  startedAt: timestampMsSchema3.optional()
+}).strict();
+var zcodeSessionProjectionSchema2 = z51.object({
+  sessionId: nonEmptyString4,
+  status: zcodeSessionStatusSchema,
+  mode: zcodeSessionModeSchema,
+  turnCount: z51.number().int().nonnegative(),
+  totalTokenCount: z51.number().int().nonnegative(),
+  contextUsed: z51.number().int().nonnegative(),
+  contextWindow: z51.number().int().nonnegative(),
+  currentTurnId: nonEmptyString4.optional(),
+  pendingPermissions: z51.array(zcodePendingPermissionSchema2),
+  activeToolCalls: z51.array(zcodeActiveToolCallSchema2),
+  backgroundJobs: z51.array(jsonObjectSchema3),
+  target: zcodeSessionGoalSchema.nullable().optional(),
+  lastError: z51.object({
+    type: nonEmptyString4,
+    code: nonEmptyString4.optional(),
+    message: nonEmptyString4,
+    detail: z51.string().optional(),
+    attribution: errorAttributionSchema.optional()
+  }).strict().optional()
+}).strict();
+var zcodeSlashCommandSchema2 = z51.object({
+  name: nonEmptyString4,
+  description: z51.string(),
+  inputHint: z51.string().optional(),
+  source: z51.enum(["builtin", "custom"]).optional()
+}).strict();
+var zcodeModelStreamingKindSchema2 = z51.enum([
+  "start",
+  "finish",
+  "error",
+  "text_start",
+  "text_delta",
+  "text_end",
+  "reasoning_start",
+  "reasoning_delta",
+  "reasoning_end",
+  "tool_input_start",
+  "tool_input_delta",
+  "tool_input_end",
+  "tool_call"
+]);
+var zcodeModelStreamingEventPayloadSchema2 = z51.object({
+  assistantMessageId: z51.string().optional(),
+  delta: z51.string().optional(),
+  done: z51.boolean().optional(),
+  input: z51.unknown().optional(),
+  kind: zcodeModelStreamingKindSchema2,
+  partId: z51.string().optional(),
+  providerExecuted: z51.boolean().optional(),
+  toolCallId: z51.string().optional(),
+  toolName: z51.string().optional()
+}).strict();
+var zcodeSessionStateSnapshotSchema2 = z51.object({
+  protocol: z51.object({
+    name: z51.literal(ZCODE_PROTOCOL_NAME2),
+    version: z51.literal(ZCODE_PROTOCOL_VERSION2)
+  }).strict(),
+  session: zcodeSessionInfoSchema,
+  settings: zcodeSessionSettingsStateSchema2,
+  projection: zcodeSessionProjectionSchema2,
+  runtime: zcodeSessionRuntimeStateSchema,
+  messages: z51.array(zcodeMessageWithPartsSchema),
+  goalStats: zcodeSessionGoalStatsSchema2.optional(),
+  todos: z51.array(zcodeSessionTodoItemSchema2).optional(),
+  todoGroups: z51.array(zcodeSessionTodoGroupSchema2).optional(),
+  slashCommands: z51.array(zcodeSlashCommandSchema2).optional()
+}).strict();
+var zcodeEventEnvelopeSchema2 = z51.object({
+  eventId: nonEmptyString4,
+  sessionId: nonEmptyString4,
+  turnId: nonEmptyString4.optional(),
+  seq: z51.number().int().nonnegative(),
+  traceId: nonEmptyString4.optional(),
+  timestamp: timestampMsSchema3,
+  deliveryKind: zcodeDeliveryKindSchema.optional()
+}).strict();
+var zcodeComputerUseOperationEventBaseSchema2 = z51.object({
+  eventId: nonEmptyString4,
+  sequenceNumber: z51.number().int().nonnegative(),
+  sessionId: nonEmptyString4,
+  timestamp: timestampMsSchema3
+}).strict();
+var zcodeComputerUseTurnStartedEventSchema2 = zcodeComputerUseOperationEventBaseSchema2.extend({
+  kind: z51.literal("turn-started"),
+  turnId: nonEmptyString4
+});
+var zcodeComputerUseTurnCompletedEventSchema2 = zcodeComputerUseOperationEventBaseSchema2.extend({
+  kind: z51.literal("turn-completed"),
+  turnId: nonEmptyString4
+});
+var zcodeComputerUseTurnFailedEventSchema2 = zcodeComputerUseOperationEventBaseSchema2.extend({
+  kind: z51.literal("turn-failed"),
+  turnId: nonEmptyString4
+});
+var zcodeComputerUseToolScheduledEventSchema2 = zcodeComputerUseOperationEventBaseSchema2.extend({
+  kind: z51.literal("tool-scheduled"),
+  turnId: nonEmptyString4,
+  toolCallId: nonEmptyString4,
+  toolName: nonEmptyString4,
+  // 这个 cell 是否在用 Computer Use。只表达布尔事实，不再携带动作名——旧的
+  // operationAction 靠从模型源码里抽取动作名得到，SDK 面一变就整体失配（见
+  // bootstrap/src/zcode-protocol/computer-use-operation-event.ts 的 usesComputerUse）。
+  // 只挂在 scheduled 上：ToolCallStartedPayload 没有 input，start 时已拿不到模型源码。
+  computerUse: z51.literal(true).optional()
+});
+var zcodeComputerUseToolStartedEventSchema2 = zcodeComputerUseOperationEventBaseSchema2.extend({
+  kind: z51.literal("tool-started"),
+  turnId: nonEmptyString4.optional(),
+  toolCallId: nonEmptyString4,
+  toolName: nonEmptyString4.optional()
+});
+var zcodeComputerUseSessionClosedEventSchema2 = zcodeComputerUseOperationEventBaseSchema2.extend({
+  kind: z51.literal("session-closed")
+});
+var zcodeComputerUseOperationEventSchema2 = z51.discriminatedUnion("kind", [
+  zcodeComputerUseTurnStartedEventSchema2,
+  zcodeComputerUseTurnCompletedEventSchema2,
+  zcodeComputerUseTurnFailedEventSchema2,
+  zcodeComputerUseToolScheduledEventSchema2,
+  zcodeComputerUseToolStartedEventSchema2,
+  zcodeComputerUseSessionClosedEventSchema2
+]);
+var zcodeSessionEventTypeSchema2 = z51.enum([
+  "session.created",
+  "session.resumed",
+  "session.updated",
+  "session.titleUpdated",
+  "session.closed",
+  "turn.started",
+  "turn.steerQueued",
+  "turn.steerDrained",
+  "turn.completed",
+  "turn.failed",
+  "message.upserted",
+  "message.removed",
+  "part.started",
+  "part.delta",
+  "part.upserted",
+  "part.removed",
+  "model.streaming",
+  "tool.updated",
+  "permission.requested",
+  "permission.resolved",
+  "userInput.requested",
+  "userInput.resolved",
+  "checkpoint.created",
+  "rewind.triggered",
+  "streamRecovery.updated"
+]);
+var zcodeProtocolErrorDetailSchema2 = z51.object({
+  type: nonEmptyString4,
+  message: nonEmptyString4,
+  stack: z51.string().optional(),
+  code: z51.string().optional(),
+  detail: z51.string().optional(),
+  underlyingErrorMessage: z51.string().optional(),
+  underlyingErrorDetail: z51.string().optional(),
+  attribution: errorAttributionSchema.optional(),
+  retryable: z51.boolean().optional(),
+  data: z51.unknown().optional()
+}).strict();
+var zcodeSessionCreatedEventPayloadSchema2 = z51.object({
+  mode: zcodeSessionModeSchema,
+  contextWindow: z51.number().int().nonnegative()
+}).strict();
+var zcodeSessionResumedEventPayloadSchema2 = z51.object({
+  directory: nonEmptyString4,
+  interruptedToolCount: z51.number().int().nonnegative(),
+  messageCount: z51.number().int().nonnegative(),
+  partCount: z51.number().int().nonnegative(),
+  recoveredCompactTimelineCount: z51.number().int().nonnegative().optional(),
+  recoveredSteerInputCount: z51.number().int().nonnegative().optional(),
+  resumedTodoCount: z51.number().int().nonnegative().optional()
+}).strict();
+var zcodeSessionTitleUpdatedEventPayloadSchema2 = z51.object({
+  messageID: nonEmptyString4.optional(),
+  previousTitle: z51.string(),
+  source: z51.enum(["default", "first_input", "generated", "custom"]),
+  title: z51.string()
+}).strict();
+var zcodeTurnStartedEventPayloadSchema2 = z51.object({
+  turnNumber: z51.number().int().nonnegative(),
+  input: z51.string(),
+  inputId: nonEmptyString4.optional(),
+  queryId: nonEmptyString4.optional(),
+  inputSource: zcodeTurnInputSourceSchema2.optional(),
+  inputVisibility: zcodeMessageVisibilitySchema.optional(),
+  executionKind: z51.enum(["agent", "controlOnly"]).optional(),
+  targetId: nonEmptyString4.optional(),
+  messageId: nonEmptyString4.optional(),
+  foregroundExecutionId: nonEmptyString4.optional(),
+  intent: jsonObjectSchema3.optional(),
+  originMeta: jsonObjectSchema3.optional(),
+  // runtime 会透传后台唤醒来源，strict schema 必须同步声明以免丢弃整条事件。
+  backgroundSource: z51.enum(["bash", "subagent"]).optional(),
+  attachments: z51.array(jsonObjectSchema3).optional()
+}).strict();
+var zcodeTurnSteerSourceSchema2 = z51.enum(["plan_approval_feedback", "workflow_refine_feedback"]);
+var zcodeTurnSteerCommandKindSchema2 = z51.enum(["sendText", "sendGoalCommand", "compact"]);
+var zcodeTurnSteerDeliverySchema2 = z51.enum(["queue", "guide"]);
+var zcodeTurnSteerQueuedEventPayloadSchema2 = z51.object({
+  pendingInputId: nonEmptyString4,
+  inputId: nonEmptyString4.optional(),
+  queryId: nonEmptyString4.optional(),
+  input: z51.string(),
+  inputPreview: z51.string(),
+  inputSize: z51.number().int().nonnegative(),
+  commandKind: zcodeTurnSteerCommandKindSchema2.optional(),
+  source: zcodeTurnSteerSourceSchema2.optional(),
+  toolDisallowlist: z51.array(nonEmptyString4).optional(),
+  delivery: zcodeTurnSteerDeliverySchema2.optional(),
+  targetTurnId: nonEmptyString4,
+  queueLength: z51.number().int().nonnegative(),
+  intent: jsonObjectSchema3.optional()
+}).strict();
+var zcodeTurnSteerDrainedEventPayloadSchema2 = z51.object({
+  pendingInputIds: z51.array(nonEmptyString4),
+  queryIds: z51.array(nonEmptyString4).optional(),
+  targetTurnId: nonEmptyString4,
+  injectedMessageIds: z51.array(nonEmptyString4),
+  drainedInputs: z51.array(
+    z51.object({
+      pendingInputId: nonEmptyString4,
+      messageId: nonEmptyString4,
+      text: z51.string(),
+      delivery: zcodeTurnSteerDeliverySchema2.optional(),
+      intent: jsonObjectSchema3.optional(),
+      toolDisallowlist: z51.array(nonEmptyString4).optional()
+    }).strict()
+  ).optional()
+}).strict();
+var zcodeTurnCompletedEventPayloadSchema2 = z51.object({
+  response: z51.string(),
+  tokenCount: z51.number().int().nonnegative(),
+  usage: z51.unknown().optional(),
+  toolCallCount: z51.number().int().nonnegative(),
+  historyRoundCount: z51.number().int().nonnegative().optional(),
+  duration: z51.number().nonnegative(),
+  // runtime turn.completed 会附带 cacheStats，协议 schema 之前漏掉该字段。
+  // strict 校验失败会让桌面端丢掉终态事件，表现为消息已完成但 UI 一直没有回复。
+  cacheStats: z51.object({
+    totalMessages: z51.number().int().nonnegative(),
+    cachedMessages: z51.number().int().nonnegative(),
+    lastCacheHit: z51.boolean(),
+    cacheReadTokens: z51.number().int().nonnegative().optional()
+  }).strict().optional(),
+  inputId: nonEmptyString4.optional(),
+  resultType: z51.enum([
+    "success",
+    // "cancelled": 用户主动中断属于正常结束，复用 turn.completed 上报，避免被映射成 turn.failed。
+    "cancelled",
+    "error_max_turns",
+    "error_max_budget",
+    "error_during_execution",
+    "error_max_tool_calls"
+  ]),
+  backgroundSubagentResultConsumed: z51.boolean().optional()
+}).strict();
+var zcodeTurnFailedEventPayloadSchema2 = z51.object({
+  error: zcodeProtocolErrorDetailSchema2,
+  turnPhase: z51.string(),
+  inputId: nonEmptyString4.optional(),
+  backgroundSubagentResultConsumed: z51.boolean().optional()
+}).strict();
+var zcodeMessageUpsertedEventPayloadSchema2 = z51.object({
+  content: z51.string(),
+  attachments: z51.array(z51.unknown()).optional(),
+  toolCalls: z51.array(z51.unknown()).optional(),
+  type: z51.string().optional(),
+  compactBoundary: z51.unknown().optional()
+}).strict();
+var zcodeMessageRemovedEventPayloadSchema2 = z51.object({
+  messageId: nonEmptyString4,
+  reason: z51.string().optional()
+}).strict();
+var zcodeMessagePartDeltaEventPayloadSchema2 = z51.object({
+  messageId: nonEmptyString4,
+  partId: nonEmptyString4,
+  field: z51.enum(["text", "reasoning", "input", "output"]).optional(),
+  delta: z51.string()
+}).strict();
+var zcodeMessagePartUpsertedEventPayloadSchema2 = z51.object({
+  part: zcodeMessagePartSchema
+}).strict();
+var zcodeMessagePartRemovedEventPayloadSchema2 = z51.object({
+  messageId: nonEmptyString4,
+  partId: nonEmptyString4,
+  reason: z51.string().optional()
+}).strict();
+var zcodeToolCallBasePayloadSchema2 = z51.object({
+  toolCallId: nonEmptyString4,
+  toolName: z51.string().optional(),
+  parentToolCallId: nonEmptyString4.optional(),
+  source: z51.enum(["subagent"]).optional(),
+  agentId: nonEmptyString4.optional(),
+  agentType: nonEmptyString4.optional(),
+  // subagent mirror 会携带后台归因；strict schema 漏字段会让 session/event 整条被丢弃。
+  background: z51.boolean().optional(),
+  childSessionId: nonEmptyString4.optional(),
+  childToolCallId: nonEmptyString4.optional(),
+  description: z51.string().optional()
+}).strict();
+var zcodeToolUpdatedEventPayloadSchema2 = z51.discriminatedUnion("kind", [
+  zcodeToolCallBasePayloadSchema2.extend({
+    kind: z51.literal("scheduled"),
+    // 修复：CLI 调度事件已携带所属消息 ID；漏声明会让严格校验丢弃整条事件。
+    assistantMessageId: nonEmptyString4.optional(),
+    toolName: nonEmptyString4,
+    input: z51.unknown().optional(),
+    inputByteLength: z51.number().int().nonnegative().optional(),
+    inputOmitted: z51.boolean().optional(),
+    inputRef: z51.literal("model_stream").optional(),
+    dependencies: z51.array(nonEmptyString4).optional(),
+    parallelGroupIndex: z51.number().int().nonnegative().optional(),
+    canRunParallel: z51.boolean().optional(),
+    schedule: jsonObjectSchema3.optional()
+  }).strict(),
+  zcodeToolCallBasePayloadSchema2.extend({
+    kind: z51.literal("started"),
+    startedAt: protocolInstantSchema2
+  }).strict(),
+  zcodeToolCallBasePayloadSchema2.extend({
+    kind: z51.literal("progress"),
+    elapsedMs: z51.number().nonnegative().optional(),
+    pid: z51.number().int().optional(),
+    stdoutBytes: z51.number().int().nonnegative().optional(),
+    stderrBytes: z51.number().int().nonnegative().optional(),
+    outputBytes: z51.number().int().nonnegative().optional(),
+    outputPreview: executionOutputPreviewSchema.optional(),
+    stdoutTail: z51.string().optional(),
+    stderrTail: z51.string().optional()
+  }).strict(),
+  zcodeToolCallBasePayloadSchema2.extend({
+    kind: z51.literal("result"),
+    result: zcodeToolResultObjectSchema2,
+    duration: z51.number().nonnegative()
+  }).strict(),
+  zcodeToolCallBasePayloadSchema2.extend({
+    kind: z51.literal("error"),
+    error: zcodeProtocolErrorDetailSchema2
+  }).strict(),
+  z51.object({
+    kind: z51.literal("batch"),
+    toolCallIds: z51.array(nonEmptyString4),
+    successCount: z51.number().int().nonnegative(),
+    errorCount: z51.number().int().nonnegative()
+  }).strict(),
+  zcodeToolCallBasePayloadSchema2.extend({
+    kind: z51.literal("raw"),
+    payload: jsonObjectSchema3
+  }).strict()
+]);
+var zcodePermissionRequestedEventPayloadSchema2 = z51.object({
+  requestId: nonEmptyString4.optional(),
+  toolCallId: nonEmptyString4,
+  toolName: nonEmptyString4,
+  riskLevel: z51.enum(["low", "medium", "high", "critical"]),
+  reason: z51.string(),
+  input: z51.unknown(),
+  suggestedPermissionUpdates: z51.array(zcodePermissionUpdateSchema).optional(),
+  origin: zcodeInteractionRequestOriginSchema.optional(),
+  options: z51.array(zcodePermissionOptionSchema2).min(1),
+  childSessionId: nonEmptyString4.optional(),
+  background: z51.boolean().optional()
+}).strict();
+var zcodePermissionResolvedEventPayloadSchema2 = z51.object({
+  requestId: nonEmptyString4.optional(),
+  toolCallId: nonEmptyString4,
+  toolName: nonEmptyString4.optional(),
+  decision: zcodePermissionDecisionSchema.optional(),
+  reason: z51.string().optional(),
+  modifiedInput: z51.unknown().optional(),
+  inputSummary: z51.unknown().optional(),
+  childSessionId: nonEmptyString4.optional(),
+  background: z51.boolean().optional()
+}).strict();
+var zcodeUserInputRequestedEventPayloadSchema2 = z51.object({
+  requestId: nonEmptyString4,
+  prompt: z51.string(),
+  inputType: z51.enum(["text", "choice", "confirm"]).optional(),
+  choices: z51.array(z51.string()).optional()
+}).strict();
+var zcodeUserInputResolvedEventPayloadSchema2 = z51.object({
+  requestId: nonEmptyString4,
+  value: z51.unknown().optional(),
+  cancelled: z51.boolean().optional()
+}).strict();
+var zcodeSessionClosedEventPayloadSchema2 = z51.object({
+  reason: z51.string().optional()
+}).strict();
+function zcodeSessionEventEnvelopeFor2(type, payload) {
+  return zcodeEventEnvelopeSchema2.extend({
+    type: z51.literal(type),
+    payload: payload.optional()
+  });
+}
+var zcodeSessionEventSchema2 = z51.discriminatedUnion("type", [
+  zcodeSessionEventEnvelopeFor2("session.created", zcodeSessionCreatedEventPayloadSchema2),
+  zcodeSessionEventEnvelopeFor2("session.resumed", zcodeSessionResumedEventPayloadSchema2),
+  zcodeSessionEventEnvelopeFor2("session.updated", jsonObjectSchema3),
+  zcodeSessionEventEnvelopeFor2("session.titleUpdated", zcodeSessionTitleUpdatedEventPayloadSchema2),
+  zcodeSessionEventEnvelopeFor2("session.closed", zcodeSessionClosedEventPayloadSchema2),
+  zcodeSessionEventEnvelopeFor2("turn.started", zcodeTurnStartedEventPayloadSchema2),
+  zcodeSessionEventEnvelopeFor2("turn.steerQueued", zcodeTurnSteerQueuedEventPayloadSchema2),
+  zcodeSessionEventEnvelopeFor2("turn.steerDrained", zcodeTurnSteerDrainedEventPayloadSchema2),
+  zcodeSessionEventEnvelopeFor2("turn.completed", zcodeTurnCompletedEventPayloadSchema2),
+  zcodeSessionEventEnvelopeFor2("turn.failed", zcodeTurnFailedEventPayloadSchema2),
+  zcodeSessionEventEnvelopeFor2("message.upserted", zcodeMessageUpsertedEventPayloadSchema2),
+  zcodeSessionEventEnvelopeFor2("message.removed", zcodeMessageRemovedEventPayloadSchema2),
+  zcodeSessionEventEnvelopeFor2("part.started", zcodeMessagePartUpsertedEventPayloadSchema2),
+  zcodeSessionEventEnvelopeFor2("part.delta", zcodeMessagePartDeltaEventPayloadSchema2),
+  zcodeSessionEventEnvelopeFor2("part.upserted", zcodeMessagePartUpsertedEventPayloadSchema2),
+  zcodeSessionEventEnvelopeFor2("part.removed", zcodeMessagePartRemovedEventPayloadSchema2),
+  zcodeSessionEventEnvelopeFor2("model.streaming", zcodeModelStreamingEventPayloadSchema2),
+  zcodeSessionEventEnvelopeFor2("tool.updated", zcodeToolUpdatedEventPayloadSchema2),
+  zcodeSessionEventEnvelopeFor2("permission.requested", zcodePermissionRequestedEventPayloadSchema2),
+  zcodeSessionEventEnvelopeFor2("permission.resolved", zcodePermissionResolvedEventPayloadSchema2),
+  zcodeSessionEventEnvelopeFor2("userInput.requested", zcodeUserInputRequestedEventPayloadSchema2),
+  zcodeSessionEventEnvelopeFor2("userInput.resolved", zcodeUserInputResolvedEventPayloadSchema2),
+  zcodeSessionEventEnvelopeFor2("checkpoint.created", jsonObjectSchema3),
+  zcodeSessionEventEnvelopeFor2("rewind.triggered", jsonObjectSchema3),
+  zcodeSessionEventEnvelopeFor2("streamRecovery.updated", jsonObjectSchema3)
+]);
+var zcodeSessionEventsResultSchema2 = z51.object({
+  events: z51.array(zcodeSessionEventSchema2)
+}).strict();
+var zcodeSessionMessagesResultSchema2 = z51.object({
+  messages: z51.array(zcodeMessageWithPartsSchema)
+}).strict();
+var zcodeStateUpdatedNotificationSchema2 = z51.object({
+  type: z51.literal("state.updated"),
+  scope: z51.enum(["server", "workspace", "session"]),
+  workspace: zcodeWorkspaceRefSchema.optional(),
+  sessionId: nonEmptyString4.optional(),
+  revision: z51.number().int().nonnegative(),
+  reason: z51.string().optional(),
+  patch: z51.unknown()
+}).strict();
+var zcodeSessionSubscribeParamsSchema2 = z51.object({
+  sessionId: nonEmptyString4,
+  deliveryKind: zcodeDeliveryKindSchema,
+  afterSeq: z51.number().int().nonnegative().optional(),
+  includeSnapshot: z51.boolean().default(false)
+}).strict();
+var zcodeSessionSubscribeResultSchema2 = z51.object({
+  sessionId: nonEmptyString4,
+  eventSeq: z51.number().int().nonnegative(),
+  events: z51.array(zcodeSessionEventSchema2),
+  snapshot: zcodeSessionStateSnapshotSchema2.optional()
+}).strict();
+var zcodeSessionListResultSchema2 = z51.object({
+  sessions: z51.array(zcodeSessionInfoSchema)
+}).strict();
+var zcodeSessionSubagentBaseSchema2 = z51.object({
+  childSessionId: nonEmptyString4,
+  agentId: nonEmptyString4.optional(),
+  toolCallId: nonEmptyString4.optional(),
+  subagentType: nonEmptyString4,
+  title: nonEmptyString4,
+  summary: z51.string().optional(),
+  startedAt: z51.number().int().nonnegative().optional(),
+  endedAt: z51.number().int().nonnegative().optional()
+}).strict();
+var zcodeSessionRunningSubagentSchema2 = zcodeSessionSubagentBaseSchema2.extend({
+  status: z51.enum(["running", "waiting", "blocked"])
+});
+var zcodeSessionEndedSubagentSchema2 = zcodeSessionSubagentBaseSchema2.extend({
+  status: z51.enum(["success", "failed", "cancelled", "lost"])
+});
+var zcodeSessionSubagentsResultSchema2 = z51.object({
+  revision: z51.number().int().nonnegative(),
+  childSessionIds: z51.array(nonEmptyString4),
+  running: z51.array(zcodeSessionRunningSubagentSchema2),
+  ended: z51.object({
+    total: z51.number().int().nonnegative(),
+    items: z51.array(zcodeSessionEndedSubagentSchema2),
+    nextCursor: nonEmptyString4.optional()
+  }).strict()
+}).strict();
+var zcodeSessionCreateParamsSchema2 = z51.object({
+  sessionId: nonEmptyString4.optional(),
+  workspace: zcodeWorkspaceRefSchema,
+  parentSessionId: nonEmptyString4.optional(),
+  mode: zcodeSessionModeSchema.optional(),
+  model: modelSelectionSchema.optional(),
+  persistence: zcodeSessionPersistenceSchema2.optional(),
+  thoughtLevel: nonEmptyString4.optional(),
+  titleGenerationEnabled: z51.boolean().optional(),
+  mcpServers: z51.array(zcodeProtocolMcpServerSchema2).optional(),
+  toolAllowlist: z51.array(nonEmptyString4).optional(),
+  toolDenylist: z51.array(nonEmptyString4).optional(),
+  importedHistory: zcodeSessionImportHistorySchema2.optional(),
+  // host 只按本地服务装配/远程/端形态决定是否注册工具，不读取灰度；
+  // 缺省不下发 = 不注册；灰度与套餐准入在实际创建的 Host handler 校验。
+  offPeakToolEnabled: z51.boolean().optional(),
+  // 动态工作流灰度：与 offPeakToolEnabled 同一
+  // 模式——host 裁决后下发，缺省不下发 = 不注册工作流工具簇（fail-closed）。
+  dynamicWorkflowEnabled: z51.boolean().optional()
+}).strict();
+var zcodeSessionResumeParamsSchema2 = z51.object({
+  sessionId: nonEmptyString4,
+  workspace: zcodeWorkspaceRefSchema.optional(),
+  // 旧 session 尚无 runtime/model_selection entry 时，由同 task 的索引元数据提供迁移 hint。
+  thoughtLevel: nonEmptyString4.optional(),
+  mcpServers: z51.array(zcodeProtocolMcpServerSchema2).optional(),
+  // 冷恢复重建 runtime 时必须沿用 create 的工具面约束（否则会绕过 allow/deny，尤其 CUA 会话）。
+  toolAllowlist: z51.array(nonEmptyString4).optional(),
+  toolDenylist: z51.array(nonEmptyString4).optional(),
+  // 与 create 同语义；resume 不带会导致冷恢复丢 Off-Peak 工具面。
+  offPeakToolEnabled: z51.boolean().optional(),
+  // 与 create 同语义；resume 不带会导致冷恢复丢工作流工具簇。
+  dynamicWorkflowEnabled: z51.boolean().optional()
+}).strict();
+var zcodeSessionListParamsSchema2 = z51.object({
+  workspace: zcodeWorkspaceRefSchema.optional(),
+  // 显式身份查询包含隐藏会话；普通列表仍只返回主任务，避免索引修复激活 runtime。
+  sessionIds: z51.array(nonEmptyString4).min(1).max(64).optional(),
+  includeArchived: z51.boolean().default(false),
+  limit: z51.number().int().positive().optional()
+}).strict();
+var zcodeSessionSubagentsParamsSchema2 = z51.object({
+  sessionId: nonEmptyString4,
+  endedCursor: nonEmptyString4.optional(),
+  endedLimit: z51.number().int().positive().max(100).default(20)
+}).strict();
+var zcodeUsageStatsParamsSchema2 = z51.object({
+  range: z51.enum(APP_USAGE_RANGES),
+  timeZone: z51.string().optional()
+}).strict();
+var zcodeTaskTokenUsageParamsSchema2 = z51.object({
+  sessionId: nonEmptyString4
+}).strict();
+var zcodeTaskTokenUsageResultSchema2 = z51.object({
+  sessionId: nonEmptyString4,
+  totalTokens: z51.number().int().nonnegative(),
+  inputTokens: z51.number().int().nonnegative(),
+  outputTokens: z51.number().int().nonnegative(),
+  reasoningTokens: z51.number().int().nonnegative(),
+  cacheCreationTokens: z51.number().int().nonnegative(),
+  cacheReadTokens: z51.number().int().nonnegative(),
+  modelRequestCount: z51.number().int().nonnegative(),
+  modelErrorCount: z51.number().int().nonnegative(),
+  inputBaselineBySource: z51.record(z51.string(), z51.number().int().nonnegative())
+}).strict();
+var zcodeSessionReadParamsSchema2 = z51.object({
+  sessionId: nonEmptyString4,
+  deliveryKind: zcodeDeliveryKindSchema.optional(),
+  messageLimit: z51.number().int().positive().optional(),
+  afterSeq: z51.number().int().nonnegative().optional()
+}).strict();
+var zcodeSessionMessagesParamsSchema2 = z51.object({
+  sessionId: nonEmptyString4,
+  afterMessageId: nonEmptyString4.optional(),
+  limit: z51.number().int().positive().optional()
+}).strict();
+var zcodeSessionEventsParamsSchema2 = z51.object({
+  sessionId: nonEmptyString4,
+  afterSeq: z51.number().int().nonnegative().optional(),
+  limit: z51.number().int().positive().optional()
+}).strict();
+var zcodeSessionRuntimePreferencesScopeSchema2 = z51.enum([
+  "runtime-materialization",
+  "user-execution"
+]);
+var zcodeSessionRequestRuntimePreferencesParamsSchema2 = z51.object({
+  sessionId: nonEmptyString4,
+  scope: zcodeSessionRuntimePreferencesScopeSchema2
+}).strict();
+var DEFAULT_ZCODE_MODEL_CONTEXT_BUDGET_STRATEGY2 = "preflight-v1";
+var zcodeModelContextBudgetStrategySchema2 = z51.enum(["legacy", "preflight-v1"]);
+var zcodeSessionRuntimePreferencesResultSchema2 = z51.object({
+  nativeSearchEnhancementsEnabled: z51.boolean(),
+  memoryEnabled: z51.boolean().default(false),
+  askUserQuestionAutoResolutionEnabled: z51.boolean().default(true),
+  integratedTerminalShell: integratedTerminalShellSelectionSchema.optional(),
+  // 兼容旧 Host：缺少字段时在协议解析边界使用当前默认策略。
+  modelContextBudgetStrategy: zcodeModelContextBudgetStrategySchema2.default(
+    DEFAULT_ZCODE_MODEL_CONTEXT_BUDGET_STRATEGY2
+  )
+}).strict();
+var zcodeBrowserAmbientContextSchema2 = z51.object({
+  tabCount: z51.number().int().positive().max(100),
+  currentUrl: z51.string().trim().min(1).max(4096).optional()
+}).strict();
+var zcodeSessionSendParamsSchema2 = z51.object({
+  sessionId: nonEmptyString4,
+  modelSelection: modelSelectionSchema.optional(),
+  modelExecution: modelExecutionSchema.optional(),
+  inputId: nonEmptyString4.optional(),
+  queryId: nonEmptyString4.optional(),
+  content: z51.string(),
+  attachments: z51.array(jsonObjectSchema3).optional(),
+  browserAmbientContext: zcodeBrowserAmbientContextSchema2.optional(),
+  expectedRevision: z51.number().int().nonnegative().optional(),
+  expectedProviderRevision: nonEmptyString4.optional(),
+  automationId: nonEmptyString4.optional(),
+  offPeakTaskId: nonEmptyString4.optional(),
+  offPeakRunType: z51.enum(["init", "resume"]).optional(),
+  botDeliveryTarget: zcodeAutomationBotDeliveryTargetSchema.optional(),
+  toolDenylist: z51.array(nonEmptyString4).optional()
+}).strict().superRefine((payload, context) => {
+  if (payload.automationId && payload.offPeakTaskId) {
+    context.addIssue({
+      code: z51.ZodIssueCode.custom,
+      message: "automationId and offPeakTaskId are mutually exclusive"
+    });
+  }
+  if (payload.offPeakRunType && !payload.offPeakTaskId) {
+    context.addIssue({
+      code: z51.ZodIssueCode.custom,
+      message: "offPeakRunType requires offPeakTaskId",
+      path: ["offPeakRunType"]
+    });
+  }
+  if (payload.modelExecution && !payload.modelSelection) {
+    context.addIssue({
+      code: z51.ZodIssueCode.custom,
+      message: "modelExecution requires modelSelection",
+      path: ["modelExecution"]
+    });
+  }
+});
+var zcodeSessionSendResultSchema2 = z51.object({
+  sessionId: nonEmptyString4,
+  accepted: z51.literal(true),
+  stateRevision: z51.number().int().nonnegative()
+}).strict();
+var zcodeSessionHistoryTargetSchema2 = z51.discriminatedUnion("kind", [
+  z51.object({
+    kind: z51.literal("turn"),
+    turnIndex: z51.number().int().nonnegative()
+  }).strict(),
+  z51.object({
+    kind: z51.literal("message"),
+    messageId: nonEmptyString4
+  }).strict(),
+  z51.object({
+    kind: z51.literal("checkpoint"),
+    checkpointId: nonEmptyString4
+  }).strict(),
+  z51.object({
+    kind: z51.literal("latestCheckpoint")
+  }).strict()
+]);
+var zcodeSessionForkParamsSchema2 = z51.object({
+  sessionId: nonEmptyString4,
+  target: zcodeSessionHistoryTargetSchema2.default({
+    kind: "latestCheckpoint"
+  }),
+  expectedRevision: z51.number().int().nonnegative().optional()
+}).strict();
+var zcodeSessionForkResultSchema2 = z51.object({
+  forkedSessionId: nonEmptyString4,
+  parentSessionId: nonEmptyString4.optional(),
+  targetMessageId: nonEmptyString4.optional(),
+  targetCheckpointId: nonEmptyString4.optional(),
+  response: z51.string(),
+  snapshot: zcodeSessionStateSnapshotSchema2
+}).strict();
+var zcodeSessionCompactParamsSchema2 = z51.object({
+  sessionId: nonEmptyString4,
+  inputId: nonEmptyString4.optional(),
+  instructions: z51.string().optional(),
+  expectedRevision: z51.number().int().nonnegative().optional()
+}).strict();
+var zcodeSessionCompactResultSchema2 = z51.object({
+  response: z51.string(),
+  snapshot: zcodeSessionStateSnapshotSchema2,
+  compact: z51.object({
+    state: z51.enum(["accepted", "already_running"]),
+    inputId: nonEmptyString4.optional(),
+    operationId: nonEmptyString4.optional()
+  }).strict().optional()
+}).strict();
+var zcodeSessionGoalActionSchema2 = z51.enum([
+  "show",
+  "set",
+  "replace",
+  "pause",
+  "resume",
+  "clear"
+]);
+var zcodeSessionGoalParamsSchema2 = z51.object({
+  sessionId: nonEmptyString4,
+  inputId: nonEmptyString4.optional(),
+  action: zcodeSessionGoalActionSchema2,
+  objective: z51.string().optional(),
+  expectedRevision: z51.number().int().nonnegative().optional()
+}).strict();
+var zcodeSessionGoalResultSchema2 = z51.object({
+  response: z51.string(),
+  snapshot: zcodeSessionStateSnapshotSchema2,
+  startedTurn: z51.boolean().optional()
+}).strict();
+var zcodeSessionStopParamsSchema2 = z51.object({
+  sessionId: nonEmptyString4
+}).strict();
+var zcodeBackgroundTaskInfoStatusSchema2 = z51.enum([
+  "running",
+  "completed",
+  "failed",
+  "timed_out",
+  "cancelled",
+  "spawn_error",
+  "lost"
+]);
+var zcodeBackgroundTaskInfoSchema2 = z51.object({
+  taskId: nonEmptyString4,
+  toolCallId: nonEmptyString4.optional(),
+  toolName: nonEmptyString4.optional(),
+  taskKind: z51.enum(["bash", "subagent"]).optional(),
+  blocked: z51.boolean().optional(),
+  blockedReason: z51.string().optional(),
+  cancellable: z51.boolean().optional(),
+  cancelRequestedAt: protocolInstantSchema2.optional(),
+  command: z51.string().optional(),
+  description: z51.string().optional(),
+  status: zcodeBackgroundTaskInfoStatusSchema2,
+  pid: z51.number().int().positive().optional(),
+  startedAt: protocolInstantSchema2.optional(),
+  completedAt: protocolInstantSchema2.optional(),
+  outputPath: z51.string().optional(),
+  stderrPersistedOutputPath: z51.string().optional(),
+  stdoutPersistedOutputPath: z51.string().optional(),
+  outputBytes: z51.number().int().nonnegative().optional(),
+  outputTruncated: z51.boolean().optional(),
+  outputTail: z51.string().optional(),
+  stderrBytes: z51.number().int().nonnegative().optional(),
+  stderrTail: z51.string().optional(),
+  stdoutBytes: z51.number().int().nonnegative().optional(),
+  stdoutTail: z51.string().optional(),
+  terminalId: nonEmptyString4.optional()
+}).strict();
+var zcodeSessionCancelBackgroundTaskParamsSchema2 = z51.object({
+  sessionId: nonEmptyString4,
+  taskId: nonEmptyString4
+}).strict();
+var zcodeSessionCancelBackgroundTaskResultSchema2 = z51.object({
+  cancelled: z51.boolean(),
+  reason: z51.string().optional(),
+  snapshot: zcodeBackgroundTaskInfoSchema2.optional(),
+  status: zcodeBackgroundTaskInfoStatusSchema2,
+  taskId: nonEmptyString4
+}).strict();
+var zcodeSessionSetModelParamsSchema2 = z51.object({
+  sessionId: nonEmptyString4,
+  model: modelSelectionSchema,
+  expectedRevision: z51.number().int().nonnegative().optional(),
+  persistAsWorkspaceLastUsed: z51.boolean().default(true)
+}).strict();
+var zcodeSessionSetThoughtLevelParamsSchema2 = z51.object({
+  sessionId: nonEmptyString4,
+  thoughtLevel: nonEmptyString4.optional(),
+  expectedRevision: z51.number().int().nonnegative().optional(),
+  persistAsWorkspaceLastUsed: z51.boolean().default(true)
+}).strict();
+var zcodeSessionSetModeParamsSchema2 = z51.object({
+  sessionId: nonEmptyString4,
+  mode: zcodeSessionModeSchema,
+  expectedRevision: z51.number().int().nonnegative().optional()
+}).strict();
+var zcodeSessionCloseParamsSchema2 = z51.object({
+  sessionId: nonEmptyString4,
+  expectedPersistence: zcodeSessionPersistenceSchema2.optional()
+}).strict();
+var zcodeSessionCloseResultSchema2 = z51.object({
+  closed: z51.boolean().optional()
+}).strict();
+var zcodeWorkspaceReadPresentationParamsSchema2 = z51.object({ workspace: zcodeWorkspaceRefSchema }).strict();
+var zcodeWorkspacePresentationSchema2 = z51.object({
+  workspace: zcodeWorkspaceRefSchema,
+  mode: zcodeSessionModeSchema,
+  slashCommands: z51.array(zcodeSlashCommandSchema2)
+}).strict();
+var workspaceHookSha256DigestSchema2 = z51.string().regex(/^[a-f0-9]{64}$/u);
+var zcodeWorkspaceHookTrustGrantParamsSchema2 = z51.object({
+  workspace: zcodeWorkspaceRefSchema,
+  bundleDigest: workspaceHookSha256DigestSchema2,
+  hookDeclarationDigest: workspaceHookSha256DigestSchema2
+}).strict();
+var zcodeWorkspaceHookTrustGrantReasonCodeSchema2 = z51.enum([
+  "workspace_hooks_blocked_by_policy",
+  "workspace_hooks_bundle_changed",
+  "workspace_hooks_snapshot_mismatch",
+  "workspace_hooks_policy_requires_pretrust",
+  "workspace_hooks_trust_store_corrupt",
+  "workspace_hooks_config_unreadable"
+]);
+var zcodeWorkspaceHookTrustGrantResultSchema2 = z51.object({
+  accepted: z51.boolean(),
+  reasonCode: zcodeWorkspaceHookTrustGrantReasonCodeSchema2.optional()
+}).strict();
+var zcodeWorkspaceModelToolCallSchema2 = z51.object({
+  id: nonEmptyString4,
+  name: nonEmptyString4,
+  input: z51.unknown()
+}).strict();
+var zcodeWorkspaceModelMessageSchema2 = z51.discriminatedUnion("role", [
+  z51.object({ role: z51.literal("system"), content: z51.string() }).strict(),
+  z51.object({ role: z51.literal("user"), content: z51.string() }).strict(),
+  z51.object({
+    role: z51.literal("assistant"),
+    content: z51.string(),
+    toolCalls: z51.array(zcodeWorkspaceModelToolCallSchema2).optional()
+  }).strict(),
+  z51.object({
+    role: z51.literal("tool"),
+    content: z51.string(),
+    toolCallId: nonEmptyString4,
+    toolName: nonEmptyString4,
+    isError: z51.boolean().optional()
+  }).strict()
+]);
+var zcodeWorkspaceModelToolSchema2 = z51.object({
+  name: nonEmptyString4,
+  description: z51.string().optional(),
+  inputSchema: z51.record(z51.string(), z51.unknown())
+}).strict();
+var zcodeWorkspaceGenerateTextParamsSchema2 = z51.object({
+  workspace: zcodeWorkspaceRefSchema,
+  selection: modelSelectionSchema,
+  prompt: nonEmptyString4.optional(),
+  messages: z51.array(zcodeWorkspaceModelMessageSchema2).min(1).optional(),
+  tools: z51.array(zcodeWorkspaceModelToolSchema2).optional(),
+  querySource: nonEmptyString4,
+  maxOutputTokens: z51.number().int().positive().optional(),
+  operationId: nonEmptyString4.optional()
+}).strict().refine((value) => value.prompt !== void 0 || value.messages !== void 0, {
+  message: "prompt \u6216 messages \u81F3\u5C11\u9700\u8981\u63D0\u4F9B\u4E00\u4E2A"
+});
+var zcodeWorkspaceGenerateTextResultSchema2 = z51.object({
+  text: z51.string(),
+  selection: modelSelectionSchema,
+  toolCalls: z51.array(zcodeWorkspaceModelToolCallSchema2).optional(),
+  // 可选以兼容仍在运行的旧 app-server；新 CLI 始终返回结构化结束原因。
+  finishReason: z51.string().optional(),
+  usage: z51.object({
+    inputTokens: z51.number().nonnegative().optional(),
+    outputTokens: z51.number().nonnegative().optional(),
+    totalTokens: z51.number().nonnegative().optional(),
+    cacheReadTokens: z51.number().nonnegative().optional(),
+    cacheWriteTokens: z51.number().nonnegative().optional(),
+    reasoningTokens: z51.number().nonnegative().optional(),
+    serverToolUse: z51.object({
+      webSearchRequests: z51.number().nonnegative().optional(),
+      webFetchRequests: z51.number().nonnegative().optional()
+    }).strict().optional()
+  }).strict().optional()
+}).strict();
+var zcodeWorkspaceCancelGenerateTextParamsSchema2 = z51.object({ operationId: nonEmptyString4 }).strict();
+var zcodeWorkspaceCancelGenerateTextResultSchema2 = z51.object({ operationId: nonEmptyString4, cancelled: z51.boolean() }).strict();
+var zcodeProviderTestModelConnectivityParamsSchema2 = z51.object({
+  workspace: zcodeWorkspaceRefSchema,
+  selection: modelSelectionSchema
+}).strict();
+var zcodeProviderTestModelConnectivityResultSchema2 = z51.object({ success: z51.literal(true) }).strict();
+var zcodeProviderUpdateAccountConfigParamsSchema2 = z51.object({
+  revision: nonEmptyString4,
+  basedOnZCodeBuiltinRevision: nonEmptyString4,
+  // Provider Config 的字段校验由 @zcode/provider 负责；协议层只约束可传输信封。
+  providers: z51.record(z51.string(), z51.unknown()),
+  // 账号状态与 Overlay 必须一起传递，否则 Worker 会丢失非当前套餐的执行门禁。
+  states: z51.record(
+    z51.string(),
+    z51.object({
+      availability: z51.enum(["available", "pending", "unavailable", "unknown"]),
+      entitled: z51.boolean(),
+      unavailableReason: accountProviderUnavailableReasonSchema.optional(),
+      current: z51.boolean().optional(),
+      connectionKey: z51.string().optional(),
+      effectiveAt: z51.number().finite().optional()
+    }).strict()
+  )
+}).strict();
+var zcodeProviderUpdateAccountConfigResultSchema2 = z51.object({
+  // 收到账号结果不代表配套 Built-in 已到达；应用版本只能读取 Registry 快照。
+  receivedRevision: nonEmptyString4,
+  providerCount: z51.number().int().nonnegative(),
+  status: z51.enum(["received", "unchanged"])
+}).strict();
+var zcodeInteractionPreferencesSchema2 = z51.object({
+  askUserQuestionAutoResolutionEnabled: z51.boolean()
+}).strict();
+var zcodeWorkspaceUpdateInteractionPreferencesParamsSchema2 = z51.object({
+  workspace: zcodeWorkspaceRefSchema,
+  preferences: zcodeInteractionPreferencesSchema2
+}).strict();
+var zcodeWorkspaceUpdateInteractionPreferencesResultSchema2 = z51.object({
+  workspace: zcodeWorkspaceRefSchema,
+  askUserQuestionAutoResolutionEnabled: z51.boolean(),
+  snoozedInteractionCount: z51.number().int().nonnegative()
+}).strict();
+var zcodeModelIoPreferencesSchema2 = z51.object({
+  fullRetentionEnabled: z51.boolean()
+}).strict();
+var zcodeWorkspaceUpdateModelIoPreferencesParamsSchema2 = z51.object({
+  workspace: zcodeWorkspaceRefSchema,
+  preferences: zcodeModelIoPreferencesSchema2
+}).strict();
+var zcodeWorkspaceUpdateModelIoPreferencesResultSchema2 = z51.object({
+  workspace: zcodeWorkspaceRefSchema,
+  fullRetentionEnabled: z51.boolean(),
+  updatedSessionCount: z51.number().int().nonnegative()
+}).strict();
+var zcodeWorkspaceUpdateOffPeakToolPolicyParamsSchema2 = z51.object({
+  workspace: zcodeWorkspaceRefSchema,
+  enabled: z51.boolean()
+}).strict();
+var zcodeWorkspaceUpdateOffPeakToolPolicyResultSchema2 = z51.object({
+  workspace: zcodeWorkspaceRefSchema,
+  enabled: z51.boolean()
+}).strict();
+var zcodeWorkspaceUpdateDynamicWorkflowPolicyParamsSchema2 = z51.object({
+  workspace: zcodeWorkspaceRefSchema,
+  enabled: z51.boolean()
+}).strict();
+var zcodeWorkspaceUpdateDynamicWorkflowPolicyResultSchema2 = z51.object({
+  workspace: zcodeWorkspaceRefSchema,
+  enabled: z51.boolean()
+}).strict();
+var zcodePermissionRequestParamsSchema2 = z51.object({
+  requestId: nonEmptyString4,
+  sessionId: nonEmptyString4,
+  turnId: nonEmptyString4.optional(),
+  toolCallId: nonEmptyString4,
+  toolName: nonEmptyString4,
+  reason: z51.string(),
+  riskLevel: z51.enum(["low", "medium", "high", "critical"]),
+  input: z51.unknown(),
+  origin: zcodeInteractionRequestOriginSchema.optional(),
+  options: z51.array(zcodePermissionOptionSchema2).min(1)
+}).strict();
+var zcodeBrowserListParamsSchema2 = z51.object({
+  requestId: nonEmptyString4,
+  sessionId: nonEmptyString4,
+  turnId: nonEmptyString4.optional(),
+  workspaceKey: nonEmptyString4,
+  workspacePath: nonEmptyString4,
+  workspaceIdentity: nonEmptyString4.optional(),
+  remoteSessionId: nonEmptyString4.optional(),
+  clientMode: browserClientModeSchema,
+  sessionContext: browserSessionContextKindSchema
+}).strict();
+var zcodeBrowserListResultSchema2 = browserBackendListResultSchema;
+var zcodeBrowserExecuteParamsSchema2 = z51.object({
+  requestId: nonEmptyString4,
+  sessionId: nonEmptyString4,
+  turnId: nonEmptyString4.optional(),
+  browserId: nonEmptyString4.optional(),
+  browserGeneration: z51.number().int().nonnegative().optional(),
+  workspaceKey: nonEmptyString4.optional(),
+  workspacePath: nonEmptyString4.optional(),
+  workspaceIdentity: nonEmptyString4.optional(),
+  remoteSessionId: nonEmptyString4.optional(),
+  clientMode: browserClientModeSchema.optional(),
+  sessionContext: browserSessionContextKindSchema.optional(),
+  command: browserCommandSchema
+}).strict();
+var zcodeBrowserExecuteResultSchema2 = browserCommandResultSchema;
+var zcodeUserInputOptionSchema2 = z51.object({
+  value: nonEmptyString4,
+  label: nonEmptyString4,
+  description: z51.string().optional(),
+  preview: z51.string().optional()
+}).strict();
+var zcodeUserInputQuestionSchema2 = z51.object({
+  question: nonEmptyString4,
+  header: nonEmptyString4,
+  options: z51.array(zcodeUserInputOptionSchema2).min(1),
+  multiSelect: z51.boolean().optional()
+}).strict();
+var zcodeUserInputRequestParamsSchema2 = z51.object({
+  requestId: nonEmptyString4,
+  sessionId: nonEmptyString4,
+  turnId: nonEmptyString4.optional(),
+  toolCallId: nonEmptyString4.optional(),
+  toolName: nonEmptyString4.optional(),
+  prompt: z51.string().optional(),
+  questions: z51.array(zcodeUserInputQuestionSchema2).min(1).optional(),
+  input: z51.unknown().optional(),
+  origin: zcodeInteractionRequestOriginSchema.optional(),
+  schema: z51.unknown().optional()
+}).strict();
+var zcodeUserInputResponseSchema2 = z51.object({
+  action: z51.enum(["accept", "decline", "cancel"]),
+  content: jsonObjectSchema3.optional(),
+  reason: z51.string().optional()
+}).strict();
+var zcodeProviderRuntimeHeadersRequestReasonSchema2 = z51.enum(["model-request"]);
+var zcodeProviderRuntimeHeadersRequestParamsSchema2 = z51.object({
+  requestId: nonEmptyString4,
+  sessionId: nonEmptyString4,
+  turnId: nonEmptyString4.optional(),
+  workspace: zcodeWorkspaceRefSchema,
+  modelSelection: modelSelectionSchema,
+  providerId: nonEmptyString4,
+  accountAccess: zcodeProviderAccountAccessSchema2.optional(),
+  reason: zcodeProviderRuntimeHeadersRequestReasonSchema2
+}).strict();
+var zcodeProviderRuntimeHeadersCancelledSchema2 = z51.object({
+  requestId: nonEmptyString4,
+  sessionId: nonEmptyString4,
+  workspace: zcodeWorkspaceRefSchema
+}).strict();
+var zcodeProviderRuntimeHeadersResponseSchema2 = z51.discriminatedUnion("headersApplied", [
+  z51.object({
+    headersApplied: z51.literal(true),
+    // 合并重接：成功必须携带当前请求的鉴权材料，不依赖旧 Registry 已被写入。
+    requestAuth: z51.object({
+      apiKey: nonEmptyString4.optional(),
+      headers: z51.record(nonEmptyString4, nonEmptyString4).optional()
+    }).strict(),
+    errorMessage: nonEmptyString4.optional()
+  }).strict(),
+  z51.object({
+    headersApplied: z51.literal(false),
+    errorMessage: nonEmptyString4.optional()
+  }).strict()
+]);
+var zcodeOfficialMcpAuthHeadersRequestParamsSchema2 = z51.object({
+  requestId: nonEmptyString4,
+  workspace: zcodeWorkspaceRefSchema,
+  pluginId: nonEmptyString4,
+  mcpKey: nonEmptyString4,
+  targetOrigin: nonEmptyString4
+}).strict();
+var zcodeOfficialMcpAuthFailureReasonSchema2 = z51.enum(
+  OFFICIAL_MCP_AUTH_PORT_FAILURE_REASONS
+);
+var zcodeOfficialMcpAuthHeadersResponseSchema2 = z51.discriminatedUnion("ok", [
+  z51.object({
+    ok: z51.literal(true),
+    headers: z51.record(z51.string(), z51.string())
+  }).strict(),
+  z51.object({
+    ok: z51.literal(false),
+    reason: zcodeOfficialMcpAuthFailureReasonSchema2
+  }).strict()
+]);
+var zcodePluginOptionValueSchema2 = z51.union([z51.string(), z51.number(), z51.boolean()]);
+var zcodePluginScopeSchema2 = z51.enum(["user", "workspace"]);
+var zcodePluginHookDetailSchema2 = z51.object({
+  event: nonEmptyString4,
+  matcher: z51.string().optional(),
+  type: z51.enum(["command", "process"]),
+  command: nonEmptyString4,
+  args: z51.array(z51.string()).optional(),
+  async: z51.boolean().optional(),
+  shell: z51.union([z51.literal(true), z51.string()]).optional(),
+  timeout: z51.number().positive().optional(),
+  timeoutMs: z51.number().int().positive().optional(),
+  statusMessage: z51.string().optional(),
+  sourcePath: z51.string(),
+  runnable: z51.boolean()
+}).strict();
+var zcodePluginUserConfigOptionSchema2 = z51.object({
+  default: zcodePluginOptionValueSchema2.optional(),
+  description: z51.string().optional(),
+  required: z51.boolean().optional(),
+  sensitive: z51.boolean().optional(),
+  title: z51.string().optional(),
+  type: z51.enum(["string", "number", "boolean", "directory", "file"]).optional()
+}).strict();
+var zcodePluginComponentKindSchema2 = z51.enum(["agent", "command", "skill", "hook", "mcp"]);
+var zcodePluginComponentItemSchema2 = z51.object({
+  name: nonEmptyString4,
+  // 描述来自组件 frontmatter（SKILL.md / command / agent）或 manifest；缺失时省略，不伪造。
+  description: z51.string().optional()
+}).strict();
+var zcodePluginComponentGroupSchema2 = z51.object({
+  kind: zcodePluginComponentKindSchema2,
+  items: z51.array(zcodePluginComponentItemSchema2)
+}).strict();
+var zcodePluginInfoSchema2 = z51.object({
+  id: nonEmptyString4,
+  name: nonEmptyString4,
+  description: z51.string().optional(),
+  version: z51.string().optional(),
+  enabled: z51.boolean(),
+  source: nonEmptyString4,
+  marketplace: nonEmptyString4,
+  // manifest（plugin.json）的作者/主页回退字段；商店 listing 缺失时详情页信息区用它兜底。
+  author: z51.string().optional(),
+  authorUrl: z51.string().optional(),
+  homepage: z51.string().optional(),
+  skillCount: z51.number().int().nonnegative().optional(),
+  skillRootCount: z51.number().int().nonnegative(),
+  commandRootCount: z51.number().int().nonnegative(),
+  // 权威组件清单（名称 + 可选描述），由 CLI 对插件根目录枚举得出，与启用态无关。
+  // 详情 UI 直接展示，取代旧的「数量取协议、名称靠 UI 侧 join」脆弱方案。optional 兼容旧 payload。
+  components: z51.array(zcodePluginComponentGroupSchema2).optional(),
+  declaredMcpServerNames: z51.array(z51.string()).optional(),
+  hostMcpServerNames: z51.array(z51.string()).optional(),
+  mcpServerNames: z51.array(z51.string()),
+  hookDetails: z51.array(zcodePluginHookDetailSchema2).optional(),
+  rootPath: z51.string(),
+  userConfig: z51.record(z51.string(), zcodePluginUserConfigOptionSchema2).optional(),
+  configuredOptions: z51.record(z51.string(), zcodePluginOptionValueSchema2).optional(),
+  // 缺省表示 package 可用；missing 用于保留已声明但目标 Host 尚未物化的配置行。
+  packageStatus: z51.literal("missing").optional(),
+  rootSource: zcodePluginScopeSchema2.optional(),
+  enabledSource: zcodePluginScopeSchema2.optional(),
+  optionSources: z51.record(z51.string(), zcodePluginScopeSchema2).optional()
+}).strict();
+var zcodePluginDiagnosticSchema2 = z51.object({
+  code: z51.string(),
+  message: z51.string(),
+  severity: z51.enum(["warning", "error"]).optional(),
+  pluginId: z51.string().optional()
+}).strict();
+var zcodePluginsListParamsSchema2 = z51.object({
+  workspace: zcodeWorkspaceRefSchema,
+  configScope: zcodePluginScopeSchema2.optional()
+}).strict();
+var zcodePluginsListResultSchema2 = z51.object({
+  plugins: z51.array(zcodePluginInfoSchema2),
+  diagnostics: z51.array(zcodePluginDiagnosticSchema2)
+}).strict();
+var zcodePluginReferenceCatalogEntrySchema2 = z51.object({
+  // 仅 referenceCatalogWithCategory 返回；旧入口保持原结构。
+  category: nonEmptyString4.optional(),
+  pluginId: nonEmptyString4,
+  name: nonEmptyString4,
+  marketplace: nonEmptyString4,
+  icon: z51.string().optional(),
+  // 商店 listing 的 display-only 本地化显示名投影（沿 icon 先例）：让 Picker 能按
+  // 中文显示名搜索/展示；locale 解析复用 shared 的 plugin-display-name helper。
+  displayName: z51.string().optional(),
+  displayNameI18n: z51.record(z51.string(), z51.string()).optional(),
+  // 仅供 Picker 展示，不进入能力身份或 model-only reminder。
+  description: z51.string().optional(),
+  descriptionI18n: z51.record(z51.string(), z51.string()).optional(),
+  enabled: z51.boolean(),
+  // 非空 = 与其他 enabled Plugin 共享 manifest name 的 V1 fail closed 冲突：
+  // Picker 禁选并展示原因，runtime 解析按 ambiguous 跳过。
+  conflictingPluginIds: z51.array(nonEmptyString4),
+  skillQualifiedNames: z51.array(nonEmptyString4),
+  mcpServerNames: z51.array(nonEmptyString4),
+  // 旧 Host 不投影该字段时按空数组兼容；只有新 Agent 会把它用于 reminder live 交集。
+  subagentNames: z51.array(nonEmptyString4).default([])
+}).strict();
+var zcodePluginsReferenceCatalogParamsSchema2 = z51.object({
+  workspace: zcodeWorkspaceRefSchema,
+  // 已有 Session 的 Picker 必须带 sessionId 才能拿到 session-owned catalog；
+  // session 不存在时按协议错误 fail closed，禁止静默回退 workspace authority。
+  sessionId: nonEmptyString4.optional()
+}).strict();
+var zcodePluginsReferenceCatalogResultSchema2 = z51.object({
+  authority: z51.enum(["session", "workspace"]),
+  plugins: z51.array(zcodePluginReferenceCatalogEntrySchema2)
+}).strict();
+var zcodeSkillReferenceCatalogEntrySchema2 = z51.object({
+  id: nonEmptyString4,
+  name: nonEmptyString4,
+  description: z51.string(),
+  path: nonEmptyString4,
+  scope: z51.enum(["workspace", "user", "plugin"]),
+  enabled: z51.literal(true),
+  pluginName: nonEmptyString4.optional()
+}).strict();
+var zcodeSkillsReferenceCatalogParamsSchema2 = z51.object({
+  workspace: zcodeWorkspaceRefSchema,
+  // 带 sessionId 时必须命中该进程内的 resident Session；未知 Session fail closed，
+  // 禁止回退到 workspace 当前目录而把新 Skill 泄漏进旧对话。
+  sessionId: nonEmptyString4.optional()
+}).strict();
+var zcodeSkillsReferenceCatalogResultSchema2 = z51.object({
+  authority: z51.enum(["session", "workspace"]),
+  skills: z51.array(zcodeSkillReferenceCatalogEntrySchema2)
+}).strict();
+var zcodeSavedWorkflowArgTypeSchema2 = z51.enum(["string", "number", "boolean", "json"]);
+var zcodeSavedWorkflowArgDeclarationSchema2 = z51.object({
+  type: zcodeSavedWorkflowArgTypeSchema2,
+  description: z51.string().optional(),
+  required: z51.boolean().optional(),
+  default: z51.unknown().optional()
+}).strict();
+var zcodeSavedWorkflowArgsDeclarationSchema2 = z51.record(
+  z51.string(),
+  zcodeSavedWorkflowArgDeclarationSchema2
+);
+var zcodeSavedWorkflowMetaSchema2 = z51.object({
+  description: nonEmptyString4,
+  whenToUse: nonEmptyString4.optional(),
+  args: zcodeSavedWorkflowArgsDeclarationSchema2.optional()
+}).strict();
+var zcodeSavedWorkflowScopeSchema2 = z51.enum(["project", "global"]);
+var zcodeSavedWorkflowEntrySchema2 = z51.object({
+  name: nonEmptyString4,
+  description: z51.string(),
+  whenToUse: z51.string().optional(),
+  args: zcodeSavedWorkflowArgsDeclarationSchema2.optional(),
+  scope: zcodeSavedWorkflowScopeSchema2,
+  path: nonEmptyString4
+}).strict();
+var zcodeSavedWorkflowInvalidEntrySchema2 = z51.object({ path: nonEmptyString4, reason: nonEmptyString4 }).strict();
+var zcodeSavedWorkflowFailureReasonSchema2 = z51.enum([
+  "invalid_name",
+  "not_found",
+  "parse_error",
+  "read_error"
+]);
+var zcodeSavedWorkflowFailureSchema2 = z51.object({
+  ok: z51.literal(false),
+  reason: zcodeSavedWorkflowFailureReasonSchema2,
+  detail: z51.string().optional()
+}).strict();
+var zcodeWorkflowsListParamsSchema2 = z51.object({
+  workspace: zcodeWorkspaceRefSchema,
+  // 缺省即 `project`（本项目档）。给 `global` 时改扫本机 `~/.zcode/workflows/`；此时 `workspace`
+  // 仍必填，但只是**载体运行时**——协议处理器对全局档不读它的路径。
+  scope: zcodeSavedWorkflowScopeSchema2.optional()
+}).strict();
+var zcodeWorkflowsListResultSchema2 = z51.object({
+  workflows: z51.array(zcodeSavedWorkflowEntrySchema2),
+  invalid: z51.array(zcodeSavedWorkflowInvalidEntrySchema2),
+  // 扫过的目录（本地绝对路径），即使目录还不存在也回：GUI 的文件监听靠它 watch。
+  dir: nonEmptyString4
+}).strict();
+var zcodeWorkflowsGetParamsSchema2 = z51.object({
+  workspace: zcodeWorkspaceRefSchema,
+  name: nonEmptyString4,
+  // 缺省 `project`；`global` 时只查本机全局根。`workspace` 语义同 list（全局档只当载体）。
+  scope: zcodeSavedWorkflowScopeSchema2.optional()
+}).strict();
+var zcodeWorkflowsGetResultSchema2 = z51.union([
+  z51.object({
+    ok: z51.literal(true),
+    name: nonEmptyString4,
+    path: nonEmptyString4,
+    scope: zcodeSavedWorkflowScopeSchema2,
+    meta: zcodeSavedWorkflowMetaSchema2,
+    /** 脚本本体（frontmatter 之后逐字节），即被类型检查与执行的那一份。 */
+    script: z51.string()
+  }).strict(),
+  zcodeSavedWorkflowFailureSchema2
+]);
+var zcodeWorkflowsUpdateMetaParamsSchema2 = z51.object({
+  workspace: zcodeWorkspaceRefSchema,
+  name: nonEmptyString4,
+  meta: zcodeSavedWorkflowMetaSchema2,
+  // 缺省 `project`；`global` 时只写本机全局根那一份。`workspace` 语义同 list。
+  scope: zcodeSavedWorkflowScopeSchema2.optional()
+}).strict();
+var zcodeWorkflowsUpdateMetaResultSchema2 = z51.union([
+  z51.object({ ok: z51.literal(true), path: nonEmptyString4 }).strict(),
+  zcodeSavedWorkflowFailureSchema2
+]);
+var zcodeWorkflowsDeleteParamsSchema2 = z51.object({
+  workspace: zcodeWorkspaceRefSchema,
+  name: nonEmptyString4,
+  // 缺省 `project`；`global` 时按 scope 选根删除（不再写死 roots[0]）。`workspace` 语义同 list。
+  scope: zcodeSavedWorkflowScopeSchema2.optional()
+}).strict();
+var zcodeWorkflowsDeleteResultSchema2 = z51.union([
+  z51.object({ ok: z51.literal(true), path: nonEmptyString4 }).strict(),
+  zcodeSavedWorkflowFailureSchema2
+]);
+var ZCODE_WORKFLOWS_RUNS_MAX_LIMIT2 = 50;
+var zcodeWorkflowsRunsParamsSchema2 = z51.object({
+  workspace: zcodeWorkspaceRefSchema,
+  /** 只要这个名字的 run（`dwf_run.name` 字面等值）；缺省即本项目全部 run。 */
+  name: nonEmptyString4.optional(),
+  limit: z51.number().int().min(1).max(ZCODE_WORKFLOWS_RUNS_MAX_LIMIT2),
+  // 缺省 `project`：只查 `dwf_run.cwd === workspacePath` 的 run。`global` 时**不**按 cwd 过滤，
+  // 跨所有项目取该名字的运行历史（全局工作流在任何项目里跑，历史因此跨 cwd）；结果行带 `cwd`
+  // 供 GUI 标项目。`workspace` 语义同 list（全局档只当载体）。
+  scope: zcodeSavedWorkflowScopeSchema2.optional()
+}).strict();
+var zcodeSavedWorkflowRunStatusSchema2 = z51.enum([
+  "pending",
+  "running",
+  "completed",
+  "errored",
+  "stopped"
+]);
+var zcodeSavedWorkflowRunStopReasonSchema2 = z51.enum([
+  "user",
+  "model",
+  "provider",
+  "interrupted",
+  "superseded"
+]);
+var zcodeSavedWorkflowRunSchema2 = z51.object({
+  runId: nonEmptyString4,
+  name: z51.string().optional(),
+  status: zcodeSavedWorkflowRunStatusSchema2,
+  // `status === "stopped"` 才在场。
+  stopReason: zcodeSavedWorkflowRunStopReasonSchema2.optional(),
+  createdAt: z51.number(),
+  updatedAt: z51.number(),
+  spentTokens: z51.number(),
+  /** 发起它的会话与 CreateWorkflow 工具调用：有这两个才能从中枢打开实例详情。老行可缺。 */
+  parentSessionId: z51.string().optional(),
+  toolCallId: z51.string().optional(),
+  args: z51.record(z51.string(), z51.unknown()).optional(),
+  // 实际运行的项目目录（`dwf_run.cwd`）。全局档的 `workflows/runs` 跨 cwd 查询，GUI 用它给
+  // 每行标项目；项目档变体里它恒等于 workspacePath，GUI 可忽略。老行可缺。
+  cwd: z51.string().optional(),
+  // 这次运行发布的**用户面产物**：中枢的运行历史行在
+  // 状态词之后画一串 kind chips，详情页头部的「最近产物」条取最近一次 completed run 的这一份。
+  // ⚠ 术语：这里的 artifact 是脚本经 `artifact.*` 发布给用户看的产出，不是脚本的顶层返回值。
+  // 只带 chip 画得下的字段（≤ 8 件，取最新版的元数据）；字节与条目经 v4 查询按需读。
+  // optional，照上面 `cwd` 的先例：老 CLI 不发，少一个键是退化不是错误。
+  artifacts: z51.array(
+    z51.object({
+      id: nonEmptyString4,
+      kind: z51.enum(["file", "markdown", "chart", "table", "metrics", "board"]),
+      title: z51.string().optional(),
+      version: z51.number(),
+      contentType: z51.string().optional()
+    }).strict()
+  ).max(8).optional()
+}).strict();
+var zcodeWorkflowsRunsResultSchema2 = z51.object({
+  runs: z51.array(zcodeSavedWorkflowRunSchema2),
+  /** 为真时才在场：还有更多 run 没进这一页（多取一条判定，不是 length === limit）。 */
+  truncated: z51.literal(true).optional()
+}).strict();
+var zcodeWorkflowsMoveParamsSchema2 = z51.object({
+  workspace: zcodeWorkspaceRefSchema,
+  name: nonEmptyString4
+}).strict();
+var zcodeWorkflowsMoveResultSchema2 = z51.union([
+  z51.object({
+    ok: z51.literal(true),
+    /** 源落点路径（全局根，搬走前）。 */
+    from: nonEmptyString4,
+    /** 目标落点路径（项目根，搬到处）。 */
+    to: nonEmptyString4
+  }).strict(),
+  z51.object({
+    ok: z51.literal(false),
+    // target_exists：目标档已有同名（move 不覆盖）；not_found：源档没有这个名字；
+    // read_error / write_error：搬运时的 I/O 失败；invalid_name：名字先验没过。
+    reason: z51.enum(["invalid_name", "not_found", "target_exists", "read_error", "write_error"]),
+    path: z51.string().optional(),
+    detail: z51.string().optional()
+  }).strict()
+]);
+var zcodePluginSuggestedReferenceStatusSchema2 = z51.enum([
+  "ready",
+  "disabled",
+  "missing",
+  "conflict",
+  "unavailable"
+]);
+var zcodePluginOperationStateSchema2 = z51.enum([
+  "checking",
+  "refreshing",
+  "installing",
+  "enabling",
+  "cancelling",
+  "cancelled",
+  "complete",
+  "failed"
+]);
+var zcodePluginOperationProgressNotificationSchema2 = z51.object({
+  operationId: nonEmptyString4,
+  state: z51.literal("refreshing")
+}).strict();
+var zcodePluginsResolveSuggestedReferenceParamsSchema2 = z51.object({
+  workspace: zcodeWorkspaceRefSchema,
+  stableId: nonEmptyString4,
+  operationId: nonEmptyString4,
+  clientMode: zcodeDeliveryKindSchema,
+  deliveryKind: zcodeDeliveryKindSchema
+}).strict();
+var zcodePluginsSetEnabledParamsSchema2 = z51.object({
+  workspace: zcodeWorkspaceRefSchema,
+  pluginId: nonEmptyString4,
+  enabled: z51.boolean(),
+  operationId: nonEmptyString4.optional(),
+  scope: zcodePluginScopeSchema2.optional()
+}).strict();
+var zcodePluginsSetEnabledResultSchema2 = z51.object({
+  plugin: zcodePluginInfoSchema2,
+  enabled: z51.boolean()
+}).strict();
+var zcodePluginStoreListingSchema2 = z51.object({
+  displayName: z51.string().optional(),
+  displayNameI18n: z51.record(z51.string(), z51.string()).optional(),
+  descriptionI18n: z51.record(z51.string(), z51.string()).optional(),
+  icon: z51.string().optional(),
+  category: z51.string().optional(),
+  author: z51.string().optional(),
+  authorUrl: z51.string().optional(),
+  homepage: z51.string().optional(),
+  privacyPolicy: z51.string().optional(),
+  termsOfService: z51.string().optional(),
+  heroImage: z51.string().optional(),
+  examplePrompts: z51.array(z51.string()).optional(),
+  examplePromptsI18n: z51.record(z51.string(), z51.array(z51.string())).optional(),
+  /**
+   * 需要付费套餐才好用的插件：市场目录条目声明 `requiresPaidPlan: true`，
+   * UI 在标题右侧展示提示图标。描述的是「使用条件」而非「插件是收费商品」——
+   * 不参与安装门禁与计费，命名也不绑定具体套餐商品名。
+   */
+  requiresPaidPlan: z51.boolean().optional()
+}).strict();
+var zcodePluginsResolveSuggestedReferenceResultSchema2 = z51.object({
+  stableId: nonEmptyString4,
+  status: zcodePluginSuggestedReferenceStatusSchema2,
+  marketplace: nonEmptyString4.optional(),
+  pluginName: nonEmptyString4.optional(),
+  sourceTrust: z51.literal("official").optional(),
+  // 官方 Marketplace listing 的可选展示投影；不参与身份、安装或权限判断。
+  icon: z51.string().optional(),
+  listing: zcodePluginStoreListingSchema2.optional(),
+  diagnostics: z51.array(zcodePluginDiagnosticSchema2)
+}).strict().superRefine((value, context) => {
+  if (value.status !== "ready" && value.status !== "disabled" && value.status !== "missing") {
+    return;
+  }
+  if (!value.marketplace || !value.pluginName || value.sourceTrust !== "official") {
+    context.addIssue({
+      code: "custom",
+      message: "actionable suggested Plugin results require trusted install identity"
+    });
+  }
+});
+var zcodePluginMarketplaceSummarySchema2 = z51.object({
+  id: nonEmptyString4,
+  name: nonEmptyString4,
+  source: jsonObjectSchema3,
+  description: z51.string().optional(),
+  lastUpdated: z51.string().optional(),
+  pluginCount: z51.number().int().nonnegative(),
+  isOfficial: z51.boolean().optional(),
+  // 目录顶层 featured 策展名单（商店「公开」分段 Featured 区）。
+  featured: z51.array(z51.string()).optional(),
+  refreshFailure: z51.object({
+    code: z51.string(),
+    failedAt: z51.string(),
+    message: z51.string()
+  }).strict().optional()
+}).strict();
+var zcodeAvailablePluginSummarySchema2 = z51.object({
+  id: nonEmptyString4,
+  name: nonEmptyString4,
+  marketplace: nonEmptyString4,
+  description: z51.string().optional(),
+  version: z51.string().optional(),
+  installed: z51.boolean(),
+  componentTypes: z51.array(z51.string()).optional(),
+  listing: zcodePluginStoreListingSchema2.optional()
+}).strict();
+var zcodeInstalledPluginSummarySchema2 = z51.object({
+  id: nonEmptyString4,
+  name: nonEmptyString4,
+  marketplace: nonEmptyString4,
+  description: z51.string().optional(),
+  version: z51.string().optional(),
+  enabled: z51.boolean(),
+  scope: zcodePluginScopeSchema2,
+  installPath: z51.string().optional(),
+  installedAt: z51.string().optional(),
+  componentTypes: z51.array(z51.string()).optional(),
+  hookDetails: z51.array(zcodePluginHookDetailSchema2).optional(),
+  updateStatus: z51.enum(["none", "update-available", "version-changed"]).optional(),
+  latestVersion: z51.string().optional(),
+  listing: zcodePluginStoreListingSchema2.optional()
+}).strict();
+var zcodePluginsOverviewParamsSchema2 = z51.object({
+  workspace: zcodeWorkspaceRefSchema,
+  configScope: zcodePluginScopeSchema2.optional()
+}).strict();
+var zcodePluginsOverviewResultSchema2 = z51.object({
+  marketplaces: z51.array(zcodePluginMarketplaceSummarySchema2),
+  availablePlugins: z51.array(zcodeAvailablePluginSummarySchema2),
+  installedPlugins: z51.array(zcodeInstalledPluginSummarySchema2),
+  restorableBuiltins: z51.array(zcodeAvailablePluginSummarySchema2),
+  diagnostics: z51.array(zcodePluginDiagnosticSchema2),
+  capability: z51.object({
+    supported: z51.boolean(),
+    reason: z51.string().optional()
+  }).strict()
+}).strict();
+var zcodePluginsMarketplaceAddParamsSchema2 = z51.object({
+  workspace: zcodeWorkspaceRefSchema,
+  source: nonEmptyString4,
+  dryRun: z51.boolean().optional(),
+  operationId: nonEmptyString4.optional()
+}).strict();
+var zcodePluginsMarketplaceRemoveParamsSchema2 = z51.object({
+  workspace: zcodeWorkspaceRefSchema,
+  marketplace: nonEmptyString4
+}).strict();
+var zcodePluginsMarketplaceUpdateParamsSchema2 = z51.object({
+  workspace: zcodeWorkspaceRefSchema,
+  marketplace: nonEmptyString4.optional(),
+  operationId: nonEmptyString4.optional()
+}).strict();
+var zcodePluginsMarketplaceMutationResultSchema2 = z51.object({
+  marketplace: zcodePluginMarketplaceSummarySchema2.optional(),
+  marketplaces: z51.array(zcodePluginMarketplaceSummarySchema2).optional(),
+  diagnostics: z51.array(zcodePluginDiagnosticSchema2).optional()
+}).strict();
+var zcodePluginsInstallParamsSchema2 = z51.object({
+  workspace: zcodeWorkspaceRefSchema,
+  pluginName: nonEmptyString4,
+  marketplace: nonEmptyString4,
+  scope: zcodePluginScopeSchema2.optional(),
+  dryRun: z51.boolean().optional(),
+  operationId: nonEmptyString4.optional()
+}).strict();
+var zcodePluginsCancelOperationParamsSchema2 = z51.object({
+  operationId: nonEmptyString4
+}).strict();
+var zcodePluginsCancelOperationResultSchema2 = z51.object({
+  operationId: nonEmptyString4,
+  cancelled: z51.boolean()
+}).strict();
+var zcodePluginsUninstallParamsSchema2 = z51.object({
+  workspace: zcodeWorkspaceRefSchema,
+  pluginId: nonEmptyString4.optional(),
+  pluginName: nonEmptyString4.optional(),
+  marketplace: nonEmptyString4.optional(),
+  removeCache: z51.boolean().optional()
+}).strict();
+var zcodePluginsInstallResultSchema2 = z51.object({
+  installedPlugins: z51.array(zcodeInstalledPluginSummarySchema2),
+  dependencyClosure: z51.array(z51.string()),
+  diagnostics: z51.array(zcodePluginDiagnosticSchema2)
+}).strict();
+var zcodePluginsUninstallResultSchema2 = z51.object({
+  removedPlugin: zcodeInstalledPluginSummarySchema2.optional(),
+  diagnostics: z51.array(zcodePluginDiagnosticSchema2)
+}).strict();
+var zcodePluginsUpdateParamsSchema2 = z51.object({
+  workspace: zcodeWorkspaceRefSchema,
+  pluginId: nonEmptyString4.optional(),
+  marketplace: nonEmptyString4.optional()
+}).strict();
+var zcodePluginsRestoreBuiltinParamsSchema2 = z51.object({
+  workspace: zcodeWorkspaceRefSchema,
+  pluginId: nonEmptyString4
+}).strict();
+var zcodePluginsRestoreBuiltinResultSchema2 = z51.object({
+  pluginId: nonEmptyString4,
+  diagnostics: z51.array(zcodePluginDiagnosticSchema2)
+}).strict();
+var zcodePluginsConfigureParamsSchema2 = z51.object({
+  workspace: zcodeWorkspaceRefSchema,
+  pluginId: nonEmptyString4,
+  options: jsonObjectSchema3,
+  clearOptionKeys: z51.array(nonEmptyString4).optional(),
+  scope: zcodePluginScopeSchema2.optional(),
+  dryRun: z51.boolean().optional()
+}).strict();
+var zcodePluginsConfigureResultSchema2 = z51.object({
+  pluginId: nonEmptyString4,
+  diagnostics: z51.array(zcodePluginDiagnosticSchema2)
+}).strict();
+var zcodePluginsResetConfigParamsSchema2 = z51.object({
+  workspace: zcodeWorkspaceRefSchema,
+  pluginId: nonEmptyString4,
+  scope: zcodePluginScopeSchema2.optional()
+}).strict();
+var zcodePluginsValidateParamsSchema2 = z51.object({
+  workspace: zcodeWorkspaceRefSchema,
+  pluginName: nonEmptyString4.optional(),
+  marketplace: nonEmptyString4.optional(),
+  source: nonEmptyString4.optional()
+}).strict();
+var zcodePluginsValidateResultSchema2 = z51.object({
+  ok: z51.boolean(),
+  diagnostics: z51.array(zcodePluginDiagnosticSchema2),
+  compatibility: z51.object({
+    runnable: z51.array(z51.string()),
+    diagnosticOnly: z51.array(z51.string()),
+    unsupported: z51.array(z51.string())
+  }).strict()
+}).strict();
+var zcodePluginsDescribeParamsSchema2 = z51.object({
+  workspace: zcodeWorkspaceRefSchema,
+  pluginName: nonEmptyString4,
+  marketplace: nonEmptyString4
+}).strict();
+var zcodePluginsDescribeResultSchema2 = z51.object({
+  components: z51.array(zcodePluginComponentGroupSchema2),
+  diagnostics: z51.array(zcodePluginDiagnosticSchema2).optional(),
+  // 插件包内 plugin.json 的展示性回退字段；未安装候选详情页信息区在商店 listing 缺失时兜底。
+  metadata: z51.object({
+    author: z51.string().optional(),
+    authorUrl: z51.string().optional(),
+    homepage: z51.string().optional(),
+    version: z51.string().optional()
+  }).strict().optional()
+}).strict();
+var zcodeAutomationScheduleRuleSchema2 = z51.object({
+  unit: z51.enum(["minute", "hourly", "daily", "weekly", "monthly", "yearly"]),
+  interval: z51.number().int().positive(),
+  hour: z51.number().int().min(0).max(23),
+  minute: z51.number().int().min(0).max(59),
+  anchorAt: z51.number().int(),
+  weekdays: z51.array(z51.number().int().min(0).max(6)).optional(),
+  monthDays: z51.array(z51.number().int().min(1).max(31)).optional(),
+  /** yearly 用：1-12 人类月份。缺省回退 anchorAt 的月份（兼容未写该字段的旧记录）。 */
+  months: z51.array(z51.number().int().min(1).max(12)).optional(),
+  monthlyMode: z51.enum(["date", "weekday"]).optional()
+}).strict();
+var zcodeAutomationIntervalUnitSchema2 = z51.enum([
+  "minute",
+  "hourly",
+  "daily",
+  "weekly",
+  "monthly",
+  "yearly"
+]);
+var zcodeAutomationProtocolSchema2 = z51.object({
+  automationId: nonEmptyString4,
+  title: z51.string(),
+  cronExpr: nonEmptyString4,
+  prompt: nonEmptyString4,
+  modelSelection: modelSelectionSchema.optional(),
+  mode: zcodeTaskModeSchema.optional(),
+  targetTaskId: nonEmptyString4.optional(),
+  enabled: z51.boolean(),
+  lifecycleStatus: z51.enum(["active", "completed", "failed", "paused"]),
+  nextRunAt: timestampMsSchema3.optional(),
+  lastRunAt: timestampMsSchema3.optional(),
+  runCount: z51.number().int().nonnegative(),
+  recurring: z51.boolean(),
+  maxRuns: z51.number().int().positive().optional(),
+  // 自定义重复规则；缺省时调度回退到解析 cronExpr。会话卡片必须读到本字段才能展示
+  // cron 无法表达的真实间隔（如每50小时、每40天，兼容 cronExpr 只是 0 * * * *）。
+  scheduleRule: zcodeAutomationScheduleRuleSchema2.optional()
+}).strict();
+var zcodeAutomationCreateParamsSchema2 = z51.object({
+  title: z51.string().optional(),
+  cronExpr: nonEmptyString4,
+  relativeDelayMinutes: z51.number().int().positive().max(525600).optional(),
+  prompt: nonEmptyString4,
+  modelSelection: modelSelectionSchema.optional(),
+  mode: zcodeTaskModeSchema.optional(),
+  targetTaskId: nonEmptyString4.optional(),
+  botDeliveryTarget: zcodeAutomationBotDeliveryTargetSchema.optional(),
+  recurring: z51.boolean().optional(),
+  maxRuns: z51.number().int().positive().optional(),
+  // 会话侧自定义重复 carrier：每 N 分钟/小时/天/周/月/年均通过此字段归一化为权威 scheduleRule，
+  // cronExpr 仅作合法兼容展示。
+  intervalUnit: zcodeAutomationIntervalUnitSchema2.optional(),
+  interval: z51.number().int().min(1).max(200).optional()
+}).strict().refine((input) => input.intervalUnit === void 0 === (input.interval === void 0), {
+  message: "intervalUnit and interval must be set together",
+  path: ["interval"]
+}).refine((input) => input.intervalUnit === void 0 || input.relativeDelayMinutes === void 0, {
+  message: "intervalUnit cannot combine with a relative delayMinutes",
+  path: ["intervalUnit"]
+}).refine((input) => input.intervalUnit === void 0 || input.recurring !== false, {
+  message: "intervalUnit is a recurring carrier and cannot combine with recurring=false",
+  path: ["recurring"]
+}).refine((input) => input.intervalUnit === void 0 || input.maxRuns === void 0, {
+  message: "intervalUnit is a recurring carrier and cannot combine with maxRuns",
+  path: ["maxRuns"]
+});
+var zcodeAutomationCreateResultSchema2 = z51.object({ automation: zcodeAutomationProtocolSchema2 }).strict();
+var zcodeAutomationUpdateParamsSchema2 = z51.object({
+  automationId: nonEmptyString4,
+  title: nonEmptyString4.optional(),
+  cronExpr: nonEmptyString4.optional(),
+  prompt: nonEmptyString4.optional(),
+  recurring: z51.boolean().optional(),
+  maxRuns: z51.number().int().positive().nullable().optional(),
+  // 会话侧自定义重复 carrier（同 create 侧语义）。
+  intervalUnit: zcodeAutomationIntervalUnitSchema2.optional(),
+  interval: z51.number().int().min(1).max(200).optional()
+}).strict().refine(
+  (input) => input.title !== void 0 || input.cronExpr !== void 0 || input.prompt !== void 0 || input.recurring !== void 0 || input.maxRuns !== void 0 || input.intervalUnit !== void 0,
+  { message: "automation update requires at least one field" }
+).refine((input) => input.maxRuns !== null || input.recurring === true, {
+  message: "clearing maxRuns requires recurring=true",
+  path: ["maxRuns"]
+}).refine((input) => input.recurring !== true || typeof input.maxRuns !== "number", {
+  message: "recurring=true cannot be combined with a numeric maxRuns",
+  path: ["maxRuns"]
+}).refine((input) => input.intervalUnit === void 0 === (input.interval === void 0), {
+  message: "intervalUnit and interval must be set together",
+  path: ["interval"]
+}).refine((input) => input.intervalUnit === void 0 || input.recurring !== false, {
+  message: "intervalUnit is a recurring carrier and cannot combine with recurring=false",
+  path: ["recurring"]
+}).refine(
+  (input) => input.intervalUnit === void 0 || input.maxRuns === void 0 || input.maxRuns === null && input.recurring === true,
+  {
+    message: "intervalUnit is a recurring carrier and only allows maxRuns=null with recurring=true",
+    path: ["maxRuns"]
+  }
+);
+var zcodeAutomationUpdateResultSchema2 = z51.object({ automation: zcodeAutomationProtocolSchema2 }).strict();
+var zcodeAutomationListParamsSchema2 = z51.object({}).strict();
+var zcodeAutomationListResultSchema2 = z51.object({ automations: z51.array(zcodeAutomationProtocolSchema2) }).strict();
+var zcodeAutomationCheckTaskBindingParamsSchema2 = z51.object({ targetTaskId: nonEmptyString4 }).strict();
+var zcodeAutomationCheckTaskBindingResultSchema2 = z51.object({ bound: z51.boolean() }).strict();
+var zcodeAutomationDeleteParamsSchema2 = z51.object({ automationId: nonEmptyString4 }).strict();
+var zcodeAutomationDeleteResultSchema2 = z51.object({ deleted: z51.boolean() }).strict();
+var zcodeOffPeakPermissionModeSchema2 = z51.enum(["build", "edit", "plan", "yolo"]);
+var zcodeOffPeakCreateParamsSchema2 = z51.object({
+  title: nonEmptyString4,
+  prompt: nonEmptyString4,
+  permissionMode: zcodeOffPeakPermissionModeSchema2.optional(),
+  model: nonEmptyString4.optional(),
+  thoughtLevel: nonEmptyString4.optional(),
+  // 会话内创建绑定当前会话（对齐 automation/create 的 targetTaskId），由 CLI 端口填入。
+  boundSessionId: nonEmptyString4.optional()
+}).strict();
+var zcodeOffPeakTaskSnapshotSchema2 = z51.object({
+  offPeakTaskId: nonEmptyString4,
+  title: z51.string(),
+  status: z51.enum(["queued", "paused", "running", "completed", "failed", "cancelled"]),
+  queuePosition: z51.number().int().positive().optional(),
+  sessionId: nonEmptyString4.optional(),
+  createdAt: z51.number().int().nonnegative()
+}).strict();
+var zcodeOffPeakCreateResultSchema2 = z51.discriminatedUnion("ok", [
+  z51.object({ ok: z51.literal(true), task: zcodeOffPeakTaskSnapshotSchema2 }).strict(),
+  z51.object({
+    ok: z51.literal(false),
+    failureStage: z51.enum(["client_validation", "ticket_request", "local_persist"]),
+    errorCategory: z51.enum([
+      "client_validation",
+      "eligibility_3101",
+      "quota_3103",
+      "network",
+      "invalid_response",
+      "local_persist",
+      "unknown"
+    ]),
+    errorCode: z51.string()
+  }).strict()
+]);
+var zcodeOffPeakListParamsSchema2 = z51.object({}).strict();
+var zcodeOffPeakListResultSchema2 = z51.object({ tasks: z51.array(zcodeOffPeakTaskSnapshotSchema2) }).strict();
+var zcodeProtocolMethods2 = {
+  runtimeCapabilities: "runtime/capabilities",
+  computerUseOperationEvent: "computer-use/operation-event",
+  sessionCreate: "session/create",
+  sessionResume: "session/resume",
+  sessionList: "session/list",
+  sessionSubagents: "session/subagents",
+  sessionRequestRuntimePreferences: "session/requestRuntimePreferences",
+  sessionRead: "session/read",
+  sessionMessages: "session/messages",
+  sessionEvents: "session/events",
+  sessionDebug: "session/debug",
+  sessionSubscribe: "session/subscribe",
+  // @deprecated（部分）：send 主路径已收敛 v4 sendText；仅剩 adapter 附件
+  // 回退分支消费（v4 attachmentRef 上传/寄存命令面未建模），待附件命令面落地后移除。
+  sessionSend: "session/send",
+  // @deprecated：host 客户端方法已删（stop 已收敛 v4 stop 命令）。
+  // wire case 留兼容（transport bypass 名单仍引用），随旧词整体删除时一并移除。
+  sessionStop: "session/stop",
+  // @deprecated：host 客户端方法已删（已收敛 v4 cancelBackgroundWork 命令）。
+  // wire case 留兼容，随旧词整体删除时一并移除。
+  sessionCancelBackgroundTask: "session/cancelBackgroundTask",
+  // @deprecated：host 客户端方法已删（v4 forkAssistant 原生 handler 经
+  // forkSessionAtMessage 钩子直调 server-operations.forkSession op）。wire case 与
+  // fork params/result schema 保留＝op 存活面；fork record 归 v4 原生重写。
+  sessionFork: "session/fork",
+  sessionCompact: "session/compact",
+  sessionGoal: "session/goal",
+  sessionClose: "session/close",
+  // setModel 仍被 zcodeSessionService 的 desktop 旧链路消费；replayable
+  // switchModelConfig 已直接由目标 Environment Registry 解析 Selection。
+  sessionSetModel: "session/setModel",
+  // replayable facade 的思考深度/模式已收敛 v4 switchModelConfig/
+  // switchCollaborationMode；剩余消费 = zcodeSessionService（desktop 旧链路，随
+  // 桌面 v4 UI 收口清零）与 setMode 的 auto 值残留（v4 值域刻意排除 auto）。
+  sessionSetThoughtLevel: "session/setThoughtLevel",
+  sessionSetMode: "session/setMode",
+  workspaceReadPresentation: "workspace/readPresentation",
+  workspaceHookTrustGrant: "workspace/hooks/trustGrant",
+  // 进程级 Account Provider Config 与 workspace 运行目录分离。
+  providerUpdateAccountConfig: "provider/updateAccountConfig",
+  workspaceUpdateInteractionPreferences: "workspace/updateInteractionPreferences",
+  workspaceUpdateModelIoPreferences: "workspace/updateModelIoPreferences",
+  // Off-Peak 工具面门禁是 workspace 级事实（灰度 + 本地/远程），由 host 在 agent 就绪时同步；
+  // CLI 对 legacy create/resume 与 v4 冷恢复统一读取。旧 CLI method-not-found → host 降级忽略。
+  workspaceUpdateOffPeakToolPolicy: "workspace/updateOffPeakToolPolicy",
+  // 动态工作流灰度门禁：同 Off-Peak 的同步模式。
+  workspaceUpdateDynamicWorkflowPolicy: "workspace/updateDynamicWorkflowPolicy",
+  // LLM 执行面在 CLI，直连不可行；消费仅 services 内部
+  // （commit message），待 v4 workspace 查询/命令面覆盖后移除。
+  workspaceGenerateText: "workspace/generateText",
+  workspaceCancelGenerateText: "workspace/cancelGenerateText",
+  providerTestModelConnectivity: "provider/testModelConnectivity",
+  mcpList: "mcp/list",
+  pluginsList: "plugins/list",
+  pluginsReferenceCatalog: "plugins/referenceCatalog",
+  pluginsReferenceCatalogWithCategory: "plugins/referenceCatalogWithCategory",
+  skillsReferenceCatalog: "skills/referenceCatalog",
+  // 已保存工作流的 GUI 中枢：workspace 级、无会话。
+  workflowsList: "workflows/list",
+  workflowsGet: "workflows/get",
+  workflowsUpdateMeta: "workflows/updateMeta",
+  workflowsDelete: "workflows/delete",
+  workflowsRuns: "workflows/runs",
+  // 在项目档 / 全局档之间移动同名文件。
+  workflowsMove: "workflows/move",
+  pluginsResolveSuggestedReference: "plugins/resolveSuggestedReference",
+  pluginsSetEnabled: "plugins/setEnabled",
+  pluginsOverview: "plugins/overview",
+  pluginsMarketplaceAdd: "plugins/marketplace/add",
+  pluginsMarketplaceRemove: "plugins/marketplace/remove",
+  pluginsMarketplaceUpdate: "plugins/marketplace/update",
+  pluginsInstall: "plugins/install",
+  pluginsCancelOperation: "plugins/cancelOperation",
+  pluginsUninstall: "plugins/uninstall",
+  pluginsUpdate: "plugins/update",
+  pluginsRestoreBuiltin: "plugins/restoreBuiltin",
+  pluginsConfigure: "plugins/configure",
+  pluginsResetConfig: "plugins/resetConfig",
+  pluginsValidate: "plugins/validate",
+  pluginsDescribe: "plugins/describe",
+  automationCreate: "automation/create",
+  automationUpdate: "automation/update",
+  automationCheckTaskBinding: "automation/checkTaskBinding",
+  automationList: "automation/list",
+  automationDelete: "automation/delete",
+  // Off-Peak 会话内创建：与 automation 兄弟并列的独立方法族。
+  offPeakCreate: "offPeak/create",
+  offPeakList: "offPeak/list",
+  // @deprecated：host 消费已清零（zcodeAgentService 改走 v4/usage/stats）。
+  // 仅剩 CLI server 的 wire 兼容 case；随旧词整体删除时一并移除。
+  usageStats: "usage/stats",
+  // ZCode Protocol 对 agent 只暴露 session-first 方法；task 是 UI 投影概念，不能泄露进协议方法名。
+  // @deprecated：host 已改走 v4/conversation/usage；后续与 usage/stats 一并移除。
+  sessionUsage: "session/usage",
+  // 资源管理器：CLI 回报其 MCP 子进程 pid 与插件归属（纯内存，无 I/O），采样在 Host 侧完成。
+  processChildProcesses: "process/childProcesses",
+  interactionRequestPermission: "interaction/requestPermission",
+  interactionRequestUserInput: "interaction/requestUserInput",
+  interactionRequestProviderRuntimeHeaders: "interaction/requestProviderRuntimeHeaders",
+  interactionRequestOfficialMcpAuthHeaders: "interaction/requestOfficialMcpAuthHeaders",
+  // browser-use 反向请求由 agent 发起，host 转给 main 中的 CDP executor。
+  interactionBrowserList: "interaction/browserList",
+  interactionBrowserExecute: "interaction/browserExecute"
+};
+var zcodeProtocolEmptyResultSchema2 = z51.object({}).strict();
+var zcodeProtocolSessionMethodContracts2 = {
+  [zcodeProtocolMethods2.workspaceHookTrustGrant]: {
+    params: zcodeWorkspaceHookTrustGrantParamsSchema2,
+    result: zcodeWorkspaceHookTrustGrantResultSchema2
+  },
+  [zcodeProtocolMethods2.mcpList]: {
+    params: zcodeMcpListParamsSchema2,
+    result: zcodeMcpListResultSchema2
+  },
+  [zcodeProtocolMethods2.interactionBrowserList]: {
+    params: zcodeBrowserListParamsSchema2,
+    result: zcodeBrowserListResultSchema2
+  },
+  [zcodeProtocolMethods2.interactionBrowserExecute]: {
+    params: zcodeBrowserExecuteParamsSchema2,
+    result: zcodeBrowserExecuteResultSchema2
+  }
+};
+var zcodeStoragePreparationFrameSchema2 = z51.discriminatedUnion("method", [
+  z51.object({
+    method: z51.literal("startup/storagePath"),
+    params: z51.object({ path: z51.string().min(1).max(32768) }).strict()
+  }).strict(),
+  z51.object({ method: z51.literal("startup/storagePrepared"), params: z51.object({}).strict() }).strict(),
+  z51.object({ method: z51.literal("startup/storageState"), params: zcodeStorageStartupStateSchema2 }).strict()
+]);
+var zcodeStoragePathReadySchema2 = z51.object({ method: z51.literal("startup/storagePathReady"), reuse: z51.boolean().optional() }).strict();
 export {
   COMMANDS_REQUIRING_BASE_REVISION,
   PROTOCOL_V4_LIMITS,
@@ -9705,5 +12172,11 @@ export {
   v4ConversationResyncResultSchema,
   v4ConversationSubscribeParamsSchema,
   v4ConversationSubscribeResultSchema,
-  v4ConversationUnsubscribeParamsSchema
+  v4ConversationUnsubscribeParamsSchema,
+  zcodeWorkspacePresentationSchema2 as zcodeWorkspacePresentationSchema,
+  zcodeWorkspaceReadPresentationParamsSchema2 as zcodeWorkspaceReadPresentationParamsSchema,
+  zcodeWorkspaceUpdateInteractionPreferencesParamsSchema2 as zcodeWorkspaceUpdateInteractionPreferencesParamsSchema,
+  zcodeWorkspaceUpdateInteractionPreferencesResultSchema2 as zcodeWorkspaceUpdateInteractionPreferencesResultSchema,
+  zcodeWorkspaceUpdateModelIoPreferencesParamsSchema2 as zcodeWorkspaceUpdateModelIoPreferencesParamsSchema,
+  zcodeWorkspaceUpdateModelIoPreferencesResultSchema2 as zcodeWorkspaceUpdateModelIoPreferencesResultSchema
 };
