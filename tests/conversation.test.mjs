@@ -170,3 +170,42 @@ test('unsubscribe rejection is visible after idempotent local cancellation',asyn
   assert.equal(f.conversation.state.status,'closed');assert.deepEqual(f.conversation.state.cleanupError,{code:'runtime-rejected',protocolCode:-32602});assert.equal(f.conversation.admission.allowed,false);await f.conversation.cancel();assert.equal(f.sent.filter(x=>x.method==='v4/conversation/unsubscribe').length,1);
  }finally{f.dispose()}
 });
+test('CA3-1 initial deadline is retired when a pre-initial-frame fault starts recovery',async t=>{
+ t.mock.timers.enable({apis:['setTimeout']});
+ const f=fixture({frameTimeoutMs:20,peerTimeout:1000});try{
+  const connecting=f.conversation.connect();f.response(f.sent[0],fixtures.success.ack);await connecting;
+  f.wire({...fixtures.success.initial,frame:undefined});
+  const recovery=f.sent.at(-1);assert.equal(recovery.method,'v4/conversation/resync');
+  t.mock.timers.tick(21);
+  assert.equal(f.conversation.state.status,'resyncing','the retired initial deadline cannot time out an unacknowledged recovery');
+  f.response(recovery,fixtures.success.ack);await tick();
+  t.mock.timers.tick(21);
+  assert.equal(f.conversation.state.status,'error');assert.equal(f.conversation.state.error,'recovery-frame-timeout');
+  t.mock.timers.tick(100);
+  assert.equal(f.conversation.state.status,'error');assert.equal(f.sent.filter(x=>x.method==='v4/conversation/resync').length,1);
+ }finally{f.dispose();t.mock.timers.reset()}
+});
+test('CA3-1 late recovery ACK after an owned fault cannot mutate error or arm an automatic retry',async t=>{
+ t.mock.timers.enable({apis:['setTimeout']});
+ const f=fixture({frameTimeoutMs:20,peerTimeout:1000});try{
+  const connecting=f.conversation.connect();f.response(f.sent[0],fixtures.success.ack);await connecting;
+  f.wire({...fixtures.success.initial,frame:undefined});const recovery=f.sent.at(-1);
+  f.wire({...fixtures.success.initial,deliveryKind:'recovery',logicalFrameId:'bad-recovery-before-ack',logicalFrameOrdinal:2,frame:undefined});
+  const failed=f.conversation.state;assert.equal(failed.status,'error');
+  const late=clone(fixtures.success.ack);late.ack.logEpoch='late-ack-epoch';f.response(recovery,late);await tick();
+  t.mock.timers.tick(100);
+  assert.equal(f.conversation.state.status,'error');assert.equal(f.conversation.state.error,failed.error);assert.equal(f.conversation.state.logEpoch,failed.logEpoch);
+  assert.equal(f.conversation.admission.allowed,false);assert.equal(f.sent.filter(x=>x.method==='v4/conversation/resync').length,1);
+ }finally{f.dispose();t.mock.timers.reset()}
+});
+test('CA3-1 subscribe ACK observer cannot arm an initial deadline after replacing its flight',async t=>{
+ t.mock.timers.enable({apis:['setTimeout']});
+ const f=fixture({frameTimeoutMs:20,peerTimeout:1000});let recovery,started=false;
+ f.conversation.onChange=state=>{if(state.status==='connecting'&&state.subscriptionId&&!started){started=true;recovery=f.conversation.resync({forceSnapshot:true})}};
+ try{
+  const connecting=f.conversation.connect();f.response(f.sent[0],fixtures.success.ack);await connecting;
+  assert.equal(f.sent.at(-1).method,'v4/conversation/resync');t.mock.timers.tick(21);assert.equal(f.conversation.state.status,'resyncing');
+  f.response(f.sent.at(-1),fixtures.success.ack);f.wire(fixtures.success.recovery);await recovery;
+  t.mock.timers.tick(100);assert.equal(f.conversation.state.status,'live');assert.equal(f.sent.filter(x=>x.method==='v4/conversation/resync').length,1);
+ }finally{f.dispose();t.mock.timers.reset()}
+});

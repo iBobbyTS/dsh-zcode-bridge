@@ -47,16 +47,18 @@ export class V4Conversation {
   get assemblyStats(){return this.#assembler.getStats()}
   #publish(change={}){this.#state={...this.#state,...change};try{this.onChange(this.state)}catch{this.#observerErrors=Math.min(Number.MAX_SAFE_INTEGER,this.#observerErrors+1)}}
   #base(){const s=this.#state.snapshot;return s&&this.#appliedBase&&s.logEpoch===this.#state.logEpoch?{logEpoch:s.logEpoch,seq:s.seq}:null}
-  #deadline(){
-    clearTimeout(this.#frameTimer);if(this.#closed)return;
-    this.#frameTimer=setTimeout(()=>{if(this.#closed)return;if(this.#flight?.kind==='recovery')this.#fail('recovery-frame-timeout');else void this.resync({forceSnapshot:true})},this.frameTimeoutMs);
+  #deadline(flight){
+    // ACK observers can synchronously end or replace a flight; deadlines belong to that flight only.
+    if(this.#closed||this.#state.status==='error'||this.#flight!==flight)return;
+    clearTimeout(this.#frameTimer);
+    this.#frameTimer=setTimeout(()=>{if(this.#closed||this.#state.status==='error'||this.#flight!==flight)return;if(flight.kind==='recovery')this.#fail('recovery-frame-timeout');else void this.resync({forceSnapshot:true})},this.frameTimeoutMs);
   }
   connect({forceSnapshot=false}={}){
     if(this.#closed)return Promise.reject(new BridgeError('conversation-closed'));
     if(this.#connect)return this.#connect;
     const generation=++this.#generation,base=forceSnapshot?null:this.#base();
     this.#resyncAgain=null;this.#assembler.clear();clearTimeout(this.#assemblyTimer);clearTimeout(this.#frameTimer);
-    this.#flight={kind:'initial',generation,forceSnapshot};
+    const flight={kind:'initial',generation,forceSnapshot};this.#flight=flight;
     const operation=Promise.withResolvers();this.#connect=operation.promise;
     this.#publish({status:'connecting',subscriptionId:null,error:null,gap:null});
     if(this.#closed){this.#connect=null;operation.resolve(null);return operation.promise}
@@ -65,8 +67,9 @@ export class V4Conversation {
       const result=v4ConversationSubscribeResultSchema.parse(raw),ack=result.ack;
       if(!nonempty(ack.subscriptionId)||!nonempty(ack.logEpoch))throw new BridgeError('subscription-ack-invalid');
       if(this.#closed||generation!==this.#generation){this.#orphans.push(this.#unsubscribe(ack.subscriptionId));return result}
+      if(this.#state.status==='error'||this.#flight!==flight)return result;
       if(ack.mode==='resume'&&(!base||base.logEpoch!==ack.logEpoch))throw new BridgeError('subscription-base-invalid');
-      this.#appliedBase=ack.mode==='resume';this.#publish({subscriptionId:ack.subscriptionId,logEpoch:ack.logEpoch});this.#deadline();return result;
+      this.#appliedBase=ack.mode==='resume';this.#publish({subscriptionId:ack.subscriptionId,logEpoch:ack.logEpoch});this.#deadline(flight);return result;
     }}).catch(e=>{if(!this.#closed&&generation===this.#generation)this.#fail(e.code??'subscription-invalid');throw e}).finally(()=>{this.#connect=null});
     request.then(operation.resolve,operation.reject);return operation.promise;
   }
@@ -117,6 +120,7 @@ export class V4Conversation {
   }
   #fault(code){
     if(this.#closed)return;
+    clearTimeout(this.#frameTimer);
     if(this.#flight?.kind==='recovery'){this.#fail(code);return}
     this.#assembler.abort(this.topic,this.#state.subscriptionId);
     void this.resync({forceSnapshot:code!=='proto.sequenceGap'});
@@ -132,15 +136,16 @@ export class V4Conversation {
     if(!subscriptionId)return Promise.reject(new BridgeError('subscription-unconfirmed'));
     const base=forceSnapshot?null:this.#base();
     const operation=Promise.withResolvers();this.#resync=operation.promise;
-    this.#flight={kind:'recovery',generation,forceSnapshot};this.#publish({status:'resyncing'});
+    clearTimeout(this.#frameTimer);
+    const flight={kind:'recovery',generation,forceSnapshot};this.#flight=flight;this.#publish({status:'resyncing'});
     if(this.#closed){this.#resync=null;operation.resolve(null);return operation.promise}
     const params=v4ConversationResyncParamsSchema.parse({topic:this.topic,connectionId:this.connectionId,subscriptionId,base,...(forceSnapshot?{forceSnapshot:true}:{})});
     const request=this.peer.request('v4/conversation/resync',params,{onResult:raw=>{
       const result=v4ConversationResyncResultSchema.parse(raw),ack=result.ack;
       if(!nonempty(ack.subscriptionId)||!nonempty(ack.logEpoch))throw new BridgeError('resync-ack-invalid');
-      if(this.#closed||generation!==this.#generation)return result;
+      if(this.#closed||generation!==this.#generation||this.#state.status==='error'||this.#flight!==flight)return result;
       if(ack.subscriptionId!==subscriptionId||(ack.mode==='resume'&&(!base||base.logEpoch!==ack.logEpoch)))throw new BridgeError('resync-identity-mismatch');
-      this.#appliedBase=ack.mode==='resume';this.#publish({logEpoch:ack.logEpoch});this.#deadline();return result;
+      this.#appliedBase=ack.mode==='resume';this.#publish({logEpoch:ack.logEpoch});this.#deadline(flight);return result;
     }}).catch(e=>{if(!this.#closed&&generation===this.#generation)this.#fail(e.code??'resync-invalid');return null}).finally(()=>{this.#resync=null;const again=this.#resyncAgain;this.#resyncAgain=null;if(again&&!this.#closed)void this.resync(again)});
     request.then(operation.resolve,operation.reject);return operation.promise;
   }
