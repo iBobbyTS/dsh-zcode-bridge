@@ -39,3 +39,12 @@ Evidence and limits: [probes](docs/probes/S01-PROBES.md),
 [carrier inventory](docs/probes/S01-CARRIERS.md),
 [handoff](docs/handoff/S01-HANDOFF.md). The local workflow authority remains the
 parent workspace's `.agent-work/PLAN-FULL.md` and bounded TASK files.
+
+S03.A adds a bounded duplex NDJSON transport and scoped V4 projection/command
+API for the next UI section. ACK/query outcomes remain distinct from execution
+completion; recovery uses only an actually held baseline. Current Host admission
+remains restricted. See [S03.A handoff](docs/handoff/S03A-HANDOFF.md) for the API,
+source/licensing, reusable official draft fixtures, fault injection and limits.
+Capture without model execution using `node scripts/capture-s03a.mjs`, then
+`node scripts/make-s03a-fixtures.mjs`; replay checks with
+`node scripts/check-s03a.mjs`.
