@@ -66,7 +66,7 @@ NOT_RUN：真实模型首发/工具或 permission/ask-user 任务/停止执行/�
 ## 给 S03.B 的 API 契约
 
 - `host.createConversation(address, {onChange})` 返回 scoped V4Conversation；对象不自动 connect，不注册 DSH Session 来源 seam。只有 host 实际 connected、address 对应自身 authority/workspace 时创建；默认 trusted profile 为 replayable。
-- `connect({forceSnapshot?})` 的 Promise 只表示 subscribe ACK，**state.status==='live' + snapshot** 才表示 projection 到位。ACK 与通知可能同一 read 到达，owner 在 peer.onResult 中同步建立。
+- `connect({forceSnapshot?})` 的 Promise 表示 subscribe ACK。snapshot 模式等待正式首帧后 live；resume ACK 与实际持有的 epoch/seq base 匹配时，直接以该水位 live/续流，随后消费 initial replay 或 online 增量。ACK 不提供 server currentSeq，不从 ACK 猜测或推进水位。ACK 与通知可能同一 read 到达，owner 在 peer.onResult 中同步建立。
 - `state` 是 clone：status = idle/connecting/live/resyncing/error/closed；snapshot 为官方公开 schema 原子投影；profile、commands、error、gap、cleanupError、observerErrors、admission 可供消费。error 或 resyncing 的旧 snapshot 仅作已确认历史，不能据此开放动作。
 - `submit({type,payload,commandId?},{signal?})` 验证 schema、CAS、target 与 admission，返回跟踪状态；不自动重发。commandId 默认 UUIDv7，同一活跃记录重复 submit 被拒绝。`queryCommand(id,{signal?})` 只查询已跟踪的同一 key，不产生新 id。ACK 保留原 status/reasonCode/revisionAtDecision；已受理无终态的确定展示为 accepted-awaiting-terminal，不能翻译为 completed。
 - `cancelCommand(id)` 只 abort 等待；返回首次是否取消。实际停止用显式 stop command，并携带当前 projection 的 foregroundExecutionId；客户端取消不会撤销已执行副作用。
@@ -129,3 +129,29 @@ NOT_RUN：真实模型首发/工具或 permission/ask-user 任务/停止执行/�
 允许写入的独立 checkout：`/private/tmp/zcode-s03a-repair-vrj75X`，同名 feature 分支。上列两个 Conventional Commits 在该 checkout 实际生成；随后 docs commit 归档本记录和检查证据。交付 Git bundle：`/private/tmp/zcode-s03a-repair-vrj75X/S03A-REPAIR.bundle`，增量基于 `ac85d11`。由有主仓 `.git` 写权限的主调度导入/整合；没有 push、改写主仓历史或丢弃已有 `.DS_Store`。
 
 本段取代旧 handoff 的“最终产品 head 9f671a2 / 最终 checks 全 PASS”作为当前修复候选状态；原记录保留其历史语境。 worker 完成修复与可复核 Git 交付，不自行宣称 CODE 评审闭合。
+
+## CODE REPAIR wave 2 — CB3-1（2026-10-03）
+
+实现基线为主仓 `9096823`（已包含 wave 1 的 `7f58545`、`47ed9d5`、`ccd6ab6`）；本段是 worker 修复交付，不自行关闭 CODE B 的评审发现。reference/App 制品只读、0 模型调用、DSH 仓与其集成测试断言未改。
+
+**失败合同与证据**：正式 `conversation-topic-publisher.ts:833` 在 `base.seq === currentSeq` 时回 resume ACK，reservation 为 null，不发 initial frame。候选却给每个 subscribe ACK 武装 initial deadline、并将首条 online deltas 拒绝为 proto.initialDeliveryMismatch。新增回归在修复前均失败：持有 10 的 `(10,12]` online 未推进（实际仍为 10）；静默 resume 推进时钟后进入 resyncing（应保持 live）。[修复前原始结果](../probes/checks/s03a-wave2-repro.json) 保存 0/2 PASS。
+
+**修复**：只调整 subscribe 的 resume ACK 分支。除既有 closed/generation/error/flight identity 外，明确验证实际持有 snapshot 的 logEpoch/seq 和 appliedBase 与本次请求 base 一致；通过后清除 initial flight/deadline，以原水位直接进入 live。新 subscription 的合法 online 或 initial replay 帧继续用原 reducer 消费。snapshot ACK 仍等正式首帧；resync 分支、异 epoch 拒绝、gap 检测和有界 fail-safe 不改。不从 ACK 猜 server currentSeq、不捏造或推进 baseline。
+
+**新增回归（2 条，均覆盖 continuous/replayable 独立 owner）**：
+
+1. 持有 epoch E/seq10，重订阅仅收到 resume ACK；ACK 与首条 online `(10,12]` 可同一 read 到达，直接推进到 12/live，未发 resync。
+2. 持有 seq10，重订阅仅收到 resume ACK，完全没有 initial/online；受控时钟推进五倍 initial deadline 后仍 live/seq10/同 epoch，peer pending=0，未发 resync。
+
+| 本轮检查 | 结果 / 证据 |
+|---|---|
+| CB3-1 targeted 回归 | 2/2 PASS；修复前 0/2，受控时钟，无概率 sleep。 |
+| Node 全量 | **45/45 PASS**，保留原 43 项（含 wave 1 的 CA3-1/CA3-2 回归）。 |
+| bridge build | PASS。 |
+| DSH 集成全量 | 已实跑 **11/14 PASS，3 FAIL**；三个失败仍是实际官方 headless 连接检查，未删除、stub 或 skip。主 agent 可在其环境复跑 14/14。 |
+| 基线对照 | 未修改 `9096823` 与本轮修复均默认 discovery 为 installation-missing；显式 `/Applications/ZCode.app`（3.14.4.7912、verified=true）启动均为 transport-eof。[本轮对照](../probes/checks/s03a-wave2-environment.json)。因此不能宣称本环境 DSH 14/14。 |
+| whitespace | 主仓 `git diff --check`、独立 checkout staged/range whitespace PASS。 |
+
+完整命令/stdout/stderr/exit 与本轮 product head 在 [s03a-checks.json](../probes/checks/s03a-checks.json)。本轮未复现真实官方 equal-watermark resume：本环境 headless 连接被上述环境问题阻塞；评审员的真实复现为输入证据，不冒充本 worker 新的 LIVE PASS。
+
+代码/测试提交：`b88a594` — `fix(conversation): accept ACK-only resume from a held baseline`。独立 checkout 为 `/private/tmp/zcode-s03a-wave2-642Run`，同名 feature 分支；docs 提交随后归档本段与检查。增量 bundle `/private/tmp/zcode-s03a-wave2-642Run/S03A-WAVE2.bundle` 基于 `9096823`。主仓 `.git` 保持只读；工作区改动与 bundle 所含提交逐文件相同，无 push。本段作为当前候选说明取代前段的 wave 1 最终状态，历史证据仍保留。
