@@ -1,5 +1,7 @@
 import {createNativeSessionSource,parseRuntimeSessionAddress,runtimeSessionKey} from '@deepseek-ai/dsh-api-session-controller/client';
 import {notifySubscribers} from '@deepseek-ai/dsh-client-store';
+import React from 'react';
+import {ZCodeConversationView} from './conversation-view.jsx';
 
 const unavailable=reason=>Object.freeze({state:'unavailable',reason,capabilities:Object.freeze({create:false,open:false,nativeAgent:false})});
 const sourceError=code=>Object.assign(new Error(code),{code});
@@ -8,10 +10,11 @@ const sourceError=code=>Object.assign(new Error(code),{code});
 export class RuntimeSessions {
   #native;#rows=Object.freeze([]);#zcodeRows=Object.freeze([]);#availability=unavailable('not-connected');
   #listeners=new Set();#availabilityListeners=new Set();#references=new Set();#subscriptions=[];
-  #closed=false;#generation=0;#readVersion=0;#requests=new Set();#reads=new Set();#refresh;#scope;#disposal;
-  constructor({sessions,rpc,connectionGeneration,nativeAuthority}){
+  #closed=false;#generation=0;#readVersion=0;#requests=new Set();#reads=new Set();#refresh;#scope;#disposal;#conversationResolver;
+  constructor({sessions,rpc,connectionGeneration,nativeAuthority,conversationResolver}){
     if(typeof nativeAuthority!=='string'||!nativeAuthority)throw sourceError('native-authority-required');
     this.rpc=rpc;
+    this.#conversationResolver=conversationResolver;
     this.#native=createNativeSessionSource(sessions,nativeAuthority,'native-session-store');
     this.#subscriptions.push(this.#native.list.subscribe(()=>this.#publish()));
     if(connectionGeneration)this.#subscriptions.push(connectionGeneration.subscribe(()=>{
@@ -108,10 +111,16 @@ export class RuntimeSessions {
       const remove=source.subscribe(()=>{if(live)listener()});subscriptions.add(remove);
       return ()=>{subscriptions.delete(remove);remove()};
     };
+    const conversation=options?.conversation??this.#conversationResolver?.(fixed);
+    const renderSessionArea=(options?.renderSessionArea||conversation)?()=>{
+      if(typeof options?.renderSessionArea==='function')return options.renderSessionArea(reference);
+      return React.createElement(ZCodeConversationView,{reference,conversation,rpc:this.rpc});
+    }:undefined;
     const reference=Object.freeze({runtime:'zcode',address:fixed,
       summary:{getSnapshot:()=>live?this.#zcodeRows.find(row=>row.key===key):undefined,subscribe:listener=>subscribe(this.list,listener)},
       availability:{getSnapshot:()=>!live?released:this.#scope&&(fixed.authority!==this.#scope.authority||fixed.workspace!==this.#scope.workspace)?mismatch:this.#availability,subscribe:listener=>subscribe(this.zcodeAvailability,listener)},
       release:()=>{if(!live)return;live=false;for(const remove of subscriptions)remove();subscriptions.clear();this.#references.delete(reference)},
+      ...(renderSessionArea?{renderSessionArea}:{}),
     });
     this.#references.add(reference);return reference;
   }
@@ -122,7 +131,7 @@ export class RuntimeSessions {
     for(const unsubscribe of this.#subscriptions)unsubscribe();this.#subscriptions=[];
     for(const request of this.#requests)request.abort();this.#requests.clear();
     this.#listeners.clear();this.#availabilityListeners.clear();this.#rows=Object.freeze([]);this.#zcodeRows=Object.freeze([]);this.#availability=unavailable('disposed');
-    this.#disposal=Promise.allSettled([...this.#reads]).then(()=>{});return this.#disposal;
+    this.#disposal=Promise.allSettled(this.#reads).then(()=>{});return this.#disposal;
   }
 }
 

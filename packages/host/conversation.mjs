@@ -29,7 +29,7 @@ export function negotiatedClientHello(hostHello,{clientId,appVersion,workspaceHo
 export class V4Conversation {
   #state={status:'idle',snapshot:null,subscriptionId:null,logEpoch:null,error:null,gap:null,cleanupError:null};
   #assembler; #offNotification; #offClosed; #connect; #resync; #generation=0; #closed=false;
-  #observerErrors=0; #flight; #resyncAgain=null; #appliedBase=false; #orphans=[]; #frameTimer; #assemblyTimer; #commands=new Map(); #commandControllers=new Map(); #cancelPromise;
+  #observerErrors=0; #flight; #resyncAgain=null; #appliedBase=false; #orphans=[]; #frameTimer; #assemblyTimer; #commands=new Map(); #commandControllers=new Map(); #cancelPromise; #listeners=new Set();
   constructor(peer,{address,workspace,connectionId,clientId,clientMode='web-remote-replayable',runnable=false,onChange=()=>{},frameTimeoutMs=10000,assemblyOptions={},maxCommands=128}={}){
     if(!workspace||!address||address.runtime!=='zcode'||!nonempty(address.authority)||!nonempty(address.sessionId)||address.workspace!==workspace?.workspacePath||workspace.workspaceKey!==workspace.workspacePath||!nonempty(workspace?.workspacePath)||!nonempty(connectionId)||!nonempty(clientId)||typeof runnable!=='boolean'||!['desktop-continuous','web-remote-replayable'].includes(clientMode)||!int(frameTimeoutMs)||frameTimeoutMs===0||!int(maxCommands)||maxCommands===0)throw new BridgeError('conversation-context-invalid');
     Object.assign(this,{peer,address:structuredClone(address),workspace:structuredClone(workspace),connectionId,clientId,clientMode,runnable,onChange,frameTimeoutMs,maxCommands});
@@ -45,7 +45,12 @@ export class V4Conversation {
   get state(){return structuredClone({...this.#state,commands:[...this.#commands.values()],observerErrors:this.#observerErrors,profile:this.clientMode==='desktop-continuous'?'continuous':'replayable',admission:this.admission})}
   get admission(){return {allowed:!this.#closed&&this.runnable&&this.#state.status==='live'&&!!this.#state.snapshot,reason:this.#closed?'closed':!this.runnable?'runtime-restricted':this.#state.status!=='live'?'projection-unconfirmed':null}}
   get assemblyStats(){return this.#assembler.getStats()}
-  #publish(change={}){this.#state={...this.#state,...change};try{this.onChange(this.state)}catch{this.#observerErrors=Math.min(Number.MAX_SAFE_INTEGER,this.#observerErrors+1)}}
+  subscribe(listener){if(this.#closed)return ()=>{};this.#listeners.add(listener);return ()=>this.#listeners.delete(listener)}
+  #publish(change={}){
+    this.#state={...this.#state,...change};
+    try{this.onChange(this.state)}catch{this.#observerErrors=Math.min(Number.MAX_SAFE_INTEGER,this.#observerErrors+1)}
+    for(const listener of this.#listeners){try{listener(this.state)}catch{this.#observerErrors=Math.min(Number.MAX_SAFE_INTEGER,this.#observerErrors+1)}}
+  }
   #base(){const s=this.#state.snapshot;return s&&this.#appliedBase&&s.logEpoch===this.#state.logEpoch?{logEpoch:s.logEpoch,seq:s.seq}:null}
   #deadline(flight){
     // ACK observers can synchronously end or replace a flight; deadlines belong to that flight only.

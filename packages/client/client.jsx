@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { statusText } from './status.mjs';
 import { StatusController } from './controller.mjs';
 import { installRuntimeSessions } from './sources.mjs';
+export { ZCodeConversationView, ConversationController } from './conversation-view.jsx';
 export const inject=['slots','locale','connection'];
 const zh={title:'ZCode',description:'官方安装与连接状态'},en={title:'ZCode',description:'Official installation and connection status'};
 /** A bundle-owned configuration page in the existing Plugins slot. */
