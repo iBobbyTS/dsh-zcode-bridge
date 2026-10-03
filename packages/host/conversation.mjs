@@ -11,6 +11,7 @@ import {
 } from './vendor/zcode/v4.mjs';
 const nonempty=x=>typeof x==='string'&&x.trim().length>0;
 const int=x=>Number.isSafeInteger(x)&&x>=0;
+const managementCommands=new Set(['renameSession','deleteSession']);
 const terminal=new Set(['completed','failed','interrupted','rejected','stale','noop','not-sent']);
 /** RFC 9562 UUIDv7; retries/query use the stored id, never this generator again. */
 export function newCommandId(){
@@ -30,20 +31,21 @@ export class V4Conversation {
   #state={status:'idle',snapshot:null,subscriptionId:null,logEpoch:null,error:null,gap:null,cleanupError:null};
   #assembler; #offNotification; #offClosed; #connect; #resync; #generation=0; #closed=false;
   #observerErrors=0; #flight; #resyncAgain=null; #appliedBase=false; #orphans=[]; #frameTimer; #assemblyTimer; #commands=new Map(); #commandControllers=new Map(); #cancelPromise; #listeners=new Set();
-  constructor(peer,{address,workspace,connectionId,clientId,clientMode='web-remote-replayable',runnable=false,onChange=()=>{},frameTimeoutMs=10000,assemblyOptions={},maxCommands=128}={}){
-    if(!workspace||!address||address.runtime!=='zcode'||!nonempty(address.authority)||!nonempty(address.sessionId)||address.workspace!==workspace?.workspacePath||workspace.workspaceKey!==workspace.workspacePath||!nonempty(workspace?.workspacePath)||!nonempty(connectionId)||!nonempty(clientId)||typeof runnable!=='boolean'||!['desktop-continuous','web-remote-replayable'].includes(clientMode)||!int(frameTimeoutMs)||frameTimeoutMs===0||!int(maxCommands)||maxCommands===0)throw new BridgeError('conversation-context-invalid');
-    Object.assign(this,{peer,address:structuredClone(address),workspace:structuredClone(workspace),connectionId,clientId,clientMode,runnable,onChange,frameTimeoutMs,maxCommands});
+  constructor(peer,{address,workspace,connectionId,clientId,clientMode='web-remote-replayable',runnable=false,managementAllowed=false,onChange=()=>{},frameTimeoutMs=10000,assemblyOptions={},maxCommands=128}={}){
+    if(!workspace||!address||address.runtime!=='zcode'||!nonempty(address.authority)||!nonempty(address.sessionId)||address.workspace!==workspace?.workspacePath||workspace.workspaceKey!==workspace.workspacePath||!nonempty(workspace?.workspacePath)||!nonempty(connectionId)||!nonempty(clientId)||typeof runnable!=='boolean'||typeof managementAllowed!=='boolean'||!['desktop-continuous','web-remote-replayable'].includes(clientMode)||!int(frameTimeoutMs)||frameTimeoutMs===0||!int(maxCommands)||maxCommands===0)throw new BridgeError('conversation-context-invalid');
+    Object.assign(this,{peer,address:structuredClone(address),workspace:structuredClone(workspace),connectionId,clientId,clientMode,runnable,managementAllowed,onChange,frameTimeoutMs,maxCommands});
     // Caller objects cannot mutate the owned routing context after admission.
     Object.freeze(this.address);Object.freeze(this.workspace);
-    for(const key of ['peer','address','workspace','connectionId','clientId','clientMode','runnable','frameTimeoutMs','maxCommands'])Object.defineProperty(this,key,{writable:false});
+    for(const key of ['peer','address','workspace','connectionId','clientId','clientMode','runnable','managementAllowed','frameTimeoutMs','maxCommands'])Object.defineProperty(this,key,{writable:false});
     this.topic='conversation/'+address.sessionId;
     Object.defineProperty(this,'topic',{writable:false});
     this.#assembler=new TopicWireFrameAssembler(conversationTopicFrameSchema,assemblyOptions);
     this.#offNotification=peer.onNotification(m=>{if(m.method==='v4/conversation/frame')this.#wire(m.params)});
     this.#offClosed=peer.onClosed(code=>this.#disconnect(code));
   }
-  get state(){return structuredClone({...this.#state,commands:[...this.#commands.values()],observerErrors:this.#observerErrors,profile:this.clientMode==='desktop-continuous'?'continuous':'replayable',admission:this.admission})}
+  get state(){return structuredClone({...this.#state,commands:[...this.#commands.values()],observerErrors:this.#observerErrors,profile:this.clientMode==='desktop-continuous'?'continuous':'replayable',admission:this.admission,managementAdmission:this.managementAdmission})}
   get admission(){return {allowed:!this.#closed&&this.runnable&&this.#state.status==='live'&&!!this.#state.snapshot,reason:this.#closed?'closed':!this.runnable?'runtime-restricted':this.#state.status!=='live'?'projection-unconfirmed':null}}
+  get managementAdmission(){return {allowed:!this.#closed&&this.managementAllowed&&this.#state.status==='live'&&!!this.#state.snapshot,reason:this.#closed?'closed':!this.managementAllowed?'management-unverified':this.#state.status!=='live'?'projection-unconfirmed':null}}
   get assemblyStats(){return this.#assembler.getStats()}
   get listenerCount(){return this.#listeners.size}
   subscribe(listener){if(this.#closed)return ()=>{};this.#listeners.add(listener);return ()=>this.#listeners.delete(listener)}
@@ -168,8 +170,10 @@ export class V4Conversation {
     throw new BridgeError('command-pending-limit');
   }
   command(commandId){const record=this.#commands.get(commandId);return record?structuredClone(record):null}
-  async submit({type,payload,commandId=newCommandId()}={}, {signal}={}){
-    if(!this.admission.allowed)throw new BridgeError(this.admission.reason);
+  async submit({type,payload,commandId=newCommandId(),baseRevision}={}, {signal}={}){
+    const admission=managementCommands.has(type)?this.managementAdmission:this.admission;
+    if(!admission.allowed)throw new BridgeError(admission.reason);
+    if(baseRevision!==undefined&&!int(baseRevision))throw new BridgeError('command-invalid');
     if(!nonempty(commandId))throw new BridgeError('command-invalid');
     if(this.#commands.has(commandId))throw new BridgeError('command-already-tracked');
     if(signal?.aborted)throw new BridgeError('cancelled');
@@ -179,7 +183,7 @@ export class V4Conversation {
       if(!snapshot.control.canStop||!executionId||!snapshot.control.activeWorks.some(x=>x.foregroundExecutionId===executionId))throw new BridgeError('stop-target-unconfirmed');
     }
     if(type==='resolveInteraction'&&!snapshot.pendingInteractions.some(x=>x.interactionId===payload?.interactionId))throw new BridgeError('interaction-unconfirmed');
-    const envelope={commandId,clientId:this.clientId,sessionId:this.address.sessionId,type,payload,issuedAt:Date.now(),...(COMMANDS_REQUIRING_BASE_REVISION.has(type)?{baseRevision:snapshot.revision}:{}),...(ROW_TARGETING_COMMANDS.has(type)?{baseLogEpoch:snapshot.logEpoch}:{})};
+    const envelope={commandId,clientId:this.clientId,sessionId:this.address.sessionId,type,payload,issuedAt:Date.now(),...(COMMANDS_REQUIRING_BASE_REVISION.has(type)?{baseRevision:baseRevision??snapshot.revision}:{}),...(ROW_TARGETING_COMMANDS.has(type)?{baseLogEpoch:snapshot.logEpoch}:{})};
     const parsed=parseCommandEnvelope(envelope);
     if(!parsed.ok)throw new BridgeError('command-invalid');
     if(ROW_TARGETING_COMMANDS.has(type)&&!snapshot.rows.window.some(row=>row.rowId===payload.target.rowId&&row.entityId===payload.target.entityId))throw new BridgeError('row-target-unconfirmed');
@@ -245,9 +249,9 @@ export class V4Conversation {
     for(const [id,controller] of this.#commandControllers){controller.abort();const record=this.#commands.get(id);if(record&&!terminal.has(record.state)){record.state='outcome-unknown';record.error=code}}
     this.#commandControllers.clear();this.#publish({status:'closed',error:code,subscriptionId:null});
   }
-  cancel(){
+  cancel({reason='cancelled'}={}){
     if(this.#cancelPromise)return this.#cancelPromise;
-    const id=this.#state.subscriptionId;this.#disconnect('cancelled');
+    const id=this.#state.subscriptionId;this.#disconnect(reason);
     // A subscribe in flight still receives its ACK, cleans the owned orphan, then settles.
     this.#cancelPromise=(async()=>{if(id)await this.#unsubscribe(id);await this.#connect;await this.#resync;await Promise.all(this.#orphans);this.#orphans=[]})().catch(e=>{this.#publish({cleanupError:{code:e.code??'subscription-cleanup-uncertain'}})});
     return this.#cancelPromise;

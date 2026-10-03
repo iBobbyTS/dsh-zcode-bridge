@@ -4,7 +4,7 @@ export const CHANNEL='/zcode-bridge';
 const sourceEndpoint='sessions';
 /** Uses DSH's authenticated carrier and plugin lifecycle; no DSH loop is registered. */
 export function apply(ctx,config={}) {
-  const host=new BridgeHost({appPath:config.appPath,workspacePath:config.workspacePath});
+  const host=new BridgeHost({appPath:config.appPath,workspacePath:config.workspacePath,catalogLimit:config.catalogLimit});
   ctx.effect(()=>()=>host.dispose(),'zcode-bridge: owned runtime');
   ctx.inject(['webServer'],webCtx=>{
     // Connection binds routes to the Context reading the service. The injected
@@ -14,6 +14,15 @@ export function apply(ctx,config={}) {
         if(!payload||typeof payload!=='object'||Array.isArray(payload)||Object.keys(payload).some(key=>key!=='address'))return {ok:false,error:{code:'invalid-payload',message:'Only a Session address may be queried',details:{}}};
         try{return {ok:true,value:await host.listSessions({address:payload.address,signal})}}
         catch(error){return {ok:false,error:{code:error.code??'source-unavailable',message:'Official Session source rejected the query',details:error.protocolCode===undefined?{}:{protocolCode:error.protocolCode}}}}
+      }
+      if(endpoint==='conversation'){
+        try{
+          if(!payload||typeof payload!=='object'||Array.isArray(payload))throw Object.assign(new Error(),{code:'invalid-payload'});
+          const allowed=payload.operation==='open'?['operation','address']:['operation','handle','command','commandId'];
+          if(Object.keys(payload).some(key=>!allowed.includes(key)))throw Object.assign(new Error(),{code:'invalid-payload'});
+          signal.throwIfAborted();
+          return {ok:true,value:payload.operation==='open'?await host.openConversation(payload.address,{signal}):await host.conversationOperation(payload,signal)};
+        }catch(error){return {ok:false,error:{code:error.code??'conversation-unavailable',message:'Official conversation operation rejected',details:error.protocolCode===undefined?{}:{protocolCode:error.protocolCode}}}}
       }
       if(endpoint!=='status'&&endpoint!=='connect')return {ok:false,error:{code:'not-found',message:`Endpoint ${endpoint} not found`,details:{}}};
       if(payload!==null&&payload!==undefined&&!(typeof payload==='object'&&!Array.isArray(payload)&&Object.keys(payload).length===0))return {ok:false,error:{code:'invalid-payload',message:'This endpoint accepts no runtime commands',details:{}}};

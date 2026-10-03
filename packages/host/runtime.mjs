@@ -7,35 +7,78 @@ import { ProtocolPeer } from './protocol.mjs';
 export const initialStatus=()=>({state:'unavailable',reason:'not-connected',auth:'unconfirmed',connected:false});
 /** Owns only children it launches; there is no attach or shared-process killer. */
 export class BridgeHost {
-  #conversations=new Set(); #clientId='bridge-'+randomUUID(); #status=initialStatus(); #peer; #child; #operation; #disposed=false; #stop; #disposePromise;
-  constructor({appPath,workspacePath,inspect=inspectInstallation,spawnProcess=spawn,onStatus=()=>{}}={}){this.appPath=appPath;this.workspacePath=workspacePath;this.inspect=inspect;this.spawnProcess=spawnProcess;this.onStatus=onStatus}
+  #conversations=new Set(); #handles=new Map(); #deleted=new Set(); #clientId='bridge-'+randomUUID(); #status=initialStatus(); #peer; #operation; #disposed=false; #stop; #disposePromise;
+  constructor({appPath,workspacePath,inspect=inspectInstallation,spawnProcess=spawn,catalogLimit=4096,onStatus=()=>{}}={}){if(!Number.isSafeInteger(catalogLimit)||catalogLimit<50||catalogLimit>65536)throw new BridgeError('catalog-limit-invalid');this.catalogLimit=catalogLimit;this.appPath=appPath;this.workspacePath=workspacePath;this.inspect=inspect;this.spawnProcess=spawnProcess;this.onStatus=onStatus}
   get status(){return structuredClone(this.#status)}
   /** Read official catalog facts only. An address query never activates a Session. */
   async listSessions({address,signal}={}){
     const peer=this.#peer,status=this.status;
     if(this.#disposed||!status.connected||!peer||peer.closed)throw new BridgeError('source-unavailable');
     if(address!==undefined&&(!address||address.runtime!=='zcode'||address.authority!==status.sessionAuthority||address.workspace!==status.workspacePath||typeof address.sessionId!=='string'||!address.sessionId))throw new BridgeError('source-address-mismatch');
-    const result=await peer.request('session/list',{
-      workspace:{workspacePath:status.workspacePath,workspaceKey:status.workspacePath},
-      ...(address?{sessionIds:[address.sessionId]}:{}),
-    },{signal});
+    // Official carrier has only limit (default 50), no offset/cursor/search. Grow the
+    // prefix explicitly; never advertise a saturated bounded prefix as a complete catalog.
+    let result,limit=address?1:50,truncated=false;
+    do{
+      result=await peer.request('session/list',{
+        workspace:{workspacePath:status.workspacePath,workspaceKey:status.workspacePath},
+        ...(address?{sessionIds:[address.sessionId]}:{limit}),
+      },{signal});
+      if(!result||!Array.isArray(result.sessions))throw new BridgeError('sessions-invalid');
+      if(address||result.sessions.length<limit)break;
+      if(limit===this.catalogLimit){truncated=true;break}
+      limit=Math.min(this.catalogLimit,limit*2);
+    }while(limit<=this.catalogLimit);
     if(this.#disposed||peer!==this.#peer||peer.closed||!this.#status.connected)throw new BridgeError('source-unavailable');
     if(!result||!Array.isArray(result.sessions))throw new BridgeError('sessions-invalid');
     const sessions=result.sessions.map(session=>{
       if(!session||typeof session.sessionId!=='string'||!session.sessionId||typeof session.title!=='string'||session.workspace?.workspacePath!==status.workspacePath||session.workspace?.workspaceKey!==status.workspacePath||typeof session.status!=='string'||(address&&session.sessionId!==address.sessionId))throw new BridgeError('sessions-invalid');
       return {address:{runtime:'zcode',authority:status.sessionAuthority,workspace:status.workspacePath,sessionId:session.sessionId},title:session.title,cwd:session.workspace.workspacePath,running:undefined};
     });
-    return {sessions,scope:{authority:status.sessionAuthority,workspace:status.workspacePath},availability:{state:status.state,reason:status.reason,capabilities:{create:false,open:false,nativeAgent:false}}};
+    if(new Set(sessions.map(row=>row.address.sessionId)).size!==sessions.length)throw new BridgeError('sessions-invalid');
+    if(address&&sessions.length===0){const catalog=await this.listSessions({signal});return {...catalog,sessions:catalog.sessions.filter(row=>row.address.sessionId===address.sessionId)}}
+    const visible=sessions.filter(row=>!this.#deleted.has(row.address.sessionId));
+    return {sessions:visible,catalog:{complete:!truncated,truncated,limit,deleted:[...this.#deleted],sharedGui:'unverified',authorityKind:'owned-headless',lifetime:'process'},management:{rename:status.installation?.verified===true,delete:status.installation?.verified===true,archive:false,pin:false,reason:'archive-pin-carrier-unverified',renameCas:false,deleteSemantics:'official-runtime-removal'},scope:{authority:status.sessionAuthority,workspace:status.workspacePath},availability:{state:status.state,reason:status.reason,capabilities:{create:false,open:false,nativeAgent:false}}};
   }
   /** Scoped API for S03.B. Read projection is permitted; restricted runtime never admits actions. */
   createConversation(address,{onChange=()=>{}}={}){
     const status=this.status;
     if(this.#disposed||!status.connected||!this.#peer||this.#peer.closed)throw new BridgeError('source-unavailable');
     if(!address||address.runtime!=='zcode'||address.authority!==status.sessionAuthority||address.workspace!==status.workspacePath||typeof address.sessionId!=='string'||!address.sessionId)throw new BridgeError('source-address-mismatch');
+    if(this.#deleted.has(address.sessionId))throw new BridgeError('session-deleted');
     // The publisher replaces by (connectionId, topic); each downstream owner needs its own stable slot.
     const connectionId=status.sessionAuthority+':'+randomUUID();
-    const conversation=new V4Conversation(this.#peer,{address,workspace:{workspacePath:status.workspacePath,workspaceKey:status.workspacePath},connectionId,clientId:this.#clientId,runnable:status.state==='available',onChange:state=>{if(state.status==='closed')this.#conversations.delete(conversation);onChange(state)}});
+    const conversation=new V4Conversation(this.#peer,{address,workspace:{workspacePath:status.workspacePath,workspaceKey:status.workspacePath},connectionId,clientId:this.#clientId,runnable:status.state==='available',managementAllowed:status.installation?.verified===true,onChange:state=>{if(state.status==='closed')this.#conversations.delete(conversation);onChange(state)}});
     this.#conversations.add(conversation);return conversation;
+  }
+  /** Opaque per-view ownership; no runtime/command capability is accepted from UI. */
+  async openConversation(address,{signal}={}){
+    if(signal?.aborted)throw new BridgeError('cancelled');
+    if(this.#handles.size>=64)throw new BridgeError('conversation-limit');
+    const conversation=this.createConversation(address),handle=randomUUID();
+    this.#handles.set(handle,conversation);
+    const abort=()=>{this.#handles.delete(handle);void conversation.cancel()};signal?.addEventListener('abort',abort,{once:true});
+    try{await conversation.connect();if(signal?.aborted)throw new BridgeError('cancelled');return {handle,state:conversation.state}}
+    catch(error){this.#handles.delete(handle);await conversation.cancel();throw error}
+    finally{signal?.removeEventListener('abort',abort)}
+  }
+  async conversationOperation({handle,operation,command,commandId},signal){
+    const conversation=this.#handles.get(handle);
+    if(!conversation)throw new BridgeError('conversation-handle-invalid');
+    if(operation==='release'){this.#handles.delete(handle);await conversation.cancel();return {released:true}}
+    if(operation==='state')return conversation.state;
+    if(operation==='connect'){await conversation.connect();return conversation.state}
+    if(operation==='query'){const result=await conversation.queryCommand(commandId,{signal});await this.#acceptLifecycle(conversation,result);return result}
+    if(operation!=='command'||!command||!['renameSession','deleteSession'].includes(command.type))throw new BridgeError('management-command-unavailable');
+    const result=await conversation.submit(command,{signal});
+    await this.#acceptLifecycle(conversation,result);return result;
+  }
+  async #acceptLifecycle(conversation,result){
+    // Accepted deletion is an official decision, including a later query of a
+    // lost ACK. Fence all owners before cleanup; never resend the command.
+    if(result.type==='deleteSession'&&['accepted','duplicate'].includes(result.ack?.status)){
+      this.#deleted.add(conversation.address.sessionId);
+      await Promise.allSettled([...this.#conversations].filter(c=>c.address.sessionId===conversation.address.sessionId).map(c=>c.cancel({reason:'session-deleted'})));
+    }
   }
   #publish(change){this.#status={...this.#status,...change};this.onStatus(this.status)}
   connect(){
@@ -46,7 +89,7 @@ export class BridgeHost {
   }
   async #connect(){
     let peer,stop,terminalReason;
-    this.#status=initialStatus();this.#publish({state:'restricted',reason:'connecting',connected:false,auth:'unconfirmed'});
+    this.#deleted.clear();this.#handles.clear();this.#status=initialStatus();this.#publish({state:'restricted',reason:'connecting',connected:false,auth:'unconfirmed'});
     try{
       const installation=await this.inspect(this.appPath);
       if(this.#disposed)throw new BridgeError('disposed');
@@ -55,7 +98,6 @@ export class BridgeHost {
       if(this.#disposed)throw new BridgeError('disposed');
       this.#publish({installation,workspacePath,sessionAuthority:'official-headless:'+randomUUID()});
       const child=this.spawnProcess(installation.launcher,[installation.cjs,'app-server','--stdio'],{cwd:workspacePath,env:runtimeEnv(installation.providerConfig),stdio:['pipe','pipe','pipe']});
-      this.#child=child;
       const exited=new Promise(resolve=>child.once('close',resolve));
       let stopping;stop=this.#stop=()=>stopping??=stopOwned(child,exited);
       let stderrBytes=0;child.stderr.on('data',b=>{stderrBytes+=b.length}); // never collect raw diagnostics/credentials
