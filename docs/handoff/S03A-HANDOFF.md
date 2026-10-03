@@ -87,3 +87,45 @@ NOT_RUN：真实模型首发/工具或 permission/ask-user 任务/停止执行/�
 自评：S03.A 交付锥完成，等待父节独立双覆盖与 admission；S03/M0/M1 的模型/GUI/共享持久世界仍未完成。建议主 agent 在 S03.B 接入时消费同一 fixture，并保留 received/accepted/执行/等待/终态的区别；不因 draft/配置往返成功把 auth 或 durable Session seam 标 available。审查应覆盖完整 S03.A 与 B 拼接候选，尤其同批帧、cancel 重入、query/ACK 与 epoch fencing 的组合。
 
 本 worker 只提供实际 Git/脚本/检查/fixture 证据，不组装父级 audit pack，不自行宣称 CLEAN。
+
+## CODE REPAIR — CA3-1 / CA3-2（2026-10-03）
+
+本段为实现 worker 的有界修复记录；是否关闭评审发现、是否接纳候选仍归独立评审和主调度。修复基线 `ac85d11`。本轮未启动子代理，0 模型调用，reference/App 制品只读，DSH 仓无修改。
+
+### CA3-1：deadline 与 ACK 必须归属仍存活的 flight
+
+修复前的受控时钟回归复现了两条链：subscribe ACK 后、首帧前故障触发 recovery，旧 initial deadline 错判 recovery 超时；坏 recovery 已进入 error 后，迟到 ACK 修改 logEpoch 并武装新 deadline，随后自动把 error 翻成 resyncing。[修复前原始结果](../probes/checks/s03a-repair-repros.json) 保留 0/3 PASS 的失败证据（含 CA3-2）。
+
+修复：`#fault` 和新的 `resync` flight 起飞前清除旧 frameTimer；subscribe/resync ACK 处理验证 error 状态和所捕获的 flight identity；`#deadline(flight)` 的武装及回调均检查该 identity、closed/error 状态。订阅 ACK 的 observer 若同步替换 flight，旧 ACK 不会取消或武装新 flight 的 deadline。
+
+新增三条 CA3-1 回归（Node MockTimers，不靠真实 sleep 调概率）：
+
+1. ACK→首帧窗口内注入坏帧；超过旧 initial deadline 时仍为 resyncing，只有自己的 recovery ACK 武装的新 deadline 能终结 recovery，之后保持确定 error。
+2. ACK→首帧窗口内起 recovery；在 recovery ACK 前注入 owned 坏 recovery；迟到 ACK（带不同 epoch）不能改 epoch/error、不能武装自动重试；推进多倍 deadline 后仍只有一次 resync。
+3. subscribe ACK observer 同步起 recovery；旧 ACK 不会给替换后的 flight 武装 initial deadline；随后正式 recovery ACK/frame 可正常收口为 live。
+
+对应独立 checkout 提交：`7f58545` — `fix(conversation): bind recovery deadlines and ACKs to their flight`。
+
+### CA3-2：每个下游 conversation owner 占有独立且稳定的槽位
+
+官方 publisher 每个 topic 内用 connectionId 索引单一 subscription；新 subscribe 替换该 key 的旧 subscription。修复前，同 Host 的两实例共用 sessionAuthority：测试中两次 subscribe 后 server slots 实际为 1（应为 2），第一实例失去后续帧。
+
+修复：BridgeHost.createConversation 为每次创建生成 `${sessionAuthority}:${randomUUID()}`；该值存于现有不可变 V4Conversation.connectionId，同一实例 connect/resync/unsubscribe 始终沿用。仅 `${authority}:${sessionId}` 会使同 session 双开的两实例仍冲突，因此包含实例 UUID。没有改变 Session address、source seam、runnable/admission 或 clientId。
+
+新增测试使用真实捕获的 snapshot/delta 和明确的 publisher boundary fixture：服务端严格按 `(connectionId, topic)` 替换槽位。断言双开均收到 seq 推进、左右实例分别重连仅替换自己的旧 subscription、另一个保持存活并继续收帧，以及取消一个不会移除另一个。
+
+对应独立 checkout 提交：`47ed9d5` — `fix(host): isolate subscription slots for each conversation owner`。
+
+### 实跑、环境限制与提交交付
+
+- CA3-1 三条、CA3-2 一条 targeted 回归：4/4 PASS；新增回归在原候选上先复现失败。
+- Node 全量：**43/43 PASS**，保留全部原 39 项；build PASS；`git diff --check` 与独立 checkout staged whitespace PASS。[完整默认路径检查](../probes/checks/s03a-checks.json)。
+- DSH 全量确已重跑：**11/14 PASS，3 FAIL**。三个失败均为真实官方 headless 连接检查；当前 `mdfind` 返回空，而 `/Applications/ZCode.app` 存在。显式检查官方 3.14.4.7912 的 digest/launcher 成功；临时显式 appPath 重跑仍为 11/14。[显式路径检查](../probes/checks/s03a-repair-explicit-app-checks.json)。临时测试路径配置已撤回，原 DSH 集成断言未删除、未 stub、未 skip。
+- 用未修改的 `ac85d11` 独立 checkout 与修复代码、相同显式 App/workspace 做对照，两者均 `connected:false / reason:transport-eof`。[环境与基线对照](../probes/checks/s03a-repair-environment.json)。因此本轮没有获得 14/14；具体 headless 启动失败原因未进一步读取原始 runtime 诊断，不能宣称此门禁已通过。完整 14/14 需主调度在可完成正式 headless 连接的环境中复跑。
+- 不重采模型/GUI/账号内容；已有 fixtures 保持不变。
+
+当前执行权限将主仓 `.git` 设为只读，且 approval policy=never。主仓 `git add` / `git commit` 尝试均因无法创建 `.git/index.lock`（Operation not permitted）失败；主仓 HEAD 仍为 `ac85d11`，代码与证据差异保留在工作区。
+
+允许写入的独立 checkout：`/private/tmp/zcode-s03a-repair-vrj75X`，同名 feature 分支。上列两个 Conventional Commits 在该 checkout 实际生成；随后 docs commit 归档本记录和检查证据。交付 Git bundle：`/private/tmp/zcode-s03a-repair-vrj75X/S03A-REPAIR.bundle`，增量基于 `ac85d11`。由有主仓 `.git` 写权限的主调度导入/整合；没有 push、改写主仓历史或丢弃已有 `.DS_Store`。
+
+本段取代旧 handoff 的“最终产品 head 9f671a2 / 最终 checks 全 PASS”作为当前修复候选状态；原记录保留其历史语境。 worker 完成修复与可复核 Git 交付，不自行宣称 CODE 评审闭合。
