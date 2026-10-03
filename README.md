@@ -48,3 +48,15 @@ source/licensing, reusable official draft fixtures, fault injection and limits.
 Capture without model execution using `node scripts/capture-s03a.mjs`, then
 `node scripts/make-s03a-fixtures.mjs`; replay checks with
 `node scripts/check-s03a.mjs`.
+
+S06 adds official Queue/Guide/Start now input, queue editing and disposition,
+session selection changes, follow-up and goal commands. Each input freezes the
+official session selection; queued inputs keep their admitted model and mode.
+Current response models remain distinct from subsequent selections. Workspace
+presentation and explicit preference updates use scoped official carriers,
+without a second configuration store. Preference current-value reads and the
+Host model catalog remain unavailable. All execution controls remain auth-gated
+on the restricted Host. See [S06 handoff](docs/handoff/S06-HANDOFF.md) for verified
+payloads, fixture provenance and real non-model capture results. Reproduce that
+capture with `node scripts/capture-s06.mjs /Applications/ZCode.app` and derive
+busy fixtures with `node scripts/make-s06-fixtures.mjs`.
