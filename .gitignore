@@ -1,3 +1,4 @@
 node_modules/
 packages/client/lib/
 *.tgz
+*.DS_Store
