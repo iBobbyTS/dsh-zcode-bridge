@@ -46,3 +46,7 @@ test('B01 bounded pending table, notification does not settle request, retired d
  const f=fixture({maxPending:1});const p=f.peer.request('a',{});await assert.rejects(f.peer.request('b',{}),{code:'transport-pending-limit'});
  f.receive({method:'diagnostic',params:{id:f.sent[0].id}});assert.equal(f.peer.pendingCount,1);f.receive({id:f.sent[0].id,result:1});assert.equal(await p,1);f.receive({id:f.sent[0].id,result:2});assert.equal(f.peer.closed,false);f.peer.close();
 });
+test('B01 large bytewise-fragmented line reuses bounded storage across subsequent lines',async()=>{
+ const f=fixture({maxFrameBytes:100000});const p=f.peer.request('large',{});const payload='x'.repeat(65536);const line=Buffer.from(JSON.stringify({id:f.sent[0].id,result:payload})+'\n');for(const byte of line)f.input.emit('data',Uint8Array.of(byte));assert.equal(await p,payload);
+ const q=f.peer.request('small',{});f.receive({id:f.sent[1].id,result:'小'});assert.equal(await q,'小');f.peer.close();
+});

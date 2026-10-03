@@ -5,12 +5,12 @@ const validId=x=>typeof x==='string'||Number.isSafeInteger(x);
 const positive=x=>Number.isSafeInteger(x)&&x>0;
 /** Bounded duplex legacy NDJSON peer. Request direction, rather than id text, owns correlation. */
 export class ProtocolPeer {
-  #parts=[]; #bytes=0; #pending=new Map(); #retired=new Set(); #reverse=new Map(); #reverseRetired=new Set(); #closed=false;
+  #line=Buffer.alloc(0); #bytes=0; #pending=new Map(); #retired=new Set(); #reverse=new Map(); #reverseRetired=new Set(); #closed=false;
   #queue=[]; #queuedBytes=0; #blocked=false; #notifications=new Set(); #closures=new Set();
   constructor(input,output,{onClose=()=>{},onAuthUnavailable=()=>{},onRequest,timeoutMs=5000,maxFrameBytes=1024*1024,maxQueueBytes=1024*1024,maxPending=256}={}) {
     if(![timeoutMs,maxFrameBytes,maxQueueBytes,maxPending].every(positive))throw new RangeError('Peer limits must be positive integers');
     Object.assign(this,{input,output,onClose,onAuthUnavailable,onRequest,timeoutMs,maxFrameBytes,maxQueueBytes,maxPending});
-    this.data=chunk=>{try{this.#decode(typeof chunk==='string'?Buffer.from(chunk):chunk)}catch(e){this.close(e instanceof BridgeError?e.code:'protocol-invalid')}};
+    this.data=chunk=>{try{this.#decode(Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk))}catch(e){this.close(e instanceof BridgeError?e.code:'protocol-invalid')}};
     this.eof=()=>this.close(this.#bytes?'protocol-truncated':'transport-eof');
     this.error=()=>this.close('transport-error');
     this.drain=()=>{this.#blocked=false;try{this.#flush()}catch{this.close('transport-error')}};
@@ -28,10 +28,17 @@ export class ProtocolPeer {
       const newline=chunk.indexOf(10,start),end=newline<0?chunk.length:newline;
       const bytes=end-start;
       if(this.#bytes+bytes>this.maxFrameBytes)throw new BridgeError('protocol-buffer-limit');
-      if(bytes){this.#parts.push(Buffer.from(chunk.subarray(start,end)));this.#bytes+=bytes;if(this.#parts.length>=32)this.#parts=[Buffer.concat(this.#parts,this.#bytes)]}
+      if(bytes){
+        const required=this.#bytes+bytes;
+        if(required>this.#line.length){
+          const capacity=Math.min(this.maxFrameBytes,Math.max(required,this.#line.length*2,4096));
+          const line=Buffer.allocUnsafe(capacity);this.#line.copy(line,0,0,this.#bytes);this.#line=line;
+        }
+        chunk.copy(this.#line,this.#bytes,start,end);this.#bytes=required;
+      }
       if(newline<0)return;
-      const line=new TextDecoder('utf-8',{fatal:true}).decode(Buffer.concat(this.#parts,this.#bytes));
-      this.#parts=[];this.#bytes=0;
+      const line=new TextDecoder('utf-8',{fatal:true}).decode(this.#line.subarray(0,this.#bytes));
+      this.#bytes=0;
       if(line.trim())this.#receive(JSON.parse(line));
       start=end+1;
     }
@@ -119,7 +126,7 @@ export class ProtocolPeer {
     this.input.off('data',this.data);this.input.off('end',this.eof);this.input.off('close',this.eof);this.output.off('drain',this.drain);this.output.off('close',this.eof);
     for(const p of this.#pending.values()){p.cleanup();const e=new BridgeError(code);e.sent=p.sent;p.reject(e)}this.#pending.clear();
     for(const p of this.#reverse.values()){clearTimeout(p.timer);p.controller.abort()}this.#reverse.clear();
-    this.#retired.clear();this.#reverseRetired.clear();this.#parts=[];this.#bytes=0;this.#queue=[];this.#queuedBytes=0;
+    this.#retired.clear();this.#reverseRetired.clear();this.#line=Buffer.alloc(0);this.#bytes=0;this.#queue=[];this.#queuedBytes=0;
     this.#notifications.clear();for(const listener of this.#closures){try{listener(code)}catch{ /* Consumer teardown cannot block the transport owner. */ }}this.#closures.clear();
     // Keep error absorbers: queued EPIPE must not crash Host; the owner releases streams.
     this.onClose(code);

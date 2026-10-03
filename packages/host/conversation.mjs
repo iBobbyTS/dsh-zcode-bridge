@@ -27,7 +27,7 @@ export function negotiatedClientHello(hostHello,{clientId,appVersion,workspaceHo
 }
 /** One immutable authority/workspace/session/profile owner. No UI endpoint or runtime availability claim. */
 export class V4Conversation {
-  #state={status:'idle',snapshot:null,subscriptionId:null,logEpoch:null,error:null,gap:null};
+  #state={status:'idle',snapshot:null,subscriptionId:null,logEpoch:null,error:null,gap:null,cleanupError:null};
   #assembler; #offNotification; #offClosed; #connect; #resync; #generation=0; #closed=false;
   #observerErrors=0; #flight; #resyncAgain=null; #appliedBase=false; #orphans=[]; #frameTimer; #assemblyTimer; #commands=new Map(); #commandControllers=new Map(); #cancelPromise;
   constructor(peer,{address,workspace,connectionId,clientId,clientMode='web-remote-replayable',runnable=false,onChange=()=>{},frameTimeoutMs=10000,assemblyOptions={},maxCommands=128}={}){
@@ -63,6 +63,7 @@ export class V4Conversation {
     const params=v4ConversationSubscribeParamsSchema.parse({topic:this.topic,connectionId:this.connectionId,clientMode:this.clientMode,workspace:this.workspace,...(base?{base}:{})});
     const request=this.peer.request('v4/conversation/subscribe',params,{onResult:raw=>{
       const result=v4ConversationSubscribeResultSchema.parse(raw),ack=result.ack;
+      if(!nonempty(ack.subscriptionId)||!nonempty(ack.logEpoch))throw new BridgeError('subscription-ack-invalid');
       if(this.#closed||generation!==this.#generation){this.#orphans.push(this.#unsubscribe(ack.subscriptionId));return result}
       if(ack.mode==='resume'&&(!base||base.logEpoch!==ack.logEpoch))throw new BridgeError('subscription-base-invalid');
       this.#appliedBase=ack.mode==='resume';this.#publish({subscriptionId:ack.subscriptionId,logEpoch:ack.logEpoch});this.#deadline();return result;
@@ -136,6 +137,7 @@ export class V4Conversation {
     const params=v4ConversationResyncParamsSchema.parse({topic:this.topic,connectionId:this.connectionId,subscriptionId,base,...(forceSnapshot?{forceSnapshot:true}:{})});
     const request=this.peer.request('v4/conversation/resync',params,{onResult:raw=>{
       const result=v4ConversationResyncResultSchema.parse(raw),ack=result.ack;
+      if(!nonempty(ack.subscriptionId)||!nonempty(ack.logEpoch))throw new BridgeError('resync-ack-invalid');
       if(this.#closed||generation!==this.#generation)return result;
       if(ack.subscriptionId!==subscriptionId||(ack.mode==='resume'&&(!base||base.logEpoch!==ack.logEpoch)))throw new BridgeError('resync-identity-mismatch');
       this.#appliedBase=ack.mode==='resume';this.#publish({logEpoch:ack.logEpoch});this.#deadline();return result;
@@ -150,6 +152,7 @@ export class V4Conversation {
   command(commandId){const record=this.#commands.get(commandId);return record?structuredClone(record):null}
   async submit({type,payload,commandId=newCommandId()}={}, {signal}={}){
     if(!this.admission.allowed)throw new BridgeError(this.admission.reason);
+    if(!nonempty(commandId))throw new BridgeError('command-invalid');
     if(this.#commands.has(commandId))throw new BridgeError('command-already-tracked');
     if(signal?.aborted)throw new BridgeError('cancelled');
     const snapshot=this.#state.snapshot;
@@ -214,7 +217,8 @@ export class V4Conversation {
   async #unsubscribe(subscriptionId){
     if(this.peer.closed)return;
     const params=v4ConversationUnsubscribeParamsSchema.parse({topic:this.topic,connectionId:this.connectionId,subscriptionId});
-    await this.peer.request('v4/conversation/unsubscribe',params).catch(()=>{});
+    try{await this.peer.request('v4/conversation/unsubscribe',params)}
+    catch(e){this.#publish({cleanupError:{code:e.code??'unsubscribe-failed',...(e.protocolCode===undefined?{}:{protocolCode:e.protocolCode})}})}
   }
   #disconnect(code){
     if(this.#closed)return;this.#closed=true;++this.#generation;
@@ -227,7 +231,7 @@ export class V4Conversation {
     if(this.#cancelPromise)return this.#cancelPromise;
     const id=this.#state.subscriptionId;this.#disconnect('cancelled');
     // A subscribe in flight still receives its ACK, cleans the owned orphan, then settles.
-    this.#cancelPromise=(async()=>{if(id)await this.#unsubscribe(id);await this.#connect;await this.#resync;await Promise.all(this.#orphans);this.#orphans=[]})().catch(()=>{});
+    this.#cancelPromise=(async()=>{if(id)await this.#unsubscribe(id);await this.#connect;await this.#resync;await Promise.all(this.#orphans);this.#orphans=[]})().catch(e=>{this.#publish({cleanupError:{code:e.code??'subscription-cleanup-uncertain'}})});
     return this.#cancelPromise;
   }
 }

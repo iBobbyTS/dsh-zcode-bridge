@@ -44,7 +44,7 @@ test('B03 resume requires actual matching epoch state; snapshot ACK cannot autho
   const p=f.conversation.connect();f.response(f.sent[0],fixtures.success.ack);await p;
   f.wire(fixtures.success.online);assert.equal(f.conversation.state.snapshot,null);assert.equal(f.sent.at(-1).params.base,null);assert.equal(f.sent.at(-1).params.forceSnapshot,true);
  }finally{f.dispose()}
- const g=fixture();try{const p=g.conversation.connect();const ack=clone(fixtures.success.ack);ack.ack.mode='resume';g.response(g.sent[0],ack);await assert.rejects(p);assert.equal(g.peer.closed,true)}finally{g.dispose()}
+ for(const invalid of ['resume','empty-id','empty-epoch']){const g=fixture();try{const p=g.conversation.connect();const ack=clone(fixtures.success.ack);if(invalid==='resume')ack.ack.mode='resume';if(invalid==='empty-id')ack.ack.subscriptionId='';if(invalid==='empty-epoch')ack.ack.logEpoch='';g.response(g.sent[0],ack);await assert.rejects(p);assert.equal(g.peer.closed,true)}finally{g.dispose()}}
 });
 test('B03 held baseline survives reconnect; old subscription cannot write and epoch replacement is atomic',async()=>{
  const f=fixture();try{
@@ -164,4 +164,9 @@ test('B03 unrouteable mandatory frame fails safe; foreign/optional notifications
 test('observer failure cannot corrupt projection or prevent transport owner cleanup',async()=>{
  const f=fixture({onChange:()=>{throw Error('Consumer failure')}});await f.open();assert.equal(f.conversation.state.status,'live');assert.ok(f.conversation.state.observerErrors>0);assert.equal(f.peer.closed,false);
  let closed;f.peer.onClose=code=>closed=code;f.peer.onClosed(()=>{throw Error('Teardown failure')});f.dispose();assert.equal(closed,'disposed');assert.equal(f.conversation.state.status,'closed');
+});
+test('unsubscribe rejection is visible after idempotent local cancellation',async()=>{
+ const f=fixture();try{await f.open();const cancelled=f.conversation.cancel();f.receive({id:f.sent.at(-1).id,error:{code:-32602,message:'Rejected unsubscribe'}});await cancelled;
+  assert.equal(f.conversation.state.status,'closed');assert.deepEqual(f.conversation.state.cleanupError,{code:'runtime-rejected',protocolCode:-32602});assert.equal(f.conversation.admission.allowed,false);await f.conversation.cancel();assert.equal(f.sent.filter(x=>x.method==='v4/conversation/unsubscribe').length,1);
+ }finally{f.dispose()}
 });
