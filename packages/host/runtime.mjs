@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { realpath } from 'node:fs/promises';
 import { inspectInstallation, runtimeEnv, BridgeError } from './installation.mjs';
-import { V4Conversation, INPUT_COMMANDS } from './conversation.mjs';
+import { V4Conversation, INPUT_COMMANDS, MANAGEMENT_COMMANDS } from './conversation.mjs';
 import { ProtocolPeer } from './protocol.mjs';
 export const initialStatus=()=>({state:'unavailable',reason:'not-connected',auth:'unconfirmed',connected:false});
 /** Owns only children it launches; there is no attach or shared-process killer. */
@@ -61,7 +61,7 @@ export class BridgeHost {
     catch(error){this.#handles.delete(handle);await conversation.cancel();throw error}
     finally{signal?.removeEventListener('abort',abort)}
   }
-  async conversationOperation({handle,operation,command,commandId,kind,preferences},signal){
+  async conversationOperation({handle,operation,command,commandId,kind,preferences,attachment,uploadId,chunkIndex,dataBase64,ref,target,attachmentIndex,offset,limit},signal){
     const conversation=this.#handles.get(handle);
     if(!conversation)throw new BridgeError('conversation-handle-invalid');
     if(operation==='release'){this.#handles.delete(handle);await conversation.cancel();return {released:true}}
@@ -69,7 +69,14 @@ export class BridgeHost {
     if(operation==='connect'){await conversation.connect();return conversation.state}
     if(operation==='query'){const result=await conversation.queryCommand(commandId,{signal});await this.#acceptLifecycle(conversation,result);return result}
     if(operation==='workspaceConfig')return conversation.workspaceConfiguration(kind,preferences,{signal});
-    if(operation!=='command'||!command||!(['renameSession','deleteSession'].includes(command.type)||INPUT_COMMANDS.has(command.type)))throw new BridgeError('management-command-unavailable');
+    if(operation==='attachmentStart')return conversation.attachmentStart(attachment??{});
+    if(operation==='attachmentChunk')return conversation.attachmentChunk({uploadId,chunkIndex,dataBase64});
+    if(operation==='attachmentCommit')return conversation.attachmentCommit({uploadId});
+    if(operation==='attachmentAbort')return conversation.attachmentAbort({uploadId});
+    if(operation==='attachmentRead')return conversation.attachmentRead({ref,target,attachmentIndex,offset,limit,signal});
+    if(operation==='conversationAttachmentStat')return conversation.conversationAttachmentStat({ref,target,attachmentIndex,signal});
+    if(operation==='conversationAttachmentRead')return conversation.conversationAttachmentRead({ref,target,attachmentIndex,offset,limit,signal});
+    if(operation!=='command'||!command||!(MANAGEMENT_COMMANDS.has(command.type)||INPUT_COMMANDS.has(command.type)))throw new BridgeError('management-command-unavailable');
     const result=await conversation.submit(command,{signal});
     await this.#acceptLifecycle(conversation,result);return result;
   }

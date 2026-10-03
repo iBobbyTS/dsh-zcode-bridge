@@ -1,5 +1,5 @@
-function commandId(){
-  const bytes=crypto.getRandomValues(new Uint8Array(16));let time=Date.now();
+import { newAttachmentUploadId, uploadAttachmentViaPort } from './attachment.mjs';
+function commandId(){  const bytes=crypto.getRandomValues(new Uint8Array(16));let time=Date.now();
   for(let i=5;i>=0;i--){bytes[i]=time%256;time=Math.floor(time/256)}bytes[6]=(bytes[6]&15)|0x70;bytes[8]=(bytes[8]&63)|0x80;
   const hex=[...bytes].map(b=>b.toString(16).padStart(2,'0')).join('');return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
 }
@@ -9,7 +9,7 @@ export class RemoteConversation {
   constructor(rpc,address){this.rpc=rpc;this.address=address;this.state={status:'idle',snapshot:null,commands:[],admission:{allowed:false,reason:'runtime-restricted'},managementAdmission:{allowed:false,reason:'projection-unconfirmed'}}}
   subscribe(listener){this.#listeners.add(listener);return ()=>this.#listeners.delete(listener)}
   #publish(state){if(this.#released)return;const commands=new Map(this.#commands);for(const record of state.commands??[])commands.set(record.commandId,record);this.state={...state,commands:[...commands.values()]};for(const listener of this.#listeners){try{listener(this.state)}catch{}}}
-  async #call(payload){const result=await this.rpc.call('/zcode-bridge','conversation',payload,new AbortController().signal);if(!result.ok)throw Object.assign(new Error(result.error.code),result.error,{remoteRejected:true});return result.value}
+  async #call(payload, signal){const result=await this.rpc.call('/zcode-bridge','conversation',payload,signal??new AbortController().signal);if(!result.ok)throw Object.assign(new Error(result.error.code),result.error,{remoteRejected:true});return result.value}
   connect(){
     if(this.#released)return Promise.reject(new Error('reference-released'));
     if(this.#opening)return this.#opening;
@@ -53,6 +53,25 @@ export class RemoteConversation {
   workspaceConfiguration(kind,preferences){
     if(this.#released||!this.#handle)return Promise.reject(new Error('projection-unconfirmed'));
     return this.#call({operation:'workspaceConfig',handle:this.#handle,kind,...(preferences===undefined?{}:{preferences})});
+  }
+  attachmentStart(attachment,signal){if(this.#released||!this.#handle)return Promise.reject(new Error('projection-unconfirmed'));return this.#call({operation:'attachmentStart',handle:this.#handle,attachment},signal)}
+  attachmentChunk(uploadId,chunkIndex,dataBase64,signal){if(this.#released||!this.#handle)return Promise.reject(new Error('projection-unconfirmed'));return this.#call({operation:'attachmentChunk',handle:this.#handle,uploadId,chunkIndex,dataBase64},signal)}
+  attachmentCommit(uploadId,signal){if(this.#released||!this.#handle)return Promise.reject(new Error('projection-unconfirmed'));return this.#call({operation:'attachmentCommit',handle:this.#handle,uploadId},signal)}
+  attachmentAbort(uploadId,signal){if(this.#released||!this.#handle)return Promise.reject(new Error('projection-unconfirmed'));return this.#call({operation:'attachmentAbort',handle:this.#handle,uploadId},signal)}
+  attachmentRead({ref,target,attachmentIndex,offset=0,limit=512*1024},signal){if(this.#released||!this.#handle)return Promise.reject(new Error('projection-unconfirmed'));return this.#call({operation:'attachmentRead',handle:this.#handle,ref,...(target===undefined?{}:{target}),...(attachmentIndex===undefined?{}:{attachmentIndex}),offset,limit},signal)}
+  conversationAttachmentStat({ref,target,attachmentIndex},signal){if(this.#released||!this.#handle)return Promise.reject(new Error('projection-unconfirmed'));return this.#call({operation:'conversationAttachmentStat',handle:this.#handle,ref,target,attachmentIndex},signal)}
+  conversationAttachmentRead({ref,target,attachmentIndex,offset=0,limit=512*1024},signal){if(this.#released||!this.#handle)return Promise.reject(new Error('projection-unconfirmed'));return this.#call({operation:'conversationAttachmentRead',handle:this.#handle,ref,target,attachmentIndex,offset,limit},signal)}
+  /** Web path: chunks over scoped RPC; never a full-data request and never a caller-supplied session. */
+  uploadAttachment({fileName,mime,bytes},{signal,onProgress}={}){
+    if(this.#released||!this.#handle)return Promise.reject(new Error('projection-unconfirmed'));
+    const handle=this.#handle,uploadId=newAttachmentUploadId();
+    const port={
+      begin:p=>this.#call({operation:'attachmentStart',handle,attachment:p},signal),
+      chunk:p=>this.#call({operation:'attachmentChunk',handle,uploadId:p.uploadId,chunkIndex:p.chunkIndex,dataBase64:p.dataBase64},signal),
+      commit:p=>this.#call({operation:'attachmentCommit',handle,uploadId:p.uploadId},signal),
+      abort:()=>this.#call({operation:'attachmentAbort',handle,uploadId},signal),
+    };
+    return uploadAttachmentViaPort(port,{sessionId:this.address.sessionId,uploadId,fileName,mime,bytes},{signal,onProgress});
   }
   resync(){return this.connect()}
   async cancel(){if(this.#released)return;this.#released=true;clearTimeout(this.#timer);this.#listeners.clear();if(this.#handle)await this.#call({operation:'release',handle:this.#handle});else await this.#opening?.catch(()=>{})}

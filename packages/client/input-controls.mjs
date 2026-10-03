@@ -5,7 +5,7 @@ const deliveries = new Set(['queue', 'guide', 'startNow']);
 const queueCommands = new Set(['editQueueItem', 'deleteQueueItem', 'reorderQueueItem', 'sendQueuedNow']);
 
 /** Freeze the official selection in this input; never consult DSH defaults. */
-export function inputSubmission(snapshot, text, { goal = false, delivery } = {}) {
+export function inputSubmission(snapshot, text, { goal = false, delivery, attachments, sharedContextRefs } = {}) {
   const slash = parseV4VisibleSlashCommand(goal && !text.trim().startsWith('/') ? `/goal ${text}` : text);
   if (slash?.kind === 'resumeGoal') return { type: 'resumeGoal', payload: {} };
   if (slash && slash.kind !== 'sendGoalCommand') throw new Error(`input-command-unavailable:${slash.kind}`);
@@ -13,19 +13,50 @@ export function inputSubmission(snapshot, text, { goal = false, delivery } = {})
   const selection = snapshot?.config?.modelSelection;
   if (!selection?.providerId || !selection?.modelId) throw new Error('selection-missing');
   if (!modes.has(snapshot.config.mode)) throw new Error('submission-mode-unavailable');
-  if (!text.trim()) throw new Error('input-empty');
+  const attachmentRefs = Array.isArray(attachments) ? attachments : [];
+  const contextRefs = Array.isArray(sharedContextRefs) ? sharedContextRefs : [];
+  const goalCommand = slash?.kind === 'sendGoalCommand';
+  if (goalCommand && (attachmentRefs.length || contextRefs.length)) throw new Error('goal-attachments-unavailable');
+  if (!text.trim() && attachmentRefs.length === 0) throw new Error('input-empty');
   if (delivery !== undefined && !deliveries.has(delivery)) throw new Error('delivery-invalid');
   return {
-    type: slash?.kind === 'sendGoalCommand' ? 'sendGoalCommand' : 'sendText',
+    type: goalCommand ? 'sendGoalCommand' : 'sendText',
     payload: {
-      text: slash?.kind === 'sendGoalCommand' ? slash.objective : text,
-      ...(slash?.kind === 'sendGoalCommand' ? { displayText: slash.displayText } : {}),
+      text: goalCommand ? slash.objective : text,
+      ...(goalCommand ? { displayText: slash.displayText } : {}),
+      ...(attachmentRefs.length ? { attachments: attachmentRefs } : {}),
+      ...(contextRefs.length ? { context_refs: contextRefs } : {}),
       modelSelection: structuredClone(selection),
       mode: snapshot.config.mode,
       ...(snapshot.config.planEnabled !== undefined ? { planEnabled: snapshot.config.planEnabled } : {}),
       ...(!slash && delivery ? { requestedDelivery: delivery } : {}),
     },
   };
+}
+
+/** The official imported shared context, if the session projection exposes one. */
+export function sharedContextState(snapshot) {
+  const context = snapshot?.sharedContextImport;
+  if (!context || typeof context.contextId !== 'string' || !context.contextId.trim()) return null;
+  return {
+    contextId: context.contextId,
+    title: typeof context.title === 'string' ? context.title : null,
+    shareUrl: typeof context.shareUrl === 'string' ? context.shareUrl : null,
+    status: typeof context.status === 'string' ? context.status : null,
+  };
+}
+
+/** A use-ref is valid only for the pending/reserved import the projection currently shows. */
+export function sharedContextRefs(snapshot) {
+  const context = sharedContextState(snapshot);
+  if (!context || !['pending', 'reserved'].includes(context.status)) return [];
+  return [{ kind: 'shared_context_import', context_id: context.contextId }];
+}
+
+/** Withdraw is only meaningful for a pending import; attached/legacy states stay untouched. */
+export function canDiscardSharedContext(snapshot) {
+  const context = sharedContextState(snapshot);
+  return Boolean(context && context.status === 'pending');
 }
 
 /** A local confirmation draft, not a second runtime pending-interaction registry. */

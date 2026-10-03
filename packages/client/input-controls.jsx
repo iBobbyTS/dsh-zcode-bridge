@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { inputSubmission, heldConfirmation, confirmHeld, optimisticQueue, commandResultText, executionSelection } from './input-controls.mjs';
+import { inputSubmission, heldConfirmation, confirmHeld, optimisticQueue, commandResultText, executionSelection, sharedContextState, sharedContextRefs, canDiscardSharedContext } from './input-controls.mjs';
 
 /** Official command controls. Drafts and previews are local; accepted state comes from V4. */
 export function ZCodeInputControls({ state, controller }) {
@@ -18,14 +18,22 @@ export function ZCodeInputControls({ state, controller }) {
   const [editing, setEditing] = useState(null);
   const [editText, setEditText] = useState('');
   const [modelDraft, setModelDraft] = useState(null);
+  const [attachments, setAttachments] = useState([]);
+  const [upload, setUpload] = useState(null);
+  const [sharedUse, setSharedUse] = useState(true);
+  const abortUpload = useRef(null);
   const allowed = state?.status === 'live' && state?.admission?.allowed === true;
+  const attachmentsAllowed = state?.status === 'live' && state?.attachmentAdmission?.allowed === true;
   const available = name => allowed && snapshot?.availability?.[name]?.allowed === true;
   const disabled = !allowed || Boolean(operation);
   const execution = executionSelection(snapshot);
   const items = optimisticQueue(snapshot?.queue?.items ?? [], operation?.logEpoch === snapshot?.logEpoch ? operation : null);
   const model = modelDraft ?? { provider: snapshot?.config?.provider ?? '', model: snapshot?.config?.model ?? '', thought: snapshot?.config?.thought ?? '' };
+  const contextState = sharedContextState(snapshot);
+  const contextRefs = sharedContextRefs(snapshot);
+  const contextAttachable = sharedUse && contextRefs.length > 0;
 
-  async function run(command, { preview, clearInput = false } = {}) {
+  async function run(command, { preview, clearInput = false, clearAttachments = false } = {}) {
     if (flight.current || !latest.current?.admission?.allowed || latest.current?.status !== 'live') return;
     const token = { controller }; flight.current = token;
     const epoch = latest.current.snapshot.logEpoch;
@@ -37,6 +45,7 @@ export function ZCodeInputControls({ state, controller }) {
       setResult(commandResultText(record));
       if (['accepted', 'duplicate'].includes(record?.ack?.status)) {
         if (clearInput) { setText(current => current === submittedText ? '' : current); setHeld(null); }
+        if (clearAttachments) setAttachments([]);
         if (command.type === 'editQueueItem') setEditing(null);
         if (command.type === 'switchModelConfig') setModelDraft(null);
       }
@@ -81,12 +90,56 @@ export function ZCodeInputControls({ state, controller }) {
     }
   }
 
+  async function uploadFiles(event) {
+    const files = [...(event.target.files ?? [])]; event.target.value = '';
+    if (!files.length || flight.current) return;
+    const token = { controller }; flight.current = token;
+    setUpload({ name: files[0].name, phase: 'reading', uploadedBytes: 0, totalBytes: 0 }); setResult('');
+    try {
+      for (const file of files) {
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        if (!alive.current || owner.current !== controller) return;
+        abortUpload.current = new AbortController();
+        const { ref } = await controller.uploadAttachment({ fileName: file.name, mime: file.type || 'application/octet-stream', bytes }, {
+          signal: abortUpload.current.signal,
+          onProgress: progress => { if (alive.current && owner.current === controller) setUpload({ name: file.name, ...progress }); },
+        });
+        if (!alive.current || owner.current !== controller) return;
+        setAttachments(current => [...current, { ref, fileName: file.name, mime: file.type || 'application/octet-stream', bytes: bytes.byteLength }]);
+      }
+      setUpload(null);
+      setResult('Attachment upload committed through the official transaction. It is session-bound and stays local until sent with an input.');
+    } catch (error) {
+      if (alive.current && owner.current === controller) { setUpload(null); setResult(`${error.code ?? error.message}. No attachment was added; the upload transaction was aborted and no runtime attachment is shown.`); }
+    } finally {
+      abortUpload.current = null;
+      if (flight.current === token) { flight.current = null; if (alive.current) setUpload(null); }
+    }
+  }
+
+  function cancelUpload() { abortUpload.current?.abort(); }
+
+  async function discardContext(contextId) {
+    if (flight.current) return;
+    const token = { controller }; flight.current = token;
+    const epoch = latest.current.snapshot?.logEpoch;
+    setOperation({ type: 'discardSharedContext' }); setResult('');
+    try {
+      const record = await controller.discardSharedContext(contextId);
+      if (alive.current && owner.current === token.controller && latest.current.snapshot?.logEpoch === epoch) setResult(commandResultText(record));
+    } catch (error) {
+      if (alive.current && owner.current === token.controller && latest.current.snapshot?.logEpoch === epoch) setResult(`${error.code ?? error.message}. Shared context was not withdrawn; the origin session is untouched.`);
+    } finally {
+      if (flight.current === token) { flight.current = null; if (alive.current) setOperation(null); }
+    }
+  }
+
   function send() {
     try {
       const current = latest.current.snapshot;
-      const command = inputSubmission(current, text, { goal, delivery: delivery || undefined });
+      const command = inputSubmission(current, text, { goal, delivery: delivery || undefined, attachments: goal ? undefined : attachments, sharedContextRefs: contextAttachable ? contextRefs : undefined });
       if (current.inputRouting.mode === 'choice' && ['sendText', 'sendGoalCommand'].includes(command.type)) { setHeld(heldConfirmation(current, command)); return; }
-      void run(command, { clearInput: true });
+      void run(command, { clearInput: true, clearAttachments: !goal });
     } catch (error) { setResult(error.message); }
   }
   function disposeHeld(disposition) {
@@ -145,12 +198,28 @@ export function ZCodeInputControls({ state, controller }) {
     <button disabled={disabled || !available('resumeGoal')} onClick={() => void run({ type: 'resumeGoal', payload: {} })}>Resume goal</button>
     </div>
     <div style={{ flexShrink: 0, display: 'grid', gap: '4px' }}>
+    {contextState && <div data-testid="zcode-shared-context">
+      <p data-testid="zcode-shared-context-state">Shared context import: {contextState.title ?? 'untitled'} ({contextState.status ?? 'unknown'}){contextState.shareUrl ? ` — ${contextState.shareUrl}` : ''}</p>
+      <label><input type="checkbox" aria-label="Include shared context" checked={sharedUse && contextRefs.length > 0} disabled={disabled || contextRefs.length === 0} onChange={event => setSharedUse(event.target.checked)} />Include in next input</label>
+      <button data-testid="zcode-discard-shared-context" disabled={disabled || !canDiscardSharedContext(snapshot)} onClick={() => void discardContext(contextState.contextId)}>Withdraw shared context</button>
+      <small>Withdrawing only updates this session's import state; the origin session is never deleted or rewritten.</small>
+    </div>}
+    <div data-testid="zcode-attachments">
+      <label>Attachment <input type="file" multiple aria-label="Attachment file" disabled={!attachmentsAllowed || Boolean(operation) || Boolean(upload) || Boolean(held)} onChange={event => void uploadFiles(event)} /></label>
+      {upload && <span data-testid="zcode-upload-progress">{upload.name}: {upload.phase} {upload.uploadedBytes}/{upload.totalBytes} <button disabled={!upload} onClick={cancelUpload}>Cancel upload</button></span>}
+      {!attachmentsAllowed && <span data-testid="zcode-attachments-unavailable">Attachment upload unavailable: {state?.attachmentAdmission?.reason ?? 'projection-unconfirmed'}.</span>}
+      <ul data-testid="zcode-attachment-list">{attachments.map(attachment => <li key={attachment.ref} data-testid={`zcode-attachment-${attachment.fileName}`}>
+        <span>{attachment.fileName} ({attachment.mime}, {attachment.bytes} bytes)</span>
+        <button disabled={Boolean(operation)} onClick={() => setAttachments(current => current.filter(item => item.ref !== attachment.ref))}>Remove</button>
+      </li>)}</ul>
+      {attachments.length > 0 && <small>Attachments are bound to this session and sent with the next input; cross-session references are rejected. {allowed ? '' : 'Sending stays auth-gated.'}</small>}
+    </div>
     <label>Input <textarea aria-label="ZCode input" disabled={disabled || Boolean(held)} value={text} onChange={event => setText(event.target.value)} /></label>
     <label><input type="checkbox" aria-label="Goal command" checked={goal} disabled={disabled || Boolean(held)} onChange={event => setGoal(event.target.checked)} />Goal command (official /goal syntax)</label>
     <label>Delivery <select aria-label="Delivery" disabled={disabled || goal || Boolean(held)} value={delivery} onChange={event => setDelivery(event.target.value)}>
       <option value="">Official routing ({snapshot?.inputRouting?.mode ?? 'unknown'})</option><option value="queue">Queue</option><option value="guide">Guide</option><option value="startNow">Start now (preempts current turn)</option>
     </select></label>
-    <button disabled={disabled || Boolean(held) || !text.trim() || !snapshot?.config?.modelSelection || snapshot?.inputRouting?.mode === 'reject'} onClick={send}>Submit input</button>
+    <button disabled={disabled || Boolean(held) || (!text.trim() && attachments.length === 0) || !snapshot?.config?.modelSelection || snapshot?.inputRouting?.mode === 'reject'} onClick={send}>Submit input</button>
     {held && <div role="dialog" aria-label="Paused queue disposition" data-testid="zcode-held-confirmation">
       <p>Paused queue confirmation: {held.items.length} inputs.</p><ul style={{ maxHeight: '80px', overflowY: 'auto' }}>{held.items.map(item => <li key={item.queueItemId}>{item.queueItemId} / {item.sourceCommandId}</li>)}</ul>
       <button disabled={disabled} onClick={() => disposeHeld('clearQueueAndSend')}>Clear confirmed queue and send</button>

@@ -1,5 +1,6 @@
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { BridgeError } from './installation.mjs';
+import { uploadAttachmentTransaction, encodeBase64 } from './attachment.mjs';
 import {
   parseCommandEnvelope, commandAckSchema, commandsQueryResultSchema,
   COMMANDS_REQUIRING_BASE_REVISION, ROW_TARGETING_COMMANDS,
@@ -8,13 +9,23 @@ import {
   v4ConversationResyncParamsSchema, v4ConversationResyncResultSchema,
   v4ConversationUnsubscribeParamsSchema, TopicWireFrameAssembler, applyConversationDeltas,
   helloMessageSchema, clientHelloSchema,
+  PROTOCOL_V4_LIMITS,
+  v4AttachmentBeginParamsSchema, v4AttachmentBeginResultSchema,
+  v4AttachmentChunkParamsSchema, v4AttachmentChunkResultSchema,
+  v4AttachmentCommitParamsSchema, v4AttachmentCommitResultSchema,
+  v4AttachmentAbortParamsSchema, v4AttachmentAbortResultSchema,
+  v4AttachmentReadParamsSchema, v4AttachmentReadResultSchema,
+  v4ConversationAttachmentReadParamsSchema, v4ConversationAttachmentReadResultSchema,
+  v4ConversationAttachmentStatParamsSchema, v4ConversationAttachmentStatResultSchema,
+  sharedContextRefSchema,
   zcodeWorkspaceUpdateInteractionPreferencesParamsSchema, zcodeWorkspaceUpdateInteractionPreferencesResultSchema,
   zcodeWorkspaceUpdateModelIoPreferencesParamsSchema, zcodeWorkspaceUpdateModelIoPreferencesResultSchema,
   zcodeWorkspaceReadPresentationParamsSchema, zcodeWorkspacePresentationSchema,
 } from './vendor/zcode/v4.mjs';
 const nonempty=x=>typeof x==='string'&&x.trim().length>0;
 const int=x=>Number.isSafeInteger(x)&&x>=0;
-const managementCommands=new Set(['renameSession','deleteSession']);
+export const MANAGEMENT_COMMANDS=new Set(['renameSession','deleteSession','discardSharedContext']);
+const managementCommands=MANAGEMENT_COMMANDS;
 const availabilityCommands={editQueueItem:'queueEdit',reorderQueueItem:'queueEdit',deleteQueueItem:'queueEdit',sendQueuedNow:'sendQueuedNow',switchModelConfig:'switchModelConfig',setFollowupMode:'setFollowupMode',pauseGoal:'pauseGoal',resumeGoal:'resumeGoal'};
 const terminal=new Set(['completed','failed','interrupted','rejected','stale','noop','not-sent']);
 export const INPUT_COMMANDS=new Set(['sendText','sendGoalCommand','stop','sendQueuedNow','editQueueItem','reorderQueueItem','deleteQueueItem','setAutoDrain','switchModelConfig','switchCollaborationMode','setFollowupMode','pauseGoal','resumeGoal']);
@@ -41,6 +52,7 @@ export class V4Conversation {
   #state={status:'idle',snapshot:null,subscriptionId:null,logEpoch:null,error:null,gap:null,cleanupError:null};
   #assembler; #offNotification; #offClosed; #connect; #resync; #generation=0; #closed=false;
   #observerErrors=0; #flight; #resyncAgain=null; #appliedBase=false; #orphans=[]; #frameTimer; #assemblyTimer; #commands=new Map(); #commandControllers=new Map(); #cancelPromise; #listeners=new Set();
+  #uploads=new Map(); #committedUploads=new Map(); #attachmentRefs=new Map();
   constructor(peer,{address,workspace,connectionId,clientId,clientMode='web-remote-replayable',runnable=false,managementAllowed=false,onChange=()=>{},frameTimeoutMs=10000,assemblyOptions={},maxCommands=128}={}){
     if(!workspace||!address||address.runtime!=='zcode'||!nonempty(address.authority)||!nonempty(address.sessionId)||address.workspace!==workspace?.workspacePath||workspace.workspaceKey!==workspace.workspacePath||!nonempty(workspace?.workspacePath)||!nonempty(connectionId)||!nonempty(clientId)||typeof runnable!=='boolean'||typeof managementAllowed!=='boolean'||!['desktop-continuous','web-remote-replayable'].includes(clientMode)||!int(frameTimeoutMs)||frameTimeoutMs===0||!int(maxCommands)||maxCommands===0)throw new BridgeError('conversation-context-invalid');
     Object.assign(this,{peer,address:structuredClone(address),workspace:structuredClone(workspace),connectionId,clientId,clientMode,runnable,managementAllowed,onChange,frameTimeoutMs,maxCommands});
@@ -53,9 +65,11 @@ export class V4Conversation {
     this.#offNotification=peer.onNotification(m=>{if(m.method==='v4/conversation/frame')this.#wire(m.params)});
     this.#offClosed=peer.onClosed(code=>this.#disconnect(code));
   }
-  get state(){return structuredClone({...this.#state,commands:[...this.#commands.values()],observerErrors:this.#observerErrors,profile:this.clientMode==='desktop-continuous'?'continuous':'replayable',admission:this.admission,managementAdmission:this.managementAdmission})}
+  get state(){return structuredClone({...this.#state,commands:[...this.#commands.values()],observerErrors:this.#observerErrors,profile:this.clientMode==='desktop-continuous'?'continuous':'replayable',admission:this.admission,managementAdmission:this.managementAdmission,attachmentAdmission:this.attachmentAdmission})}
   get admission(){return {allowed:!this.#closed&&this.runnable&&this.#state.status==='live'&&!!this.#state.snapshot,reason:this.#closed?'closed':!this.runnable?'runtime-restricted':this.#state.status!=='live'?'projection-unconfirmed':null}}
   get managementAdmission(){return {allowed:!this.#closed&&this.managementAllowed&&this.#state.status==='live'&&!!this.#state.snapshot,reason:this.#closed?'closed':!this.managementAllowed?'management-unverified':this.#state.status!=='live'?'projection-unconfirmed':null}}
+  /** Attachment resource calls follow the official session-scoped wire, not model admission. */
+  get attachmentAdmission(){return {allowed:!this.#closed&&this.#state.status==='live'&&!!this.#state.snapshot,reason:this.#closed?'closed':this.#state.status!=='live'?'projection-unconfirmed':null}}
   get assemblyStats(){return this.#assembler.getStats()}
   get listenerCount(){return this.#listeners.size}
   subscribe(listener){if(this.#closed)return ()=>{};this.#listeners.add(listener);return ()=>this.#listeners.delete(listener)}
@@ -192,6 +206,119 @@ export class V4Conversation {
     if(result.workspace.workspacePath!==this.workspace.workspacePath||result.workspace.workspaceKey!==this.workspace.workspaceKey)throw new BridgeError('workspace-config-identity-mismatch');
     return result;
   }
+  /** A ref is usable only if this conversation committed it or the current session projection carries it. */
+  #boundAttachmentRef(ref){
+    if(!nonempty(ref))return false;
+    if(this.#attachmentRefs.has(ref))return true;
+    const rows=this.#state.snapshot?.rows?.window??[];
+    return rows.some(row=>Array.isArray(row.attachments)&&row.attachments.some(a=>a?.ref===ref||a?.previewRef===ref));
+  }
+  /** The one imported shared context the official session projection currently exposes. */
+  #pendingSharedContext(){
+    const context=this.#state.snapshot?.sharedContextImport;
+    if(!context||!nonempty(context.contextId)||typeof context.status!=='string')return null;
+    return context;
+  }
+  #projectionAdmission(){const admission=this.attachmentAdmission;if(!admission.allowed)throw new BridgeError(admission.reason);}
+  #rememberAttachmentRef(ref,meta){
+    this.#attachmentRefs.set(ref,meta);
+    if(this.#attachmentRefs.size>256)this.#attachmentRefs.delete(this.#attachmentRefs.keys().next().value);
+  }
+  #attachmentPort(){
+    const self=this,connectionId=this.connectionId;
+    return {
+      begin:async p=>{
+        const params=v4AttachmentBeginParamsSchema.parse({connectionId,...p});
+        const result=v4AttachmentBeginResultSchema.parse(await self.peer.request('v4/attachment/begin',params));
+        if(result.uploadId!==p.uploadId)throw new BridgeError('attachment-ack-mismatch');
+        if(result.state==='staging')self.#uploads.set(p.uploadId,{fileName:p.fileName,mime:p.mime,totalBytes:p.totalBytes,totalChunks:p.totalChunks,checksum:p.checksum,nextChunkIndex:result.nextChunkIndex});
+        else{self.#uploads.delete(p.uploadId);self.#committedUploads.set(p.uploadId,{ref:result.ref,fileName:p.fileName,mime:p.mime,totalBytes:p.totalBytes});self.#rememberAttachmentRef(result.ref,{fileName:p.fileName,mime:p.mime,bytes:p.totalBytes,uploadId:p.uploadId});}
+        return result;
+      },
+      chunk:async p=>{
+        if(!self.#uploads.has(p.uploadId))throw new BridgeError('attachment-untracked');
+        const result=v4AttachmentChunkResultSchema.parse(await self.peer.request('v4/attachment/chunk',v4AttachmentChunkParamsSchema.parse({connectionId,...p})));
+        if(result.uploadId!==p.uploadId)throw new BridgeError('attachment-ack-mismatch');
+        self.#uploads.get(p.uploadId).nextChunkIndex=result.nextChunkIndex;
+        return result;
+      },
+      commit:async p=>{
+        const staged=self.#uploads.get(p.uploadId),prior=self.#committedUploads.get(p.uploadId);
+        if(!staged&&!prior)throw new BridgeError('attachment-untracked');
+        const result=v4AttachmentCommitResultSchema.parse(await self.peer.request('v4/attachment/commit',v4AttachmentCommitParamsSchema.parse({connectionId,...p})));
+        if(!nonempty(result.ref))throw new BridgeError('attachment-ack-mismatch');
+        const record=staged??prior;
+        if(staged){self.#uploads.delete(p.uploadId);self.#committedUploads.set(p.uploadId,{ref:result.ref,fileName:staged.fileName,mime:staged.mime,totalBytes:staged.totalBytes});}
+        self.#rememberAttachmentRef(result.ref,{fileName:record.fileName,mime:record.mime,bytes:record.totalBytes,uploadId:p.uploadId});
+        return result;
+      },
+      abort:async p=>{
+        const prior=self.#committedUploads.get(p.uploadId);
+        try{v4AttachmentAbortResultSchema.parse(await self.peer.request('v4/attachment/abort',v4AttachmentAbortParamsSchema.parse({connectionId,...p})));}
+        finally{self.#uploads.delete(p.uploadId);if(prior){self.#attachmentRefs.delete(prior.ref);self.#committedUploads.delete(p.uploadId);}}
+        return {committedRefWithdrawn:Boolean(prior)};
+      },
+    };
+  }
+  /** Bounded official upload step 1/3. Restartable with the same uploadId per official begin semantics. */
+  async attachmentStart({uploadId=`upload-${randomUUID()}`,fileName,mime,totalBytes,totalChunks,checksum}={}){
+    this.#projectionAdmission();
+    if(this.#uploads.size>=PROTOCOL_V4_LIMITS.attachmentUploadMaxConcurrent)throw new BridgeError('fault.attachment.tooManyUploads');
+    const parsed=v4AttachmentBeginParamsSchema.safeParse({connectionId:this.connectionId,uploadId,sessionId:this.address.sessionId,fileName,mime,totalBytes,totalChunks,checksum});
+    if(!parsed.success)throw new BridgeError('attachment-invalid');
+    const result=await this.#attachmentPort().begin(parsed.data);
+    return {uploadId,state:result.state,nextChunkIndex:result.nextChunkIndex,...(result.state==='committed'?{ref:result.ref}:{})};
+  }
+  /** Bounded official upload step 2/3. Chunk bytes are the official 384 KiB slices. */
+  async attachmentChunk({uploadId,chunkIndex,dataBase64}={}){
+    this.#projectionAdmission();
+    const result=await this.#attachmentPort().chunk({sessionId:this.address.sessionId,uploadId,chunkIndex,dataBase64});
+    return {uploadId,nextChunkIndex:result.nextChunkIndex};
+  }
+  /** Bounded official upload step 3/3. Only a validated commit records a session-bound ref. */
+  async attachmentCommit({uploadId}={}){
+    this.#projectionAdmission();
+    const result=await this.#attachmentPort().commit({sessionId:this.address.sessionId,uploadId});
+    return {uploadId,ref:result.ref};
+  }
+  /** Cancel a staged upload. A committed artifact is local-withdrawn only; there is no runtime delete carrier. */
+  async attachmentAbort({uploadId}={}){
+    this.#projectionAdmission();
+    if(!this.#uploads.has(uploadId)&&!this.#committedUploads.has(uploadId))throw new BridgeError('attachment-untracked');
+    const result=await this.#attachmentPort().abort({sessionId:this.address.sessionId,uploadId});
+    return {uploadId,aborted:true,committedRefWithdrawn:result.committedRefWithdrawn};
+  }
+  /** Whole-file convenience over the same official transaction; never a full-data wire RPC. */
+  async uploadAttachment({fileName,mime,bytes},{signal,onProgress,uploadId=`upload-${randomUUID()}`}={}){
+    this.#projectionAdmission();
+    if(!(bytes instanceof Uint8Array))throw new BridgeError('attachment-invalid');
+    const port=this.#attachmentPort();
+    return uploadAttachmentTransaction(port,{sessionId:this.address.sessionId,uploadId,fileName,mime,dataBase64:encodeBase64(bytes)},{signal,onProgress});
+  }
+  /** Official image/video/PDF preview read; authorized by session projection, never by path. */
+  async attachmentRead({ref,target,attachmentIndex,offset=0,limit=PROTOCOL_V4_LIMITS.attachmentChunkMaxBytes,signal}={}){
+    this.#projectionAdmission();
+    if(!this.#boundAttachmentRef(ref))throw new BridgeError('attachment-ref-unbound');
+    const parsed=v4AttachmentReadParamsSchema.safeParse({sessionId:this.address.sessionId,ref,...(target===undefined?{}:{target}),...(attachmentIndex===undefined?{}:{attachmentIndex}),offset,limit});
+    if(!parsed.success)throw new BridgeError('attachment-invalid');
+    return v4AttachmentReadResultSchema.parse(await this.peer.request('v4/attachment/read',parsed.data,{signal}));
+  }
+  /** Share/plain-text attachment metadata stat; same session binding, no content read. */
+  async conversationAttachmentStat({ref,target,attachmentIndex,signal}={}){
+    this.#projectionAdmission();
+    if(!this.#boundAttachmentRef(ref))throw new BridgeError('attachment-ref-unbound');
+    const parsed=v4ConversationAttachmentStatParamsSchema.safeParse({sessionId:this.address.sessionId,ref,target,attachmentIndex});
+    if(!parsed.success)throw new BridgeError('attachment-invalid');
+    return v4ConversationAttachmentStatResultSchema.parse(await this.peer.request('v4/conversation/attachmentStat',parsed.data,{signal}));
+  }
+  /** Share/plain-text attachment range read; official row authorization still decides. */
+  async conversationAttachmentRead({ref,target,attachmentIndex,offset=0,limit=PROTOCOL_V4_LIMITS.attachmentChunkMaxBytes,signal}={}){
+    this.#projectionAdmission();
+    if(!this.#boundAttachmentRef(ref))throw new BridgeError('attachment-ref-unbound');
+    const parsed=v4ConversationAttachmentReadParamsSchema.safeParse({sessionId:this.address.sessionId,ref,target,attachmentIndex,offset,limit});
+    if(!parsed.success)throw new BridgeError('attachment-invalid');
+    return v4ConversationAttachmentReadResultSchema.parse(await this.peer.request('v4/conversation/attachmentRead',parsed.data,{signal}));
+  }
   async submit({type,payload,commandId=newCommandId(),baseRevision}={}, {signal}={}){
     const admission=managementCommands.has(type)?this.managementAdmission:this.admission;
     if(!admission.allowed)throw new BridgeError(admission.reason);
@@ -220,6 +347,20 @@ export class V4Conversation {
     }
     if((type==='resolveInteraction'||type==='snoozeInteractionAutoResolution'||type==='respondWorkspaceHookReview'||type==='toggleWorkspaceHookReviewItem')&&!snapshot.pendingInteractions.some(x=>x.interactionId===payload?.interactionId))throw new BridgeError('interaction-unconfirmed');
     if(type==='revokeWorkspaceHookTrust'&&payload?.interactionId&&!snapshot.pendingInteractions.some(x=>x.interactionId===payload.interactionId))throw new BridgeError('interaction-unconfirmed');
+    if(type==='sendText'&&payload?.attachments!==undefined){
+      if(!Array.isArray(payload.attachments))throw new BridgeError('command-invalid');
+      if(payload.attachments.some(attachment=>!this.#boundAttachmentRef(attachment?.ref)))throw new BridgeError('attachment-ref-unbound');
+    }
+    if(payload?.context_refs!==undefined){
+      if(type!=='sendText')throw new BridgeError('command-invalid');
+      const refs=payload.context_refs,parsedRef=Array.isArray(refs)&&refs.length===1?sharedContextRefSchema.safeParse(refs[0]):null;
+      const context=this.#pendingSharedContext();
+      if(!parsedRef?.success||!context||context.contextId!==parsedRef.data.context_id||!['pending','reserved'].includes(context.status))throw new BridgeError('shared-context-unconfirmed');
+    }
+    if(type==='discardSharedContext'){
+      const context=this.#pendingSharedContext();
+      if(!context||context.contextId!==payload?.contextId||context.status!=='pending')throw new BridgeError('shared-context-unconfirmed');
+    }
     const envelope={commandId,clientId:this.clientId,sessionId:this.address.sessionId,type,payload,issuedAt:Date.now(),...(COMMANDS_REQUIRING_BASE_REVISION.has(type)?{baseRevision:baseRevision??snapshot.revision}:{}),...(ROW_TARGETING_COMMANDS.has(type)?{baseLogEpoch:snapshot.logEpoch}:{})};
     const parsed=parseCommandEnvelope(envelope);
     if(!parsed.ok)throw new BridgeError('command-invalid');

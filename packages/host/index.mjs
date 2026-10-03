@@ -18,7 +18,18 @@ export function apply(ctx,config={}) {
       if(endpoint==='conversation'){
         try{
           if(!payload||typeof payload!=='object'||Array.isArray(payload))throw Object.assign(new Error(),{code:'invalid-payload'});
-          const allowed=payload.operation==='open'?['operation','address']:payload.operation==='workspaceConfig'?['operation','handle','kind','preferences']:['operation','handle','command','commandId'];
+          const operationKeys={
+            open:['operation','address'],
+            workspaceConfig:['operation','handle','kind','preferences'],
+            attachmentStart:['operation','handle','attachment'],
+            attachmentChunk:['operation','handle','uploadId','chunkIndex','dataBase64'],
+            attachmentCommit:['operation','handle','uploadId'],
+            attachmentAbort:['operation','handle','uploadId'],
+            attachmentRead:['operation','handle','ref','target','attachmentIndex','offset','limit'],
+            conversationAttachmentStat:['operation','handle','ref','target','attachmentIndex'],
+            conversationAttachmentRead:['operation','handle','ref','target','attachmentIndex','offset','limit'],
+          };
+          const allowed=operationKeys[payload.operation]??['operation','handle','command','commandId'];
           if(Object.keys(payload).some(key=>!allowed.includes(key)))throw Object.assign(new Error(),{code:'invalid-payload'});
           signal.throwIfAborted();
           return {ok:true,value:payload.operation==='open'?await host.openConversation(payload.address,{signal}):await host.conversationOperation(payload,signal)};

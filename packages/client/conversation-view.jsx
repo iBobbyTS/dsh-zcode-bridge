@@ -101,6 +101,33 @@ export class ConversationController {
     return this.#conversation.workspaceConfiguration(kind, preferences);
   }
 
+  /** Attachment resource calls are session-scoped on the owner; no path or session is accepted from the view. */
+  async uploadAttachment(input, options) {
+    if (this.#disposed) throw new Error('Controller is disposed');
+    return this.#conversation.uploadAttachment(input, options);
+  }
+
+  async attachmentRead(params, signal) {
+    if (this.#disposed) throw new Error('Controller is disposed');
+    return this.#conversation.attachmentRead(params, signal);
+  }
+
+  async conversationAttachmentStat(params, signal) {
+    if (this.#disposed) throw new Error('Controller is disposed');
+    return this.#conversation.conversationAttachmentStat(params, signal);
+  }
+
+  async conversationAttachmentRead(params, signal) {
+    if (this.#disposed) throw new Error('Controller is disposed');
+    return this.#conversation.conversationAttachmentRead(params, signal);
+  }
+
+  /** Withdraw the pending official shared-context import; never deletes or rewrites the origin session. */
+  async discardSharedContext(contextId) {
+    if (this.#disposed) throw new Error('Controller is disposed');
+    return this.#conversation.submit({ type: 'discardSharedContext', payload: { contextId } });
+  }
+
   async respondWorkspaceHookReview(target, reviewItemIds) {
     if (this.#disposed) throw new Error('Controller is disposed');
     return this.#conversation?.submit?.({
@@ -2150,7 +2177,47 @@ export function ZCodeCommandLedger({ state }) {
  * Message / turn rows rendering.
  * R08 invariant: Reasoning nodes are rendered in dedicated collapsible/styled nodes, never flattened into assistant text.
  */
-export function ZCodeRowsList({ state }) {
+function attachmentMediaKind(mime) {
+  const value = String(mime ?? '').split(';', 1)[0].trim().toLowerCase();
+  if (value.startsWith('image/') || value.startsWith('video/') || value === 'application/pdf') return 'media';
+  return 'document';
+}
+
+/** Sent-attachment preview/read/stat through the official session-scoped carriers; never a path read. */
+function ZCodeRowAttachment({ attachment, controller, target, index }) {
+  const [result, setResult] = useState('');
+  const [busy, setBusy] = useState(false);
+  if (!attachment || typeof attachment.ref !== 'string' || !attachment.ref) {
+    return <div data-testid="zcode-attachment-unknown">Attachment reference unavailable in this projection.</div>;
+  }
+  const media = attachmentMediaKind(attachment.mime);
+  async function run(action) {
+    if (busy || !controller) return;
+    setBusy(true); setResult('');
+    try {
+      if (action === 'stat') {
+        const stat = await controller.conversationAttachmentStat({ ref: attachment.ref, target, attachmentIndex: index });
+        setResult(`Official stat: ${stat.mediaType}, ${stat.totalBytes} bytes${stat.mtimeMs !== undefined ? `, mtime ${stat.mtimeMs}` : ''}.`);
+      } else if (media) {
+        const read = await controller.attachmentRead({ ref: attachment.ref, target, attachmentIndex: index, offset: 0, limit: 512 * 1024 });
+        setResult(`Official preview read: ${read.mediaType}, ${read.totalBytes} bytes; next offset ${read.nextOffset ?? 'end'}.`);
+      } else {
+        const read = await controller.conversationAttachmentRead({ ref: attachment.ref, target, attachmentIndex: index, offset: 0, limit: 512 * 1024 });
+        setResult(`Official attachment read: ${read.mediaType}, ${read.totalBytes} bytes; next offset ${read.nextOffset ?? 'end'}.`);
+      }
+    } catch (error) {
+      setResult(`${error.code ?? error.message}. The official session carrier decides authorization; no host path read was attempted.`);
+    } finally { setBusy(false); }
+  }
+  return <div data-testid={`zcode-attachment-ref-${attachment.ref}`} style={{ marginTop: 4, fontSize: 12 }}>
+    <span>{attachment.fileName ?? 'attachment'} ({attachment.mime ?? 'unknown type'}, {attachment.bytes ?? 'unknown'} bytes)</span>
+    <button disabled={busy || !controller} onClick={() => void run('stat')}>Stat</button>
+    <button disabled={busy || !controller} onClick={() => void run(media ? 'preview' : 'read')}>{media ? 'Preview' : 'Read'}</button>
+    {result && <small data-testid="zcode-attachment-read-result">{result}</small>}
+  </div>;
+}
+
+export function ZCodeRowsList({ state, controller }) {
   const rows = state?.snapshot?.rows?.window ?? [];
   if (!rows.length) {
     return (
@@ -2223,6 +2290,19 @@ export function ZCodeRowsList({ state }) {
               }}
             >
               <div data-testid="zcode-user-input-row">{row.text}</div>
+              {Array.isArray(row.attachments) && row.attachments.length > 0 && (
+                <div data-testid="zcode-user-input-attachments">
+                  {row.attachments.map((attachment, index) => (
+                    <ZCodeRowAttachment
+                      key={`${attachment?.ref ?? 'unknown'}:${index}`}
+                      attachment={attachment}
+                      controller={controller}
+                      target={{ rowId: row.rowId, entityId: row.entityId }}
+                      index={index}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
           );
         }
@@ -2522,7 +2602,7 @@ export function ZCodeConversationView({ conversation, controller, reference }) {
       />
       <ZCodeCommandLedger state={state} />
       <div style={{ flex: 1, overflowY: 'auto' }}>
-        <ZCodeRowsList state={state} />
+        <ZCodeRowsList state={state} controller={activeController} />
       </div>
       <ZCodeInputControls key={sessionIdentity ?? 'default'} state={state} controller={activeController} />
     </div>
