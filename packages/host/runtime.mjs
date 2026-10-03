@@ -32,7 +32,9 @@ export class BridgeHost {
     const status=this.status;
     if(this.#disposed||!status.connected||!this.#peer||this.#peer.closed)throw new BridgeError('source-unavailable');
     if(!address||address.runtime!=='zcode'||address.authority!==status.sessionAuthority||address.workspace!==status.workspacePath||typeof address.sessionId!=='string'||!address.sessionId)throw new BridgeError('source-address-mismatch');
-    const conversation=new V4Conversation(this.#peer,{address,workspace:{workspacePath:status.workspacePath,workspaceKey:status.workspacePath},connectionId:status.sessionAuthority,clientId:this.#clientId,runnable:status.state==='available',onChange:state=>{if(state.status==='closed')this.#conversations.delete(conversation);onChange(state)}});
+    // The publisher replaces by (connectionId, topic); each downstream owner needs its own stable slot.
+    const connectionId=status.sessionAuthority+':'+randomUUID();
+    const conversation=new V4Conversation(this.#peer,{address,workspace:{workspacePath:status.workspacePath,workspaceKey:status.workspacePath},connectionId,clientId:this.#clientId,runnable:status.state==='available',onChange:state=>{if(state.status==='closed')this.#conversations.delete(conversation);onChange(state)}});
     this.#conversations.add(conversation);return conversation;
   }
   #publish(change){this.#status={...this.#status,...change};this.onStatus(this.status)}
