@@ -78,6 +78,53 @@ export class ConversationController {
     });
   }
 
+  async snoozeInteractionAutoResolution(interactionId) {
+    if (this.#disposed) throw new Error('Controller is disposed');
+    return this.#conversation?.submit?.({
+      type: 'snoozeInteractionAutoResolution',
+      payload: { interactionId },
+    });
+  }
+
+  async respondWorkspaceHookReview(target, reviewItemIds) {
+    if (this.#disposed) throw new Error('Controller is disposed');
+    return this.#conversation?.submit?.({
+      type: 'respondWorkspaceHookReview',
+      payload: {
+        ...target,
+        decision: { action: 'trust_selected', reviewItemIds },
+      },
+    });
+  }
+
+  async toggleWorkspaceHookReviewItem(target, reviewItemId, enabled) {
+    if (this.#disposed) throw new Error('Controller is disposed');
+    return this.#conversation?.submit?.({
+      type: 'toggleWorkspaceHookReviewItem',
+      payload: {
+        ...target,
+        reviewItemId,
+        enabled,
+      },
+    });
+  }
+
+  async revokeWorkspaceHookTrust(payload) {
+    if (this.#disposed) throw new Error('Controller is disposed');
+    return this.#conversation?.submit?.({
+      type: 'revokeWorkspaceHookTrust',
+      payload,
+    });
+  }
+
+  async requestWorkspaceHookReview(payload) {
+    if (this.#disposed) throw new Error('Controller is disposed');
+    return this.#conversation?.submit?.({
+      type: 'requestWorkspaceHookReview',
+      payload,
+    });
+  }
+
   dispose() {
     if (this.#disposed) return;
     this.#disposed = true;
@@ -388,17 +435,63 @@ export function ZCodeControlBar({ state, onStop }) {
   );
 }
 
+export function buildElicitationContent(questions, drafts) {
+  const answers = {};
+  const content = { answers };
+
+  questions.forEach((q, idx) => {
+    const draft = drafts?.[idx] ?? { selectedValues: [], customAnswer: '' };
+    const custom = draft.customAnswer ? draft.customAnswer.trim() : '';
+    const vals = [...(draft.selectedValues ?? []), ...(custom ? [custom] : [])];
+    if (vals.length > 0) {
+      answers[q.question] = vals.join(', ');
+      content[`answer_${idx}`] = q.multiSelect ? vals : vals[0];
+    }
+  });
+
+  if (questions.length === 1) {
+    const draft = drafts?.[0] ?? { selectedValues: [], customAnswer: '' };
+    const custom = draft.customAnswer ? draft.customAnswer.trim() : '';
+    const vals = [...(draft.selectedValues ?? []), ...(custom ? [custom] : [])];
+    if (vals.length > 0) {
+      content.answer = questions[0].multiSelect ? vals : vals[0];
+    }
+  }
+
+  return content;
+}
+
 /**
- * Basic permission / ask-user pending interactions.
- * Displays official runtime result upon resolution without false success.
+ * User interactions card family:
+ * - Multi-question questionnaire (options, freeText, accept/decline/cancel, auto-resolution countdown & snooze)
+ * - Implementation plan review (plan markdown, plan checklist items, goal status, approve/reject)
+ * - Workspace hook security review (warning banner, hook items, enabled toggle, trust, revoke, soft admission)
+ * - Fail-safe unknown interaction card
+ * - Authoritative official result echo
  */
-export function ZCodePendingInteractions({ state, onResolve }) {
+export function ZCodePendingInteractions({
+  state,
+  onResolve,
+  onSnooze,
+  onHookTrust,
+  onHookToggle,
+  onHookRevoke,
+  onHookRequestReview,
+}) {
   const interactions = state?.snapshot?.pendingInteractions ?? [];
+  const hookAdmission = state?.snapshot?.workspaceHookAdmission;
   const [freeTextInputs, setFreeTextInputs] = useState({});
   const [results, setResults] = useState({});
   const [submitting, setSubmitting] = useState({});
+  const [questionnaireState, setQuestionnaireState] = useState({});
+  const [planFeedback, setPlanFeedback] = useState({});
+  const [snoozedInteractions, setSnoozedInteractions] = useState({});
 
-  if (!interactions.length && Object.keys(results).length === 0) return null;
+  const hasInteractions = interactions.length > 0;
+  const hasAdmission = Boolean(hookAdmission && hookAdmission.pendingCount > 0);
+  const hasResults = Object.keys(results).length > 0;
+
+  if (!hasInteractions && !hasAdmission && !hasResults) return null;
 
   const handleResolve = async (interactionId, answer) => {
     setSubmitting(prev => ({ ...prev, [interactionId]: true }));
@@ -417,6 +510,120 @@ export function ZCodePendingInteractions({ state, onResolve }) {
       }));
     } finally {
       setSubmitting(prev => ({ ...prev, [interactionId]: false }));
+    }
+  };
+
+  const triggerSnooze = (interactionId) => {
+    if (snoozedInteractions[interactionId]) return;
+    setSnoozedInteractions(prev => ({ ...prev, [interactionId]: true }));
+    try {
+      void onSnooze?.(interactionId);
+    } catch {}
+  };
+
+  const handleHookTrust = async (interaction, reviewItemIds) => {
+    const id = interaction.interactionId;
+    setSubmitting(prev => ({ ...prev, [id]: true }));
+    try {
+      const target = {
+        sessionId: interaction.payload.sessionId,
+        taskId: interaction.payload.taskId,
+        runId: interaction.payload.runId,
+        ...(interaction.payload.remoteSessionId ? { remoteSessionId: interaction.payload.remoteSessionId } : {}),
+        workspaceIdentity: interaction.payload.workspaceIdentity,
+        bundleDigest: interaction.payload.bundleDigest,
+        reviewFlowId: interaction.payload.reviewFlowId,
+        generation: interaction.payload.generation,
+        interactionId: interaction.payload.interactionId,
+      };
+      const record = await onHookTrust?.(target, reviewItemIds);
+      const reasonCode = record?.ack?.reasonCode ?? record?.error ?? record?.state;
+      const status = record?.ack?.status ?? record?.state ?? 'resolved';
+      setResults(prev => ({
+        ...prev,
+        [id]: { status, reasonCode: reasonCode || status },
+      }));
+    } catch (err) {
+      setResults(prev => ({
+        ...prev,
+        [id]: { status: 'error', reasonCode: err.code ?? err.message ?? 'failed' },
+      }));
+    } finally {
+      setSubmitting(prev => ({ ...prev, [id]: false }));
+    }
+  };
+
+  const handleHookToggle = async (interaction, reviewItemId, enabled) => {
+    const id = interaction.interactionId;
+    setSubmitting(prev => ({ ...prev, [id]: true }));
+    try {
+      const target = {
+        sessionId: interaction.payload.sessionId,
+        taskId: interaction.payload.taskId,
+        runId: interaction.payload.runId,
+        ...(interaction.payload.remoteSessionId ? { remoteSessionId: interaction.payload.remoteSessionId } : {}),
+        workspaceIdentity: interaction.payload.workspaceIdentity,
+        bundleDigest: interaction.payload.bundleDigest,
+        reviewFlowId: interaction.payload.reviewFlowId,
+        generation: interaction.payload.generation,
+        interactionId: interaction.payload.interactionId,
+      };
+      await onHookToggle?.(target, reviewItemId, enabled);
+    } catch (err) {
+      console.warn('Failed to toggle hook item:', err);
+    } finally {
+      setSubmitting(prev => ({ ...prev, [id]: false }));
+    }
+  };
+
+  const handleHookRevoke = async (interaction, reviewItemIds) => {
+    const id = interaction.interactionId;
+    setSubmitting(prev => ({ ...prev, [id]: true }));
+    try {
+      const payload = {
+        sessionId: interaction.payload.sessionId,
+        taskId: interaction.payload.taskId,
+        runId: interaction.payload.runId,
+        ...(interaction.payload.remoteSessionId ? { remoteSessionId: interaction.payload.remoteSessionId } : {}),
+        workspaceIdentity: interaction.payload.workspaceIdentity,
+        bundleDigest: interaction.payload.bundleDigest,
+        reviewFlowId: interaction.payload.reviewFlowId,
+        generation: interaction.payload.generation,
+        interactionId: interaction.payload.interactionId,
+        reviewItemIds,
+      };
+      await onHookRevoke?.(payload);
+    } catch (err) {
+      console.warn('Failed to revoke hook trust:', err);
+    } finally {
+      setSubmitting(prev => ({ ...prev, [id]: false }));
+    }
+  };
+
+  const handleHookRequestReview = async () => {
+    if (!hookAdmission) return;
+    const admissionKey = 'hook-admission';
+    setSubmitting(prev => ({ ...prev, [admissionKey]: true }));
+    try {
+      const payload = {
+        sessionId: state?.snapshot?.sessionId ?? state?.address?.sessionId ?? '',
+        workspaceIdentity: hookAdmission.workspaceIdentity ?? state?.address?.workspace ?? '',
+        bundleDigest: hookAdmission.bundleDigest,
+      };
+      const record = await onHookRequestReview?.(payload);
+      const reasonCode = record?.ack?.reasonCode ?? record?.error ?? record?.state;
+      const status = record?.ack?.status ?? record?.state ?? 'resolved';
+      setResults(prev => ({
+        ...prev,
+        [admissionKey]: { status, reasonCode: reasonCode || status },
+      }));
+    } catch (err) {
+      setResults(prev => ({
+        ...prev,
+        [admissionKey]: { status: 'error', reasonCode: err.code ?? err.message ?? 'failed' },
+      }));
+    } finally {
+      setSubmitting(prev => ({ ...prev, [admissionKey]: false }));
     }
   };
 
@@ -445,12 +652,86 @@ export function ZCodePendingInteractions({ state, onResolve }) {
         Fixture-driven pending interaction (live runtime is auth-gated)
       </div>
 
+      {/* Soft admission banner when workspace hooks require security review */}
+      {hasAdmission && (
+        <div
+          data-testid="zcode-hook-admission-banner"
+          style={{
+            padding: '10px 14px',
+            borderRadius: '6px',
+            background: 'rgba(245, 158, 11, 0.12)',
+            border: '1px solid rgba(245, 158, 11, 0.4)',
+            color: '#92400e',
+            fontSize: '13px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: '10px',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span>🛡️</span>
+            <span>
+              Workspace hooks require security review ({hookAdmission.pendingCount} pending)
+            </span>
+          </div>
+          <button
+            type="button"
+            data-testid="zcode-hook-request-review-btn"
+            disabled={submitting['hook-admission']}
+            onClick={handleHookRequestReview}
+            style={{
+              padding: '4px 10px',
+              borderRadius: '4px',
+              border: '1px solid #d97706',
+              background: '#ffffff',
+              color: '#b45309',
+              fontWeight: 600,
+              fontSize: '12px',
+              cursor: submitting['hook-admission'] ? 'default' : 'pointer',
+            }}
+          >
+            {submitting['hook-admission'] ? 'Requesting…' : 'Request Review'}
+          </button>
+        </div>
+      )}
+
+      {results['hook-admission'] && (
+        <div
+          role="status"
+          data-testid="zcode-interaction-result-hook-admission"
+          style={{
+            marginBottom: '10px',
+            padding: '6px 10px',
+            borderRadius: '4px',
+            background: '#f3f4f6',
+            fontSize: '12px',
+            fontFamily: 'monospace',
+            color: '#374151',
+          }}
+        >
+          Official result: {results['hook-admission'].reasonCode} ({results['hook-admission'].status})
+        </div>
+      )}
+
       {interactions.map(interaction => {
         const id = interaction.interactionId;
         const kind = interaction.kind;
-        const payload = interaction.payload;
+        const payload = interaction.payload ?? {};
         const result = results[id];
         const isBusy = submitting[id];
+        const autoRes = interaction.autoResolution;
+        const isSnoozed = snoozedInteractions[id] || autoRes?.state === 'snoozed';
+
+        // Detect Plan Review
+        const isPlanReview =
+          kind === 'userInput' &&
+          (payload.schema?.interaction === 'plan_approval' ||
+            payload.toolName?.toLowerCase() === 'exitplanmode' ||
+            Boolean(payload.schema?.plan || payload.input?.plan));
+
+        // Detect Multi-Question Questionnaire
+        const isQuestionnaire = kind === 'userInput' && Array.isArray(payload.questions) && payload.questions.length > 0;
 
         return (
           <div
@@ -465,6 +746,853 @@ export function ZCodePendingInteractions({ state, onResolve }) {
               marginBottom: '8px',
             }}
           >
+            {/* Auto-Resolution Status Chip */}
+            {autoRes && (
+              <div style={{ marginBottom: '8px' }}>
+                {isSnoozed ? (
+                  <span
+                    data-testid="zcode-auto-resolution-snoozed"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      padding: '2px 8px',
+                      borderRadius: '4px',
+                      background: '#f3f4f6',
+                      border: '1px solid #d1d5db',
+                      color: '#4b5563',
+                      fontSize: '11px',
+                      fontWeight: 500,
+                    }}
+                  >
+                    ⏸️ Auto-resolution snoozed
+                  </span>
+                ) : (
+                  <span
+                    data-testid="zcode-auto-resolution-countdown"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      padding: '2px 8px',
+                      borderRadius: '4px',
+                      background: 'rgba(239, 68, 68, 0.1)',
+                      border: '1px solid rgba(239, 68, 68, 0.3)',
+                      color: '#b91c1c',
+                      fontSize: '11px',
+                      fontWeight: 600,
+                    }}
+                  >
+                    ⏳ Auto-resolving countdown active
+                  </span>
+                )}
+              </div>
+            )}
+
+            {/* 1. Plan Review Card */}
+            {isPlanReview && (
+              <div data-testid="zcode-plan-review-card">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+                  <span style={{ fontSize: '15px' }}>📋</span>
+                  <strong>Implementation Plan Review</strong>
+                  <span
+                    style={{
+                      fontSize: '11px',
+                      background: '#eff6ff',
+                      color: '#1d4ed8',
+                      padding: '2px 6px',
+                      borderRadius: '4px',
+                      border: '1px solid #bfdbfe',
+                    }}
+                  >
+                    ExitPlanMode
+                  </span>
+                </div>
+
+                <p data-testid="zcode-plan-prompt" style={{ margin: '0 0 8px 0', fontSize: '13px', color: '#374151' }}>
+                  {payload.prompt ?? 'Review this implementation plan.'}
+                </p>
+
+                {/* Plan Content */}
+                <div
+                  data-testid="zcode-plan-content"
+                  style={{
+                    padding: '10px 12px',
+                    borderRadius: '6px',
+                    background: '#f8fafc',
+                    border: '1px solid #e2e8f0',
+                    fontSize: '12px',
+                    fontFamily: 'monospace',
+                    whiteSpace: 'pre-wrap',
+                    maxHeight: '200px',
+                    overflowY: 'auto',
+                    marginBottom: '10px',
+                    color: '#1e293b',
+                  }}
+                >
+                  {payload.schema?.plan ??
+                    payload.input?.plan ??
+                    state?.snapshot?.plan?.items?.map(it => `${it.content} [${it.status}]`).join('\n') ??
+                    'No plan text available'}
+                </div>
+
+                {/* Snapshot Plan Items Checklist */}
+                {state?.snapshot?.plan?.items && state.snapshot.plan.items.length > 0 && (
+                  <div
+                    data-testid="zcode-plan-items"
+                    style={{
+                      marginBottom: '10px',
+                      padding: '8px 10px',
+                      borderRadius: '4px',
+                      background: '#f9fafb',
+                      border: '1px solid #f3f4f6',
+                    }}
+                  >
+                    <div style={{ fontSize: '11px', fontWeight: 600, color: '#6b7280', marginBottom: '4px' }}>
+                      Plan Checklist Items ({state.snapshot.plan.items.length}):
+                    </div>
+                    {state.snapshot.plan.items.map(item => (
+                      <div
+                        key={item.id}
+                        data-testid={`zcode-plan-item-${item.id}`}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '3px 0',
+                          fontSize: '12px',
+                        }}
+                      >
+                        <span>{item.content}</span>
+                        <span
+                          data-testid={`zcode-plan-item-status-${item.id}`}
+                          style={{
+                            fontSize: '10px',
+                            fontWeight: 600,
+                            padding: '1px 6px',
+                            borderRadius: '3px',
+                            background:
+                              item.status === 'completed'
+                                ? '#dcfce7'
+                                : item.status === 'inProgress'
+                                  ? '#dbeafe'
+                                  : '#f3f4f6',
+                            color:
+                              item.status === 'completed'
+                                ? '#15803d'
+                                : item.status === 'inProgress'
+                                  ? '#1d4ed8'
+                                  : '#6b7280',
+                          }}
+                        >
+                          {item.status}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Snapshot Goal State */}
+                {state?.snapshot?.goal && (
+                  <div
+                    data-testid="zcode-goal-info"
+                    style={{
+                      marginBottom: '10px',
+                      padding: '8px 10px',
+                      borderRadius: '4px',
+                      background: '#fefce8',
+                      border: '1px solid #fef08a',
+                      fontSize: '12px',
+                    }}
+                  >
+                    <strong>Goal Target:</strong> {state.snapshot.goal.summaryTitle ? `${state.snapshot.goal.summaryTitle}: ` : ''}{state.snapshot.goal.objective}{' '}
+                    <span style={{ color: '#854d0e', fontWeight: 600 }}>({state.snapshot.goal.status})</span>
+                  </div>
+                )}
+
+                {/* Rejection Feedback Input */}
+                <div style={{ marginBottom: '10px' }}>
+                  <textarea
+                    data-testid="zcode-plan-feedback-input"
+                    disabled={isBusy || Boolean(result)}
+                    value={planFeedback[id] ?? ''}
+                    onChange={e => {
+                      triggerSnooze(id);
+                      setPlanFeedback({ ...planFeedback, [id]: e.target.value });
+                    }}
+                    placeholder="Provide revision instructions or feedback if rejecting..."
+                    rows={2}
+                    style={{
+                      width: '100%',
+                      boxSizing: 'border-box',
+                      padding: '6px 10px',
+                      borderRadius: '4px',
+                      border: '1px solid #d1d5db',
+                      fontSize: '12px',
+                      fontFamily: 'inherit',
+                    }}
+                  />
+                </div>
+
+                {/* Plan Approval Actions */}
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    data-testid="zcode-plan-approve-btn"
+                    disabled={isBusy || Boolean(result)}
+                    onClick={() => {
+                      triggerSnooze(id);
+                      const promptText = payload.prompt ?? 'Review this implementation plan.';
+                      void handleResolve(id, {
+                        action: 'accept',
+                        content: {
+                          answers: { [promptText]: 'approve' },
+                          answer_0: 'approve',
+                          answer: 'approve',
+                        },
+                      });
+                    }}
+                    style={{
+                      padding: '6px 14px',
+                      borderRadius: '4px',
+                      border: '1px solid #16a34a',
+                      background: '#16a34a',
+                      color: '#ffffff',
+                      fontWeight: 600,
+                      fontSize: '12px',
+                      cursor: isBusy || result ? 'default' : 'pointer',
+                    }}
+                  >
+                    Approve Plan
+                  </button>
+
+                  <button
+                    type="button"
+                    data-testid="zcode-plan-reject-btn"
+                    disabled={isBusy || Boolean(result)}
+                    onClick={() => {
+                      triggerSnooze(id);
+                      const promptText = payload.prompt ?? 'Review this implementation plan.';
+                      const fb = (planFeedback[id] ?? '').trim();
+                      void handleResolve(id, {
+                        action: 'decline',
+                        ...(fb ? { content: { feedback: fb, answers: { [promptText]: fb } } } : {}),
+                      });
+                    }}
+                    style={{
+                      padding: '6px 14px',
+                      borderRadius: '4px',
+                      border: '1px solid #dc2626',
+                      background: '#fef2f2',
+                      color: '#dc2626',
+                      fontWeight: 600,
+                      fontSize: '12px',
+                      cursor: isBusy || result ? 'default' : 'pointer',
+                    }}
+                  >
+                    Reject Plan
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* 2. Multi-Question Questionnaire Card */}
+            {!isPlanReview && isQuestionnaire && (() => {
+              const questions = payload.questions;
+              const qState = questionnaireState[id] ?? {
+                activeIndex: payload.currentQuestionIndex ?? 0,
+                drafts: Object.fromEntries(
+                  questions.map((q, idx) => {
+                    const savedDraft = payload.answerDrafts?.[`answer_${idx}`] ?? [];
+                    return [idx, { selectedValues: savedDraft, customAnswer: '' }];
+                  })
+                ),
+              };
+              const activeIndex = Math.min(Math.max(qState.activeIndex, 0), questions.length - 1);
+              const currentQ = questions[activeIndex];
+              const currentDraft = qState.drafts[activeIndex] ?? { selectedValues: [], customAnswer: '' };
+
+              const updateQDraft = updater => {
+                triggerSnooze(id);
+                setQuestionnaireState(prev => {
+                  const curr = prev[id] ?? qState;
+                  const nextDrafts = {
+                    ...curr.drafts,
+                    [activeIndex]: updater(curr.drafts[activeIndex] ?? { selectedValues: [], customAnswer: '' }),
+                  };
+                  return { ...prev, [id]: { ...curr, drafts: nextDrafts } };
+                });
+              };
+
+              const setQuestionIndex = newIndex => {
+                triggerSnooze(id);
+                setQuestionnaireState(prev => {
+                  const curr = prev[id] ?? qState;
+                  return { ...prev, [id]: { ...curr, activeIndex: newIndex } };
+                });
+              };
+
+              return (
+                <div data-testid="zcode-questionnaire-card">
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontSize: '15px' }}>📝</span>
+                      <strong>{payload.prompt || 'Questionnaire'}</strong>
+                    </div>
+                    <span
+                      data-testid="zcode-q-counter"
+                      style={{
+                        fontSize: '11px',
+                        background: '#f3f4f6',
+                        padding: '2px 8px',
+                        borderRadius: '12px',
+                        border: '1px solid #e5e7eb',
+                        fontWeight: 500,
+                      }}
+                    >
+                      Question {activeIndex + 1} of {questions.length}
+                    </span>
+                  </div>
+
+                  {/* Question Tab navigation */}
+                  <div style={{ display: 'flex', gap: '4px', marginBottom: '10px', flexWrap: 'wrap' }}>
+                    {questions.map((q, idx) => {
+                      const isCurrent = idx === activeIndex;
+                      const hasAns =
+                        (qState.drafts[idx]?.selectedValues?.length ?? 0) > 0 ||
+                        Boolean(qState.drafts[idx]?.customAnswer?.trim());
+                      return (
+                        <button
+                          key={idx}
+                          type="button"
+                          data-testid={`zcode-q-tab-${idx}`}
+                          onClick={() => setQuestionIndex(idx)}
+                          style={{
+                            padding: '3px 8px',
+                            borderRadius: '4px',
+                            border: isCurrent ? '1px solid #2563eb' : '1px solid #e5e7eb',
+                            background: isCurrent ? '#eff6ff' : '#ffffff',
+                            color: isCurrent ? '#1d4ed8' : '#4b5563',
+                            fontSize: '11px',
+                            fontWeight: isCurrent ? 600 : 400,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          {q.header || `Q${idx + 1}`} {hasAns ? '✓' : ''}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Active Question Body */}
+                  <div
+                    style={{
+                      padding: '10px',
+                      borderRadius: '6px',
+                      background: '#f9fafb',
+                      border: '1px solid #e5e7eb',
+                      marginBottom: '10px',
+                    }}
+                  >
+                    <p
+                      data-testid="zcode-question-text"
+                      style={{ margin: '0 0 10px 0', fontSize: '13px', fontWeight: 500 }}
+                    >
+                      {currentQ.question}
+                    </p>
+
+                    {/* Options list */}
+                    {currentQ.options && currentQ.options.length > 0 && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '10px' }}>
+                        {currentQ.options.map(opt => {
+                          const isSelected = currentDraft.selectedValues.includes(opt.value);
+                          return (
+                            <label
+                              key={opt.value}
+                              data-testid={`zcode-option-label-${opt.value}`}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'flex-start',
+                                gap: '8px',
+                                padding: '6px 10px',
+                                borderRadius: '4px',
+                                border: isSelected ? '1px solid #3b82f6' : '1px solid #e5e7eb',
+                                background: isSelected ? '#eff6ff' : '#ffffff',
+                                cursor: isBusy || result ? 'default' : 'pointer',
+                              }}
+                            >
+                              <input
+                                type={currentQ.multiSelect ? 'checkbox' : 'radio'}
+                                name={`question-${id}-${activeIndex}`}
+                                data-testid={`zcode-option-${opt.value}`}
+                                disabled={isBusy || Boolean(result)}
+                                checked={isSelected}
+                                onChange={() => {
+                                  if (currentQ.multiSelect) {
+                                    updateQDraft(d => {
+                                      const cur = d.selectedValues ?? [];
+                                      const next = cur.includes(opt.value)
+                                        ? cur.filter(v => v !== opt.value)
+                                        : [...cur, opt.value];
+                                      return { ...d, selectedValues: next };
+                                    });
+                                  } else {
+                                    updateQDraft(d => ({ ...d, selectedValues: [opt.value] }));
+                                  }
+                                }}
+                                style={{ marginTop: '2px' }}
+                              />
+                              <div style={{ flex: 1 }}>
+                                <div style={{ fontSize: '12px', fontWeight: isSelected ? 600 : 400 }}>
+                                  {opt.label || opt.value}
+                                </div>
+                                {opt.description && (
+                                  <div style={{ fontSize: '11px', color: '#6b7280', marginTop: '2px' }}>
+                                    {opt.description}
+                                  </div>
+                                )}
+                              </div>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Free text custom answer */}
+                    {payload.freeText && (
+                      <div>
+                        <input
+                          type={payload.sensitive ? 'password' : 'text'}
+                          data-testid="zcode-q-custom-input"
+                          disabled={isBusy || Boolean(result)}
+                          value={currentDraft.customAnswer ?? ''}
+                          onChange={e => {
+                            const val = e.target.value;
+                            updateQDraft(d => ({ ...d, customAnswer: val }));
+                          }}
+                          placeholder="Type custom response or add notes..."
+                          style={{
+                            width: '100%',
+                            boxSizing: 'border-box',
+                            padding: '6px 10px',
+                            borderRadius: '4px',
+                            border: '1px solid #d1d5db',
+                            fontSize: '12px',
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Questionnaire Nav & Action Buttons */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <button
+                        type="button"
+                        data-testid="zcode-q-prev-btn"
+                        disabled={activeIndex === 0 || isBusy || Boolean(result)}
+                        onClick={() => setQuestionIndex(activeIndex - 1)}
+                        style={{
+                          padding: '4px 10px',
+                          borderRadius: '4px',
+                          border: '1px solid #d1d5db',
+                          background: '#ffffff',
+                          fontSize: '12px',
+                          cursor: activeIndex === 0 || isBusy || result ? 'default' : 'pointer',
+                        }}
+                      >
+                        Previous
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="zcode-q-next-btn"
+                        disabled={activeIndex === questions.length - 1 || isBusy || Boolean(result)}
+                        onClick={() => setQuestionIndex(activeIndex + 1)}
+                        style={{
+                          padding: '4px 10px',
+                          borderRadius: '4px',
+                          border: '1px solid #d1d5db',
+                          background: '#ffffff',
+                          fontSize: '12px',
+                          cursor: activeIndex === questions.length - 1 || isBusy || result ? 'default' : 'pointer',
+                        }}
+                      >
+                        Next
+                      </button>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      {/* Decline */}
+                      <button
+                        type="button"
+                        data-testid="zcode-questionnaire-decline"
+                        disabled={isBusy || Boolean(result)}
+                        onClick={() => {
+                          triggerSnooze(id);
+                          const content = buildElicitationContent(questions, qState.drafts);
+                          const hasAnswers = Object.keys(content.answers).length > 0;
+                          void handleResolve(id, {
+                            action: 'decline',
+                            ...(hasAnswers ? { content } : {}),
+                          });
+                        }}
+                        style={{
+                          padding: '4px 10px',
+                          borderRadius: '4px',
+                          border: '1px solid #f87171',
+                          background: '#fef2f2',
+                          color: '#dc2626',
+                          fontSize: '12px',
+                          cursor: isBusy || result ? 'default' : 'pointer',
+                        }}
+                      >
+                        Decline
+                      </button>
+
+                      {/* Cancel */}
+                      <button
+                        type="button"
+                        data-testid="zcode-questionnaire-cancel"
+                        disabled={isBusy || Boolean(result)}
+                        onClick={() => {
+                          triggerSnooze(id);
+                          void handleResolve(id, { action: 'cancel' });
+                        }}
+                        style={{
+                          padding: '4px 10px',
+                          borderRadius: '4px',
+                          border: '1px solid #d1d5db',
+                          background: '#ffffff',
+                          color: '#4b5563',
+                          fontSize: '12px',
+                          cursor: isBusy || result ? 'default' : 'pointer',
+                        }}
+                      >
+                        Cancel
+                      </button>
+
+                      {/* Submit (Accept) */}
+                      <button
+                        type="button"
+                        data-testid="zcode-questionnaire-submit"
+                        disabled={isBusy || Boolean(result)}
+                        onClick={() => {
+                          triggerSnooze(id);
+                          const content = buildElicitationContent(questions, qState.drafts);
+                          void handleResolve(id, { action: 'accept', content });
+                        }}
+                        style={{
+                          padding: '4px 14px',
+                          borderRadius: '4px',
+                          border: '1px solid #2563eb',
+                          background: '#2563eb',
+                          color: '#ffffff',
+                          fontWeight: 600,
+                          fontSize: '12px',
+                          cursor: isBusy || result ? 'default' : 'pointer',
+                        }}
+                      >
+                        Submit Answers
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* 3. Workspace Hook Security Review Card */}
+            {!isPlanReview && !isQuestionnaire && kind === 'workspaceHookReview' && (
+              <div data-testid="zcode-hook-review-card">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                  <span style={{ fontSize: '15px' }}>🛡️</span>
+                  <strong>Workspace Hook Security Review</strong>
+                </div>
+
+                {/* Warning Banner */}
+                <div
+                  data-testid="zcode-hook-warning"
+                  style={{
+                    padding: '6px 10px',
+                    borderRadius: '4px',
+                    background: '#fef3c7',
+                    border: '1px solid #fde68a',
+                    color: '#92400e',
+                    fontSize: '12px',
+                    fontWeight: 500,
+                    marginBottom: '8px',
+                  }}
+                >
+                  ⚠️ Workspace hooks execute shell commands in this workspace
+                </div>
+
+                {/* Workspace identity & Summary chips */}
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '8px' }}>
+                  <span
+                    data-testid="zcode-hook-workspace-label"
+                    style={{ fontSize: '12px', fontWeight: 600, color: '#374151' }}
+                  >
+                    {payload.workspaceLabel || payload.workspaceIdentity}
+                  </span>
+                  <span
+                    data-testid="zcode-hook-count"
+                    style={{ fontSize: '11px', background: '#f3f4f6', padding: '1px 6px', borderRadius: '4px' }}
+                  >
+                    Hooks: {payload.summary?.hookCount ?? payload.items?.length ?? 0}
+                  </span>
+                  <span
+                    data-testid="zcode-event-count"
+                    style={{ fontSize: '11px', background: '#f3f4f6', padding: '1px 6px', borderRadius: '4px' }}
+                  >
+                    Events: {payload.summary?.eventCount ?? 0}
+                  </span>
+                  <span
+                    data-testid="zcode-pending-count"
+                    style={{ fontSize: '11px', background: '#fee2e2', color: '#991b1b', padding: '1px 6px', borderRadius: '4px' }}
+                  >
+                    Pending: {payload.summary?.pendingCount ?? 0}
+                  </span>
+                </div>
+
+                {/* Source files */}
+                {payload.sourceFiles && payload.sourceFiles.length > 0 && (
+                  <div
+                    data-testid="zcode-hook-source-files"
+                    style={{ fontSize: '11px', color: '#6b7280', marginBottom: '8px' }}
+                  >
+                    Source files: {payload.sourceFiles.map(f => f.displayPath || f.path).join(', ')}
+                  </div>
+                )}
+
+                {/* Items list */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '10px' }}>
+                  {(payload.items ?? []).map(item => {
+                    const itemId = item.reviewItemId;
+                    const isTrusted = item.trustState === 'trusted_persistent';
+                    const isPending = ['pending_trust', 'revoked', 'stale_digest'].includes(item.trustState);
+
+                    return (
+                      <div
+                        key={itemId}
+                        data-testid={`zcode-hook-item-${itemId}`}
+                        style={{
+                          padding: '8px 10px',
+                          borderRadius: '4px',
+                          background: '#f9fafb',
+                          border: '1px solid #e5e7eb',
+                          fontSize: '12px',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <input
+                              type="checkbox"
+                              data-testid={`zcode-hook-toggle-${itemId}`}
+                              disabled={isBusy || Boolean(result)}
+                              checked={item.configuredEnabled}
+                              onChange={() => handleHookToggle(interaction, itemId, !item.configuredEnabled)}
+                            />
+                            <strong>{item.displayName}</strong>
+                            <span style={{ fontSize: '11px', color: '#6b7280' }}>
+                              ({item.event} · {item.executionMode})
+                            </span>
+                          </div>
+
+                          <span
+                            data-testid={`zcode-hook-trust-state-${itemId}`}
+                            style={{
+                              fontSize: '10px',
+                              fontWeight: 600,
+                              padding: '1px 6px',
+                              borderRadius: '3px',
+                              background: isTrusted ? '#dcfce7' : isPending ? '#fef3c7' : '#fee2e2',
+                              color: isTrusted ? '#15803d' : isPending ? '#92400e' : '#b91c1c',
+                            }}
+                          >
+                            {item.trustState}
+                          </span>
+                        </div>
+
+                        <div style={{ marginBottom: '6px' }}>
+                          <code
+                            data-testid={`zcode-hook-command-${itemId}`}
+                            style={{
+                              fontFamily: 'monospace',
+                              background: '#ffffff',
+                              padding: '2px 6px',
+                              borderRadius: '3px',
+                              border: '1px solid #e5e7eb',
+                              fontSize: '11px',
+                              color: '#1f2937',
+                              display: 'inline-block',
+                              maxWidth: '100%',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {item.displayCommand}
+                          </code>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
+                          {isPending && (
+                            <button
+                              type="button"
+                              data-testid={`zcode-hook-trust-btn-${itemId}`}
+                              disabled={isBusy || Boolean(result)}
+                              onClick={() => handleHookTrust(interaction, [itemId])}
+                              style={{
+                                padding: '3px 8px',
+                                borderRadius: '3px',
+                                border: '1px solid #16a34a',
+                                background: '#f0fdf4',
+                                color: '#16a34a',
+                                fontSize: '11px',
+                                fontWeight: 500,
+                                cursor: isBusy || result ? 'default' : 'pointer',
+                              }}
+                            >
+                              Trust Hook
+                            </button>
+                          )}
+                          {isTrusted && (
+                            <button
+                              type="button"
+                              data-testid={`zcode-hook-revoke-btn-${itemId}`}
+                              disabled={isBusy || Boolean(result)}
+                              onClick={() => handleHookRevoke(interaction, [itemId])}
+                              style={{
+                                padding: '3px 8px',
+                                borderRadius: '3px',
+                                border: '1px solid #dc2626',
+                                background: '#fef2f2',
+                                color: '#dc2626',
+                                fontSize: '11px',
+                                fontWeight: 500,
+                                cursor: isBusy || result ? 'default' : 'pointer',
+                              }}
+                            >
+                              Revoke Trust
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Bulk actions */}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                  <button
+                    type="button"
+                    data-testid="zcode-hook-trust-all-btn"
+                    disabled={isBusy || Boolean(result)}
+                    onClick={() => {
+                      const pendingIds = (payload.items ?? [])
+                        .filter(i => ['pending_trust', 'revoked', 'stale_digest'].includes(i.trustState))
+                        .map(i => i.reviewItemId);
+                      void handleHookTrust(interaction, pendingIds.length > 0 ? pendingIds : (payload.items ?? []).map(i => i.reviewItemId));
+                    }}
+                    style={{
+                      padding: '5px 12px',
+                      borderRadius: '4px',
+                      border: '1px solid #16a34a',
+                      background: '#16a34a',
+                      color: '#ffffff',
+                      fontWeight: 600,
+                      fontSize: '12px',
+                      cursor: isBusy || result ? 'default' : 'pointer',
+                    }}
+                  >
+                    Trust All Pending
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* 4. Legacy Simple User Input Card */}
+            {!isPlanReview && !isQuestionnaire && kind === 'userInput' && (
+              <div data-testid="zcode-user-input-card">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                  <span style={{ fontSize: '14px' }}>❓</span>
+                  <strong>User Input Requested:</strong>
+                </div>
+                <p data-testid="zcode-user-input-prompt" style={{ margin: '0 0 10px 0', fontSize: '13px' }}>
+                  {payload.prompt ?? ''}
+                </p>
+                {payload.options && payload.options.length > 0 && (
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '8px' }}>
+                    {payload.options.map(opt => (
+                      <button
+                        key={opt.optionId}
+                        type="button"
+                        data-testid={`zcode-user-input-btn-${opt.optionId}`}
+                        disabled={isBusy || Boolean(result)}
+                        onClick={() => {
+                          triggerSnooze(id);
+                          void handleResolve(id, { optionId: opt.optionId });
+                        }}
+                        style={{
+                          padding: '6px 12px',
+                          borderRadius: '4px',
+                          border: '1px solid #d1d5db',
+                          background: '#f9fafb',
+                          fontSize: '12px',
+                          cursor: isBusy || result ? 'default' : 'pointer',
+                        }}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {payload.freeText && (
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <input
+                      type={payload.sensitive ? 'password' : 'text'}
+                      data-testid="zcode-user-input-text"
+                      disabled={isBusy || Boolean(result)}
+                      value={freeTextInputs[id] ?? ''}
+                      onChange={e => {
+                        triggerSnooze(id);
+                        setFreeTextInputs({ ...freeTextInputs, [id]: e.target.value });
+                      }}
+                      placeholder="Type your response..."
+                      style={{
+                        flex: 1,
+                        padding: '6px 10px',
+                        borderRadius: '4px',
+                        border: '1px solid #d1d5db',
+                        fontSize: '13px',
+                      }}
+                    />
+                    <button
+                      type="button"
+                      data-testid="zcode-user-input-submit"
+                      disabled={isBusy || Boolean(result)}
+                      onClick={() => {
+                        triggerSnooze(id);
+                        void handleResolve(id, { freeText: freeTextInputs[id] ?? '' });
+                      }}
+                      style={{
+                        padding: '6px 14px',
+                        borderRadius: '4px',
+                        border: '1px solid #2563eb',
+                        background: '#2563eb',
+                        color: '#ffffff',
+                        fontWeight: 600,
+                        fontSize: '12px',
+                        cursor: isBusy || result ? 'default' : 'pointer',
+                      }}
+                    >
+                      {isBusy ? 'Submitting…' : 'Submit'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 5. Permission Card */}
             {kind === 'permission' && (
               <div data-testid="zcode-permission-card">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
@@ -479,14 +1607,14 @@ export function ZCodePendingInteractions({ state, onResolve }) {
                       borderRadius: '4px',
                     }}
                   >
-                    {payload?.toolName ?? 'Tool'}
+                    {payload.toolName ?? 'Tool'}
                   </span>
                 </div>
                 <p data-testid="zcode-permission-summary" style={{ margin: '0 0 10px 0', fontSize: '13px' }}>
-                  {payload?.summary ?? ''}
+                  {payload.summary ?? ''}
                 </p>
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                  {(payload?.options ?? [
+                  {(payload.options ?? [
                     { optionId: 'allowOnce', label: 'Allow Once' },
                     { optionId: 'deny', label: 'Deny' },
                   ]).map(opt => (
@@ -514,78 +1642,41 @@ export function ZCodePendingInteractions({ state, onResolve }) {
               </div>
             )}
 
-            {kind === 'userInput' && (
-              <div data-testid="zcode-user-input-card">
+            {/* 6. Unknown Interaction Kind Fail-safe */}
+            {kind !== 'permission' && kind !== 'userInput' && kind !== 'workspaceHookReview' && (
+              <div data-testid="zcode-unknown-interaction-card">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
-                  <span style={{ fontSize: '14px' }}>❓</span>
-                  <strong>User Input Requested:</strong>
+                  <span style={{ fontSize: '14px' }}>⚠️</span>
+                  <strong data-testid="zcode-unknown-kind">Unknown Interaction Type: {kind}</strong>
                 </div>
-                <p data-testid="zcode-user-input-prompt" style={{ margin: '0 0 10px 0', fontSize: '13px' }}>
-                  {payload?.prompt ?? ''}
+                <p
+                  data-testid="zcode-unknown-warning"
+                  style={{ margin: '0 0 8px 0', fontSize: '12px', color: '#b45309' }}
+                >
+                  Unknown interaction type: cannot automatically resolve without authoritative schema.
                 </p>
-                {payload?.options && payload.options.length > 0 && (
-                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '8px' }}>
-                    {payload.options.map(opt => (
-                      <button
-                        key={opt.optionId}
-                        type="button"
-                        data-testid={`zcode-user-input-btn-${opt.optionId}`}
-                        disabled={isBusy || Boolean(result)}
-                        onClick={() => handleResolve(id, { optionId: opt.optionId })}
-                        style={{
-                          padding: '6px 12px',
-                          borderRadius: '4px',
-                          border: '1px solid #d1d5db',
-                          background: '#f9fafb',
-                          fontSize: '12px',
-                          cursor: isBusy || result ? 'default' : 'pointer',
-                        }}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {payload?.freeText && (
-                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <input
-                      type="text"
-                      data-testid="zcode-user-input-text"
-                      disabled={isBusy || Boolean(result)}
-                      value={freeTextInputs[id] ?? ''}
-                      onChange={e => setFreeTextInputs({ ...freeTextInputs, [id]: e.target.value })}
-                      placeholder="Type your response..."
-                      style={{
-                        flex: 1,
-                        padding: '6px 10px',
-                        borderRadius: '4px',
-                        border: '1px solid #d1d5db',
-                        fontSize: '13px',
-                      }}
-                    />
-                    <button
-                      type="button"
-                      data-testid="zcode-user-input-submit"
-                      disabled={isBusy || Boolean(result)}
-                      onClick={() => handleResolve(id, { freeText: freeTextInputs[id] ?? '' })}
-                      style={{
-                        padding: '6px 14px',
-                        borderRadius: '4px',
-                        border: '1px solid #2563eb',
-                        background: '#2563eb',
-                        color: '#ffffff',
-                        fontWeight: 600,
-                        fontSize: '12px',
-                        cursor: isBusy || result ? 'default' : 'pointer',
-                      }}
-                    >
-                      {isBusy ? 'Submitting…' : 'Submit'}
-                    </button>
-                  </div>
-                )}
+                <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '6px' }}>
+                  ID: <span data-testid="zcode-unknown-id">{id}</span> · Created: {interaction.createdAt}
+                </div>
+                <pre
+                  data-testid="zcode-unknown-payload"
+                  style={{
+                    background: '#f3f4f6',
+                    padding: '8px',
+                    borderRadius: '4px',
+                    fontSize: '11px',
+                    fontFamily: 'monospace',
+                    overflowX: 'auto',
+                    maxHeight: '120px',
+                    margin: 0,
+                  }}
+                >
+                  {JSON.stringify(payload, null, 2)}
+                </pre>
               </div>
             )}
 
+            {/* Official Result Display (never falsifies success) */}
             {result && (
               <div
                 role="status"
@@ -1004,6 +2095,26 @@ export function ZCodeConversationView({ conversation, controller, reference }) {
     return activeController?.resolveInteraction(interactionId, answer);
   };
 
+  const handleSnooze = (interactionId) => {
+    return activeController?.snoozeInteractionAutoResolution(interactionId);
+  };
+
+  const handleHookTrust = (target, reviewItemIds) => {
+    return activeController?.respondWorkspaceHookReview(target, reviewItemIds);
+  };
+
+  const handleHookToggle = (target, reviewItemId, enabled) => {
+    return activeController?.toggleWorkspaceHookReviewItem(target, reviewItemId, enabled);
+  };
+
+  const handleHookRevoke = (payload) => {
+    return activeController?.revokeWorkspaceHookTrust(payload);
+  };
+
+  const handleHookRequestReview = (payload) => {
+    return activeController?.requestWorkspaceHookReview(payload);
+  };
+
   const sessionIdentity = conversation?.address
     ? `${conversation.address.runtime || 'zcode'}:${conversation.address.authority}:${conversation.address.workspace}:${conversation.address.sessionId}`
     : reference?.address
@@ -1031,7 +2142,16 @@ export function ZCodeConversationView({ conversation, controller, reference }) {
       <ZCodeStatusBanner state={state} onReconnect={handleReconnect} />
       <ZCodeAlerts state={state} onReconnect={handleReconnect} />
       <ZCodeControlBar state={state} onStop={handleStop} />
-      <ZCodePendingInteractions key={sessionIdentity ?? 'default'} state={state} onResolve={handleResolve} />
+      <ZCodePendingInteractions
+        key={sessionIdentity ?? 'default'}
+        state={state}
+        onResolve={handleResolve}
+        onSnooze={handleSnooze}
+        onHookTrust={handleHookTrust}
+        onHookToggle={handleHookToggle}
+        onHookRevoke={handleHookRevoke}
+        onHookRequestReview={handleHookRequestReview}
+      />
       <ZCodeCommandLedger state={state} />
       <div style={{ flex: 1, overflowY: 'auto' }}>
         <ZCodeRowsList state={state} />
