@@ -47,7 +47,7 @@
 
 `make-s04-fixtures.mjs` 派生 pages/conflict/lateframe；每份 provenance 列出源与字段注入。pages 的 65 个不同 ID/标题检验 limit 50；lateframe 明确是人工 hold/identity/seq/revision 注入；rename failure 和 stale 来自真实记录。受控 store 使用 S03.A 真实 snapshot schema，并明示 title/revision/时序修改。不是真实 GUI、付费模型或官方成功 rename 记录。
 
-完整命令及输出见 [s04-checks.json](../probes/checks/s04-checks.json) 和其引用的日志。
+日志保留 stdout/stderr 合并输出，归档时仅规范化行尾空白/末尾空行；原始日志 SHA-256 记在 checks，原件仍在本轮 `/tmp/s04-*.log`。完整命令及输出见 [s04-checks.json](../probes/checks/s04-checks.json) 和其引用的日志。
 
 | Check | 实跑结果 |
 |---|---|
