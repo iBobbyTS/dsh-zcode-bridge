@@ -1,22 +1,12 @@
-import { Context, getTraceable } from '@deepseek-ai/cordis'
+import { Context } from '@deepseek-ai/cordis'
 import WebServer from '@deepseek-ai/dsh-host-webserver'
 import { HostConnectionService } from '@deepseek-ai/dsh-client-connection/src/rpc-host.ts'
 import type { BrowserAuth } from '@deepseek-ai/dsh-client-connection/src/browser-auth.ts'
-import { expect, it, vi } from 'vitest'
+import { expect, it } from 'vitest'
 import { apply, inject } from '../packages/host/index.mjs'
 
-it.each(['early', 'late'])('owns the HTTP route with %s webServer when the upstream getter preserves caller permissions', async (timing) => {
+it.each(['early', 'late'])('owns the real HTTP route in the injected fiber with %s webServer', async (timing) => {
   const ctx = new Context()
-  const getter = Object.getOwnPropertyDescriptor(HostConnectionService.prototype, 'rpc')!.get!
-  // The current DSH getter captures a Cordis shadow context whose permissions
-  // belong to the service provider. This test-only counterfactual removes that
-  // independent upstream defect so the bridge's caller/lifecycle is exercised.
-  // scripts/diagnose-host-route.mjs checks the unmodified upstream separately.
-  const shim = vi.spyOn(HostConnectionService.prototype, 'rpc', 'get').mockImplementation(function (this: HostConnectionService) {
-    const shadow = Reflect.get(this, 'ctx') as Context
-    const owner = getTraceable(shadow, shadow)
-    return getter.call(Object.create(this, { ctx: { value: owner } }))
-  })
   const auth = { isAuthenticated: (request: { headers: { cookie?: string } }) => request.headers.cookie === 'route-test=allowed' } as BrowserAuth
   const requestStatus = () => fetch(`http://127.0.0.1:${ctx.get('webServer')!.port}/zcode-bridge/status`, {
     method: 'POST',
@@ -40,6 +30,6 @@ it.each(['early', 'late'])('owns the HTTP route with %s webServer when the upstr
     await host.dispose()
     expect((await requestStatus()).status).toBe(404)
   } finally {
-    try { await ctx.fiber.dispose() } finally { shim.mockRestore() }
+    await ctx.fiber.dispose()
   }
 })
