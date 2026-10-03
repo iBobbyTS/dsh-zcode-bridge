@@ -22,13 +22,44 @@ describe('S01 DSH existing slots and lifecycle',()=>{
   expect(slots.entries('plugins.bundle.config')[0].options.key).toBe('@dsh-zcode/bridge');
   await fiber.dispose();expect(slots.entries('plugins.bundle.config')).toHaveLength(0);await ctx.fiber.dispose();
  });
- it('Host uses the existing authenticated RPC interceptor and unloads without launch',async()=>{
+ it('Host uses the dedicated authenticated RPC channel and unloads without launch',async()=>{
   const ctx=new Context();let handler:any,unregistered=false;
-  ctx.provide('connection',{rpc:{intercept:(channel:string,matches:any,fn:any)=>{expect(channel).toBe('/api');expect(matches('zcode-bridge/status')).toBe(true);expect(matches('session/send')).toBe(false);handler=fn;return async()=>{unregistered=true}}}});
+  ctx.provide('connection',{rpc:{handle:(channel:string,fn:any)=>{expect(channel).toBe('/zcode-bridge');handler=fn;return async()=>{unregistered=true}}}});
   const fiber=ctx.plugin({inject:hostInject,apply:hostApply});await fiber.await();
-  expect((await handler('zcode-bridge/status',{},new AbortController().signal)).value.reason).toBe('not-connected');
-  expect((await handler('zcode-bridge/connect',{method:'session/send'},new AbortController().signal)).ok).toBe(false);
+  expect((await handler('status',{},new AbortController().signal)).value.reason).toBe('not-connected');
+  expect((await handler('connect',{method:'session/send'},new AbortController().signal)).ok).toBe(false);
+  expect((await handler('session/send',{},new AbortController().signal)).ok).toBe(false);
   await fiber.dispose();expect(unregistered).toBe(true);await ctx.fiber.dispose();
+ });
+ it('Host registers dedicated /zcode-bridge RPC channel and coexists with /api interceptor',async()=>{
+  const ctx=new Context();
+  const interceptors=new Map<string,any>();
+  const handlers=new Map<string,any>();
+  ctx.provide('connection',{
+    rpc:{
+      intercept:(channel:string,_matches:any,fn:any)=>{
+        if(interceptors.has(channel))throw new Error(`connection: shared RPC channel "${channel}" already has an interceptor`);
+        interceptors.set(channel,fn);
+        return async()=>{interceptors.delete(channel)};
+      },
+      handle:(channel:string,fn:any)=>{
+        if(handlers.has(channel))throw new Error(`duplicate route ${channel}`);
+        handlers.set(channel,fn);
+        return async()=>{handlers.delete(channel)};
+      },
+    },
+  });
+  ctx.connection.rpc.intercept('/api',()=>true,async()=>({ok:true,value:{gateway:true}}));
+  const fiber=ctx.plugin({inject:hostInject,apply:hostApply});
+  await fiber.await();
+  expect(handlers.has('/zcode-bridge')).toBe(true);
+  const statusRes=await handlers.get('/zcode-bridge')('status',{},new AbortController().signal);
+  expect(statusRes.ok).toBe(true);
+  expect(statusRes.value.reason).toBe('not-connected');
+  await fiber.dispose();
+  expect(handlers.has('/zcode-bridge')).toBe(false);
+  expect(interceptors.has('/api')).toBe(true);
+  await ctx.fiber.dispose();
  });
  it('official headless round trip is rendered as restricted in the same StatusCard',async()=>{
   const workspacePath=resolve('../.agent-work/tmp/s01-probe/zcode-test-workspace');
@@ -51,12 +82,12 @@ it('official response travels through Host RPC and DSH production slot renderer'
  const runtime=await SlotTestRuntime.create();const locale=new LocaleRuntime(runtime.ctx);locale.setLocale('en');runtime.ctx.provide('locale',locale);runtime.slots.installLocale(locale);
  let dispatch:any;
  runtime.ctx.provide('connection',{
-   rpc:{intercept:(_channel:any,_matches:any,handler:any)=>{dispatch=handler;return async()=>{}},call:async(_channel:any,endpoint:any,payload:any,signal:any)=>dispatch(endpoint,payload,signal??new AbortController().signal)},
+   rpc:{handle:(_channel:any,handler:any)=>{dispatch=handler;return async()=>{}},call:async(_channel:any,endpoint:any,payload:any,signal:any)=>dispatch(endpoint,payload,signal??new AbortController().signal)},
    state:{subscribe:()=>()=>{}},
  });
  try{
   const fiber=runtime.ctx.plugin({inject:hostInject,apply:hostApply},{workspacePath:resolve('../.agent-work/tmp/s01-probe/zcode-test-workspace')});await fiber.await();
-  await dispatch('zcode-bridge/connect',{},new AbortController().signal);
+  await dispatch('connect',{},new AbortController().signal);
   await runtime.declare({'plugins.bundle.config':{kind:'keyed',scope:'root'}} as never);await runtime.mount({inject,apply});
   const view=runtime.renderSlot('plugins.bundle.config' as never,{view:'page'} as never,{entryKey:'@dsh-zcode/bridge'} as never);
   await waitFor(()=>expect(view.view.getByRole('status').textContent).toContain('Restricted: protocol connected'));

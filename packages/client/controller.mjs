@@ -17,7 +17,7 @@ export class StatusController {
     if(this.#disposed)return;
     const generation=++this.#generation,abort=new AbortController();this.#requests.add(abort);
     if(method==='connect')this.#set({busy:true});
-    try{const r=await this.rpc.call('/api','zcode-bridge/'+method,{},abort.signal);if(!this.#disposed&&generation===this.#generation)this.#set({status:r.ok?r.value:initialClientStatus()})}
+    try{const r=await this.rpc.call('/zcode-bridge',method,{},abort.signal);if(!this.#disposed&&generation===this.#generation)this.#set({status:r.ok?r.value:initialClientStatus()})}
     catch{if(!this.#disposed&&generation===this.#generation)this.#set({status:initialClientStatus()})}
     finally{this.#requests.delete(abort);if(generation===this.#generation)this.#set({busy:false})}
   }

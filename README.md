@@ -18,7 +18,7 @@ Install the local bundle plus its internal Host/Client packages through DSH's
 plugin manager into a dedicated web profile. Configure `zcode-bridge-host` with
 `workspacePath` and optionally `appPath`; see the configuration-only example in
 `../dsh/apps/cli/config/examples/zcode-bridge`. No runtime starts until Connect.
-Host uses DSH's authenticated `/api` RPC carrier. Missing App/helper/config,
+Host uses DSH's authenticated `/zcode-bridge` dedicated RPC carrier. Missing App/helper/config,
 protocol failure and missing official auth source have distinct status reasons.
 
 Only App-owned Electron Node and cjs are launched, with the official bundled

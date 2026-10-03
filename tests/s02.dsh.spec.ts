@@ -48,6 +48,8 @@ it('B02: same id, fixed reopen, creation default, unknown binding, and native ho
     const reopened=sources.retain(parseRuntimeSessionKey(saved),{source:'mainView'})
     expect(reopened.address).toEqual(B02.Z1)
     await sources.refreshAddress(reopened.address)
+    expect(rpc.call.mock.calls.at(-1)?.[0]).toBe('/zcode-bridge')
+    expect(rpc.call.mock.calls.at(-1)?.[1]).toBe('sessions')
     expect(rpc.call.mock.calls.at(-1)?.[2]).toEqual({address:B02.Z1})
     expect(native.hook).toHaveBeenCalledTimes(0);expect(native.tool).toHaveBeenCalledTimes(0);expect(native.prompt).toHaveBeenCalledTimes(0);expect(native.sessions.retain).toHaveBeenCalledTimes(0)
     reopened.release()
@@ -200,21 +202,21 @@ it('Host queries only the exact official process/workspace and rejects cross-run
 
 it('official catalog travels through the existing Host RPC and runtime source without native hooks',async()=>{
   const ctx=new Context(),native=nativeFixture();let dispatch:any
-  ctx.provide('connection',{rpc:{intercept:(_channel:any,_matches:any,handler:any)=>{dispatch=handler;return ()=>{}},call:async(_channel:any,endpoint:any,payload:any,signal:any)=>dispatch(endpoint,payload,signal)}})
+  ctx.provide('connection',{rpc:{handle:(_channel:any,handler:any)=>{dispatch=handler;return ()=>{}},call:async(_channel:any,endpoint:any,payload:any,signal:any)=>dispatch(endpoint,payload,signal)}})
   const hostFiber=ctx.plugin({inject:hostInject,apply:hostApply},{workspacePath:resolve('../.agent-work/tmp/s01-probe/zcode-test-workspace')})
   let sources:RuntimeSessions|undefined
   try{
     await hostFiber.await()
-    const connected=await dispatch('zcode-bridge/connect',{},new AbortController().signal)
+    const connected=await dispatch('connect',{},new AbortController().signal)
     expect(connected.value.connected).toBe(true)
     sources=new RuntimeSessions({sessions:native.sessions as never,rpc:ctx.get('connection')!.rpc,nativeAuthority:B02.D1.authority})
     await sources.refresh()
     expect(sources.zcodeAvailability.getSnapshot().state).toBe('restricted')
     expect(sources.zcodeAvailability.getSnapshot().capabilities).toEqual({create:false,open:false,nativeAgent:false})
     expect(native.hook).not.toHaveBeenCalled()
-    const wrong=await dispatch('zcode-bridge/sessions',{address:B02.D1},new AbortController().signal)
+    const wrong=await dispatch('sessions',{address:B02.D1},new AbortController().signal)
     expect(wrong.error.code).toBe('source-address-mismatch')
-    expect((await dispatch('zcode-bridge/sessions',{command:'session/create'},new AbortController().signal)).ok).toBe(false)
+    expect((await dispatch('sessions',{command:'session/create'},new AbortController().signal)).ok).toBe(false)
     console.log(JSON.stringify({oracle:'official-session-list-to-source',state:sources.zcodeAvailability.getSnapshot().state,paidModelCalls:0,sharedSessions:connected.value.sharedSessions,nativeHookCalls:native.hook.mock.calls.length}))
   }finally{await sources?.dispose();await ctx.fiber.dispose()}
 })

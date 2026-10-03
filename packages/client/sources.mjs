@@ -61,7 +61,7 @@ export class RuntimeSessions {
     const generation=this.#generation,version=++this.#readVersion,abort=new AbortController();
     for(const request of this.#requests)request.abort();this.#requests.add(abort);
     try{
-      const response=await this.rpc.call('/api','zcode-bridge/sessions',address?{address}:{},abort.signal);
+      const response=await this.rpc.call('/zcode-bridge','sessions',address?{address}:{},abort.signal);
       if(this.#closed||generation!==this.#generation||version!==this.#readVersion)return;
       if(!response.ok)throw sourceError(response.error.code);
       const value=response.value;
