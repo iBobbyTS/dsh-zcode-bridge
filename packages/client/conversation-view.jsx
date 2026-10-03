@@ -86,6 +86,11 @@ export class ConversationController {
     });
   }
 
+  async queryCommand(commandId, options) {
+    if (this.#disposed) throw new Error('Controller is disposed');
+    return this.#conversation?.queryCommand?.(commandId, options);
+  }
+
   async respondWorkspaceHookReview(target, reviewItemIds) {
     if (this.#disposed) throw new Error('Controller is disposed');
     return this.#conversation?.submit?.({
@@ -469,6 +474,18 @@ export function buildElicitationContent(questions, drafts) {
  * - Fail-safe unknown interaction card
  * - Authoritative official result echo
  */
+function isSameAutoRes(a, b) {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    a.state === b.state &&
+    a.startedAt === b.startedAt &&
+    a.visibleAt === b.visibleAt &&
+    a.deadlineAt === b.deadlineAt &&
+    a.snoozedAt === b.snoozedAt
+  );
+}
+
 export function ZCodePendingInteractions({
   state,
   onResolve,
@@ -477,6 +494,7 @@ export function ZCodePendingInteractions({
   onHookToggle,
   onHookRevoke,
   onHookRequestReview,
+  onQueryCommand,
 }) {
   const interactions = state?.snapshot?.pendingInteractions ?? [];
   const hookAdmission = state?.snapshot?.workspaceHookAdmission;
@@ -491,11 +509,19 @@ export function ZCodePendingInteractions({
   const snoozeIntentsRef = useRef(new Set());
   const inFlightSnoozeRef = useRef(new Set());
   const sentSnoozeRef = useRef(new Set());
+  const snoozeCommandsRef = useRef(new Map());
+  const snoozeBaseSeqRef = useRef(new Map());
+  const snoozeBaseRevRef = useRef(new Map());
+  const snoozeBaseAutoResRef = useRef(new Map());
 
   const sendSnooze = useCallback((interactionId) => {
     inFlightSnoozeRef.current.add(interactionId);
     sentSnoozeRef.current.add(interactionId);
     setSnoozedInteractions(prev => ({ ...prev, [interactionId]: true }));
+    const currentInteraction = interactions.find(item => item.interactionId === interactionId);
+    snoozeBaseSeqRef.current.set(interactionId, state?.snapshot?.seq);
+    snoozeBaseRevRef.current.set(interactionId, state?.snapshot?.revision);
+    snoozeBaseAutoResRef.current.set(interactionId, currentInteraction?.autoResolution);
     try {
       const maybePromise = onSnooze?.(interactionId);
       if (maybePromise && typeof maybePromise.then === 'function') {
@@ -503,6 +529,7 @@ export function ZCodePendingInteractions({
           .then(record => {
             inFlightSnoozeRef.current.delete(interactionId);
             const isRejected = record?.ack?.status === 'rejected' || record?.state === 'rejected';
+            const isOutcomeUnknown = record?.state === 'outcome-unknown';
             if (isRejected) {
               sentSnoozeRef.current.delete(interactionId);
               snoozeIntentsRef.current.delete(interactionId);
@@ -512,32 +539,79 @@ export function ZCodePendingInteractions({
                 ...prev,
                 [interactionId]: `Warning: Auto-resolution snooze rejected (${reason})`,
               }));
+            } else if (isOutcomeUnknown) {
+              // 1. outcome-unknown 的 snooze 结果不虚标"已延期"（撤销本地乐观标记）
+              setSnoozedInteractions(prev => ({ ...prev, [interactionId]: false }));
+              // 2. 显示"结果未确认"态（含同 commandId 可对账提示），不盲重发（B04）
+              const cmdId = record?.commandId;
+              if (cmdId) {
+                snoozeCommandsRef.current.set(interactionId, cmdId);
+              }
+              const cmdHint = cmdId ? ` (commandId: ${cmdId}, 可用同 commandId 对账 / reconcile with same commandId)` : '';
+              setSnoozeWarnings(prev => ({
+                ...prev,
+                [interactionId]: `Warning: Auto-resolution snooze outcome unconfirmed (结果未确认)${cmdHint}`,
+              }));
+            } else if (record?.state === 'failed' || record?.state === 'not-sent') {
+              sentSnoozeRef.current.delete(interactionId);
+              snoozeIntentsRef.current.delete(interactionId);
+              setSnoozedInteractions(prev => ({ ...prev, [interactionId]: false }));
+              setSnoozeWarnings(prev => ({
+                ...prev,
+                [interactionId]: `Warning: Auto-resolution snooze failed (${record?.error ?? record?.state})`,
+              }));
             }
           })
           .catch(err => {
             inFlightSnoozeRef.current.delete(interactionId);
-            sentSnoozeRef.current.delete(interactionId);
-            snoozeIntentsRef.current.delete(interactionId);
             setSnoozedInteractions(prev => ({ ...prev, [interactionId]: false }));
-            setSnoozeWarnings(prev => ({
-              ...prev,
-              [interactionId]: `Warning: Auto-resolution snooze failed (${err.code ?? err.message ?? 'error'})`,
-            }));
+            const isOutcomeUnknown = err?.state === 'outcome-unknown' || err?.code === 'timeout' || err?.code === 'request-timeout';
+            if (isOutcomeUnknown) {
+              const cmdId = err?.commandId;
+              if (cmdId) {
+                snoozeCommandsRef.current.set(interactionId, cmdId);
+              }
+              const cmdHint = cmdId ? ` (commandId: ${cmdId}, 可用同 commandId 对账 / reconcile with same commandId)` : '';
+              setSnoozeWarnings(prev => ({
+                ...prev,
+                [interactionId]: `Warning: Auto-resolution snooze outcome unconfirmed (结果未确认)${cmdHint}`,
+              }));
+            } else {
+              sentSnoozeRef.current.delete(interactionId);
+              snoozeIntentsRef.current.delete(interactionId);
+              setSnoozeWarnings(prev => ({
+                ...prev,
+                [interactionId]: `Warning: Auto-resolution snooze failed (${err.code ?? err.message ?? 'error'})`,
+              }));
+            }
           });
       } else {
         inFlightSnoozeRef.current.delete(interactionId);
       }
     } catch (err) {
       inFlightSnoozeRef.current.delete(interactionId);
-      sentSnoozeRef.current.delete(interactionId);
-      snoozeIntentsRef.current.delete(interactionId);
       setSnoozedInteractions(prev => ({ ...prev, [interactionId]: false }));
-      setSnoozeWarnings(prev => ({
-        ...prev,
-        [interactionId]: `Warning: Auto-resolution snooze failed (${err.code ?? err.message ?? 'error'})`,
-      }));
+      const isOutcomeUnknown = err?.state === 'outcome-unknown' || err?.code === 'timeout' || err?.code === 'request-timeout';
+      if (isOutcomeUnknown) {
+        const cmdId = err?.commandId;
+        if (cmdId) {
+          snoozeCommandsRef.current.set(interactionId, cmdId);
+        }
+        const cmdHint = cmdId ? ` (commandId: ${cmdId}, 可用同 commandId 对账 / reconcile with same commandId)` : '';
+        setSnoozeWarnings(prev => ({
+          ...prev,
+          [interactionId]: `Warning: Auto-resolution snooze outcome unconfirmed (结果未确认)${cmdHint}`,
+        }));
+      } else {
+        sentSnoozeRef.current.delete(interactionId);
+        snoozeIntentsRef.current.delete(interactionId);
+        setSnoozeWarnings(prev => ({
+          ...prev,
+          [interactionId]: `Warning: Auto-resolution snooze failed (${err.code ?? err.message ?? 'error'})`,
+        }));
+      }
     }
-  }, [onSnooze]);
+  }, [interactions, state?.snapshot, onSnooze]);
 
   const triggerSnooze = useCallback((interactionId) => {
     snoozeIntentsRef.current.add(interactionId);
@@ -578,12 +652,60 @@ export function ZCodePendingInteractions({
       if (officialState && !inFlightSnoozeRef.current.has(id)) {
         if (officialState === 'snoozed') {
           setSnoozedInteractions(prev => (prev[id] === true ? prev : { ...prev, [id]: true }));
-        } else if (officialState === 'hiddenGrace' || officialState === 'expired' || officialState === 'resolved') {
-          setSnoozedInteractions(prev => (prev[id] ? { ...prev, [id]: false } : prev));
+          setSnoozeWarnings(prev => {
+            if (!prev[id]) return prev;
+            const next = { ...prev };
+            delete next[id];
+            return next;
+          });
+        } else if (
+          officialState === 'hiddenGrace' ||
+          officialState === 'visibleCountdown' ||
+          officialState === 'expired' ||
+          officialState === 'resolved'
+        ) {
+          const baseSeq = snoozeBaseSeqRef.current.get(id);
+          const baseRev = snoozeBaseRevRef.current.get(id);
+          const baseAutoRes = snoozeBaseAutoResRef.current.get(id);
+          const currentSeq = state?.snapshot?.seq;
+          const currentRev = state?.snapshot?.revision;
+          const hasNewOfficialSnapshot = Boolean(
+            baseAutoRes === undefined ||
+            (baseSeq !== undefined && currentSeq !== undefined && currentSeq > baseSeq) ||
+            (baseRev !== undefined && currentRev !== undefined && currentRev > baseRev) ||
+            (baseAutoRes && !isSameAutoRes(item.autoResolution, baseAutoRes))
+          );
+          if (hasNewOfficialSnapshot || officialState === 'expired' || officialState === 'resolved') {
+            setSnoozedInteractions(prev => (prev[id] ? { ...prev, [id]: false } : prev));
+          }
         }
       }
     }
-  }, [interactions, sendSnooze]);
+    // 3. 对账状态监听：若 state.commands 中关联的 snooze commandId 状态已对账更新
+    for (const item of interactions) {
+      const id = item.interactionId;
+      const cmdId = snoozeCommandsRef.current.get(id);
+      if (cmdId && state?.commands) {
+        const cmd = state.commands.find(c => c.commandId === cmdId);
+        if (cmd && cmd.state !== 'outcome-unknown' && cmd.state !== 'sent-unconfirmed') {
+          if (cmd.ack?.status === 'rejected' || cmd.state === 'rejected') {
+            const reason = cmd.ack?.reasonCode ?? cmd.error ?? 'rejected';
+            setSnoozeWarnings(prev => ({
+              ...prev,
+              [id]: `Warning: Auto-resolution snooze rejected (${reason})`,
+            }));
+          } else if (['accepted', 'accepted-awaiting-terminal', 'noop'].includes(cmd.ack?.status ?? cmd.state)) {
+            setSnoozeWarnings(prev => {
+              if (!prev[id]) return prev;
+              const next = { ...prev };
+              delete next[id];
+              return next;
+            });
+          }
+        }
+      }
+    }
+  }, [interactions, state?.snapshot, state?.commands, sendSnooze]);
 
   const hasInteractions = interactions.length > 0;
   const hasAdmission = Boolean(hookAdmission && hookAdmission.pendingCount > 0);
@@ -835,11 +957,23 @@ export function ZCodePendingInteractions({
         const isBusy = submitting[id];
         const autoRes = interaction.autoResolution;
         const isOfficialSnoozed = autoRes?.state === 'snoozed';
+        const baseSeq = snoozeBaseSeqRef.current.get(id);
+        const baseRev = snoozeBaseRevRef.current.get(id);
+        const baseAutoRes = snoozeBaseAutoResRef.current.get(id);
+        const currentSeq = state?.snapshot?.seq;
+        const currentRev = state?.snapshot?.revision;
+        const hasNewOfficialSnapshot = Boolean(
+          baseAutoRes === undefined ||
+          (baseSeq !== undefined && currentSeq !== undefined && currentSeq > baseSeq) ||
+          (baseRev !== undefined && currentRev !== undefined && currentRev > baseRev) ||
+          (baseAutoRes && !isSameAutoRes(autoRes, baseAutoRes))
+        );
+        const isOfficialCountdown = autoRes?.state === 'hiddenGrace' || autoRes?.state === 'visibleCountdown';
         const isOptimisticSnoozed =
           snoozedInteractions[id] === true &&
-          autoRes?.state !== 'hiddenGrace' &&
           autoRes?.state !== 'expired' &&
-          autoRes?.state !== 'resolved';
+          autoRes?.state !== 'resolved' &&
+          (!hasNewOfficialSnapshot || !isOfficialCountdown);
         const isSnoozed = isOfficialSnoozed || isOptimisticSnoozed;
 
         // Detect Plan Review
@@ -868,43 +1002,64 @@ export function ZCodePendingInteractions({
             {/* Auto-Resolution Status Chip */}
             {autoRes && (
               <div style={{ marginBottom: '8px' }}>
-                {isSnoozed ? (
-                  <span
-                    data-testid="zcode-auto-resolution-snoozed"
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      padding: '2px 8px',
-                      borderRadius: '4px',
-                      background: '#f3f4f6',
-                      border: '1px solid #d1d5db',
-                      color: '#4b5563',
-                      fontSize: '11px',
-                      fontWeight: 500,
-                    }}
-                  >
-                    ⏸️ Auto-resolution snoozed
-                  </span>
-                ) : (
-                  <span
-                    data-testid="zcode-auto-resolution-countdown"
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      padding: '2px 8px',
-                      borderRadius: '4px',
-                      background: 'rgba(239, 68, 68, 0.1)',
-                      border: '1px solid rgba(239, 68, 68, 0.3)',
-                      color: '#b91c1c',
-                      fontSize: '11px',
-                      fontWeight: 600,
-                    }}
-                  >
-                    ⏳ Auto-resolving countdown active
-                  </span>
-                )}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                  {isSnoozed ? (
+                    <span
+                      data-testid="zcode-auto-resolution-snoozed"
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        padding: '2px 8px',
+                        borderRadius: '4px',
+                        background: '#f3f4f6',
+                        border: '1px solid #d1d5db',
+                        color: '#4b5563',
+                        fontSize: '11px',
+                        fontWeight: 500,
+                      }}
+                    >
+                      ⏸️ Auto-resolution snoozed
+                    </span>
+                  ) : (
+                    <span
+                      data-testid="zcode-auto-resolution-countdown"
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        padding: '2px 8px',
+                        borderRadius: '4px',
+                        background: 'rgba(239, 68, 68, 0.1)',
+                        border: '1px solid rgba(239, 68, 68, 0.3)',
+                        color: '#b91c1c',
+                        fontSize: '11px',
+                        fontWeight: 600,
+                      }}
+                    >
+                      ⏳ Auto-resolving countdown active
+                    </span>
+                  )}
+                  {snoozeWarnings[id] && (snoozeWarnings[id].includes('unconfirmed') || snoozeWarnings[id].includes('未确认')) && (
+                    <span
+                      data-testid="zcode-auto-resolution-unconfirmed"
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        padding: '2px 8px',
+                        borderRadius: '4px',
+                        background: '#fffbeb',
+                        border: '1px solid #fde68a',
+                        color: '#b45309',
+                        fontSize: '11px',
+                        fontWeight: 600,
+                      }}
+                    >
+                      ❓ Auto-resolution snooze unconfirmed (结果未确认)
+                    </span>
+                  )}
+                </div>
                 {snoozeWarnings[id] && (
                   <div
                     data-testid={`zcode-snooze-warning-${id}`}
@@ -913,9 +1068,43 @@ export function ZCodePendingInteractions({
                       color: '#b45309',
                       fontSize: '11px',
                       fontWeight: 500,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      flexWrap: 'wrap',
                     }}
                   >
-                    ⚠️ {snoozeWarnings[id]}
+                    <span>⚠️ {snoozeWarnings[id]}</span>
+                    {(snoozeWarnings[id].includes('unconfirmed') || snoozeWarnings[id].includes('未确认')) && (
+                      <span data-testid={`zcode-snooze-unconfirmed-${id}`} style={{ display: 'none' }} />
+                    )}
+                    {(snoozeWarnings[id].includes('unconfirmed') || snoozeWarnings[id].includes('未确认')) && (
+                      <span data-testid="zcode-snooze-unconfirmed" style={{ display: 'none' }} />
+                    )}
+                    {snoozeCommandsRef.current.get(id) && onQueryCommand && (
+                      <button
+                        type="button"
+                        data-testid={`zcode-snooze-reconcile-btn-${id}`}
+                        onClick={() => {
+                          const cmdId = snoozeCommandsRef.current.get(id);
+                          if (cmdId) {
+                            void onQueryCommand(cmdId);
+                          }
+                        }}
+                        style={{
+                          padding: '2px 8px',
+                          borderRadius: '4px',
+                          border: '1px solid #d97706',
+                          background: '#ffffff',
+                          color: '#b45309',
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Reconcile (对账)
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -2241,6 +2430,10 @@ export function ZCodeConversationView({ conversation, controller, reference }) {
     return activeController?.snoozeInteractionAutoResolution(interactionId);
   };
 
+  const handleQueryCommand = (commandId, options) => {
+    return activeController?.queryCommand(commandId, options);
+  };
+
   const handleHookTrust = (target, reviewItemIds) => {
     return activeController?.respondWorkspaceHookReview(target, reviewItemIds);
   };
@@ -2293,6 +2486,7 @@ export function ZCodeConversationView({ conversation, controller, reference }) {
         onHookToggle={handleHookToggle}
         onHookRevoke={handleHookRevoke}
         onHookRequestReview={handleHookRequestReview}
+        onQueryCommand={handleQueryCommand}
       />
       <ZCodeCommandLedger state={state} />
       <div style={{ flex: 1, overflowY: 'auto' }}>

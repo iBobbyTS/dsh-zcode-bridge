@@ -886,4 +886,142 @@ describe('S05 User Interactions, Plan Review & Hook Trust', () => {
       f.dispose();
     }
   });
+
+  it('FB6-1: snooze timeout yields outcome-unknown and unconfirmed UI; official visibleCountdown snapshot corrects local snoozed state; same-commandId query reconciles terminal state', async () => {
+    const f = createConversationFixture();
+    try {
+      await f.open(questionnaireFixture.initial, questionnaireFixture.ack);
+      render(React.createElement(ZCodeConversationView, { conversation: f.conversation }));
+
+      // 1. Initial questionnaire card rendering
+      expect(screen.getByTestId('zcode-questionnaire-card')).toBeDefined();
+      expect(screen.getByTestId('zcode-auto-resolution-countdown').textContent).toContain('Auto-resolving countdown active');
+      expect(screen.queryByTestId('zcode-auto-resolution-snoozed')).toBeNull();
+
+      // 2. User selects production -> triggers snooze RPC to peer
+      const prodRadio = screen.getByTestId('zcode-option-production');
+      await act(async () => {
+        fireEvent.click(prodRadio);
+      });
+
+      let snoozeReq: any;
+      await waitFor(() => {
+        snoozeReq = f.sent.find(s => s.params?.type === 'snoozeInteractionAutoResolution');
+        expect(snoozeReq).toBeDefined();
+      });
+      const snoozeCmdId = snoozeReq.params.commandId;
+
+      // 3. Snooze RPC times out: peer timeoutMs is 100ms, wait past timeout without responding
+      await new Promise(r => setTimeout(r, 150));
+
+      // ProtocolPeer timeout -> Host submit catches timeout -> record.state is 'outcome-unknown'
+      const cmdRecord = f.conversation.command(snoozeCmdId);
+      expect(cmdRecord?.state).toBe('outcome-unknown');
+
+      // UI must NOT falsely claim "snoozed" — display unconfirmed status with commandId and reconcile hint (不虚标已延期)
+      await waitFor(() => {
+        expect(screen.queryByTestId('zcode-auto-resolution-snoozed')).toBeNull();
+        expect(screen.getByTestId('zcode-auto-resolution-countdown')).toBeDefined();
+        expect(screen.getByTestId('zcode-auto-resolution-unconfirmed')).toBeDefined();
+      });
+      const warningElem = screen.getByTestId(`zcode-snooze-warning-${snoozeReq.params.payload.interactionId}`);
+      expect(warningElem.textContent).toContain('结果未确认');
+      expect(warningElem.textContent).toContain(snoozeCmdId);
+
+      // 4. B04: typing / interacting more does NOT blind-resend snooze
+      const countBefore = f.sent.filter(s => s.params?.type === 'snoozeInteractionAutoResolution').length;
+      const stagingRadio = screen.getByTestId('zcode-option-staging');
+      await act(async () => {
+        fireEvent.click(stagingRadio);
+      });
+      const countAfter = f.sent.filter(s => s.params?.type === 'snoozeInteractionAutoResolution').length;
+      expect(countAfter).toBe(countBefore);
+
+      // 5. Subsequent official visibleCountdown snapshot arrives: official countdown is authoritative
+      const countdownFrame = structuredClone(questionnaireFixture.initial);
+      countdownFrame.logicalFrameId = 'countdown-lf-2';
+      countdownFrame.logicalFrameOrdinal = 2;
+      countdownFrame.frame.toSeq = 1;
+      countdownFrame.frame.payload.snapshot.seq = 1;
+      countdownFrame.frame.payload.snapshot.revision = 1;
+      countdownFrame.frame.payload.snapshot.pendingInteractions[0].autoResolution = {
+        state: 'visibleCountdown',
+        startedAt: Date.now() - 2000,
+        visibleAt: Date.now() - 1000,
+        deadlineAt: Date.now() + 50000,
+      };
+      await act(async () => {
+        f.wire(countdownFrame);
+      });
+      await waitFor(() => {
+        expect(screen.queryByTestId('zcode-auto-resolution-snoozed')).toBeNull();
+        expect(screen.getByTestId('zcode-auto-resolution-countdown')).toBeDefined();
+      });
+
+      // 6. Same commandId reconciliation: click Reconcile button to query command
+      const reconcileBtn = screen.getByTestId(`zcode-snooze-reconcile-btn-${snoozeReq.params.payload.interactionId}`);
+      expect(reconcileBtn).toBeDefined();
+
+      let queryPromise: Promise<void>;
+      await act(async () => {
+        queryPromise = (async () => {
+          fireEvent.click(reconcileBtn);
+        })();
+      });
+
+      let queryReq: any;
+      await waitFor(() => {
+        queryReq = f.sent.find(s => s.method === 'v4/commands/query');
+        expect(queryReq).toBeDefined();
+      });
+      expect(queryReq.params.commands[0].commandId).toBe(snoozeCmdId);
+
+      // Peer responds with accepted ACK
+      await act(async () => {
+        f.response(queryReq, {
+          results: [{
+            key: {
+              sessionId: queryReq.params.commands[0].sessionId,
+              commandId: queryReq.params.commands[0].commandId,
+            },
+            result: {
+              status: 'accepted',
+              commandId: snoozeCmdId,
+              revisionAtDecision: 2,
+            },
+          }],
+        });
+      });
+      await queryPromise!;
+
+      // Reconciled command transitions to accepted; warning is cleared
+      await waitFor(() => {
+        expect(screen.queryByTestId(`zcode-snooze-warning-${snoozeReq.params.payload.interactionId}`)).toBeNull();
+        expect(screen.queryByTestId('zcode-auto-resolution-unconfirmed')).toBeNull();
+      });
+
+      // 7. Official server frame arrives with snoozed state: final terminal state presentation
+      const snoozedFrame = structuredClone(countdownFrame);
+      snoozedFrame.logicalFrameId = 'snoozed-lf-3';
+      snoozedFrame.logicalFrameOrdinal = 3;
+      snoozedFrame.frame.toSeq = 2;
+      snoozedFrame.frame.payload.snapshot.seq = 2;
+      snoozedFrame.frame.payload.snapshot.revision = 2;
+      snoozedFrame.frame.payload.snapshot.pendingInteractions[0].autoResolution = {
+        state: 'snoozed',
+        startedAt: Date.now() - 2000,
+        snoozedAt: Date.now(),
+      };
+      await act(async () => {
+        f.wire(snoozedFrame);
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('zcode-auto-resolution-snoozed')).toBeDefined();
+        expect(screen.queryByTestId('zcode-auto-resolution-countdown')).toBeNull();
+      });
+    } finally {
+      f.dispose();
+    }
+  });
 });

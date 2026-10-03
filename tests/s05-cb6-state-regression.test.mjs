@@ -230,3 +230,111 @@ test('CB6-2: queued interaction does not send premature snooze or false label; h
     dom.window.close();
   }
 });
+
+test('FB6-1: snooze timeout yields outcome-unknown and unconfirmed UI; official visibleCountdown snapshot corrects local snoozed state; same-commandId query reconciles terminal state', async () => {
+  const dom = new JSDOM('<div id="root"></div>', { url: 'http://localhost' });
+  globalThis.window = dom.window;
+  globalThis.document = dom.window.document;
+  globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+  const React = require('react');
+  const { createRoot } = require('react-dom/client');
+  const { Simulate } = require('react-dom/test-utils');
+
+  const code = buildSync({
+    entryPoints: [resolve(repo, 'packages/client/conversation-view.jsx')],
+    bundle: true, write: false, platform: 'node', format: 'cjs', external: ['react'],
+  }).outputFiles[0].text;
+  const mod = { exports: {} };
+  vm.runInThisContext('(function(require,module,exports){' + code + '\n})')(require, mod, mod.exports);
+  const { ZCodePendingInteractions } = mod.exports;
+  const root = createRoot(document.getElementById('root'));
+  const qBase = JSON.parse(readFileSync(resolve(repo, 'tests/fixtures/s05/questionnaire.json'))).initial.frame.payload.snapshot.pendingInteractions[0];
+  const selector = id => document.querySelector(`[data-testid="${id}"]`);
+
+  const onResolve = async () => ({ state: 'accepted-awaiting-terminal', ack: { status: 'accepted' } });
+  let snoozeCalls = 0;
+  const snoozeResult = { commandId: 'cmd-snooze-timeout-1', state: 'outcome-unknown', error: 'request-timeout' };
+  const snooze = async () => {
+    snoozeCalls++;
+    return snoozeResult;
+  };
+
+  async function render(key, interactions, commands = [], onSnooze = snooze) {
+    await React.act(async () => root.render(React.createElement(ZCodePendingInteractions, {
+      key, state: { snapshot: { pendingInteractions: interactions }, commands }, onResolve, onSnooze,
+    })));
+  }
+
+  try {
+    const item = structuredClone(qBase);
+    item.interactionId = 'test-countdown-item';
+    item.autoResolution = {
+      state: 'visibleCountdown',
+      startedAt: 1000,
+      visibleAt: 2000,
+      deadlineAt: 60000,
+    };
+    item.payload.questions = [{ question: 'Name?', header: 'Name', options: [], multiSelect: false }];
+    item.payload.answerDrafts = {};
+
+    // 1. Initial render shows countdown active
+    await render('step-1', [item]);
+    assert.ok(selector('zcode-auto-resolution-countdown'), 'countdown must be active initially');
+    assert.equal(selector('zcode-auto-resolution-snoozed'), null, 'must not be snoozed initially');
+
+    // 2. User types in custom input -> triggers snooze
+    await React.act(async () => Simulate.change(selector('zcode-q-custom-input'), { target: { value: 'first char' } }));
+    assert.equal(snoozeCalls, 1, 'snooze is invoked on user input');
+
+    // 3. Snooze RPC yielded outcome-unknown: UI must NOT falsely display snoozed (不虚标已延期)
+    // Must display countdown active and unconfirmed warning with commandId and reconciliation hint
+    assert.equal(selector('zcode-auto-resolution-snoozed'), null, 'must not falsely mark outcome-unknown snooze as snoozed');
+    assert.ok(selector('zcode-auto-resolution-countdown'), 'countdown remains active on outcome-unknown');
+    assert.ok(selector('zcode-auto-resolution-unconfirmed'), 'unconfirmed badge must be displayed');
+    const warning = selector('zcode-snooze-warning-test-countdown-item');
+    assert.ok(warning, 'snooze warning must be rendered');
+    assert.ok(warning.textContent.includes('结果未确认'), 'warning must indicate 结果未确认');
+    assert.ok(warning.textContent.includes('cmd-snooze-timeout-1'), 'warning must include commandId');
+    assert.ok(warning.textContent.includes('对账') || warning.textContent.includes('reconcile'), 'warning must include reconciliation hint');
+
+    // 4. B04: typing more does NOT blind-resend snooze
+    await React.act(async () => Simulate.change(selector('zcode-q-custom-input'), { target: { value: 'second char' } }));
+    assert.equal(snoozeCalls, 1, 'typing again must not blind-resend snooze');
+
+    // 5. Subsequent official visibleCountdown snapshot arrives
+    const visibleCountdownSnapshot = structuredClone(item);
+    visibleCountdownSnapshot.autoResolution = {
+      state: 'visibleCountdown',
+      startedAt: 1000,
+      visibleAt: 2000,
+      deadlineAt: 50000,
+    };
+    await render('step-2', [visibleCountdownSnapshot]);
+    assert.equal(selector('zcode-auto-resolution-snoozed'), null, 'subsequent official visibleCountdown snapshot maintains countdown');
+    assert.ok(selector('zcode-auto-resolution-countdown'), 'official visibleCountdown is authoritative');
+
+    // 6. Same commandId reconciliation: command in state.commands transitions to accepted
+    const reconciledCommands = [{
+      commandId: 'cmd-snooze-timeout-1',
+      type: 'snoozeInteractionAutoResolution',
+      state: 'accepted-awaiting-terminal',
+      ack: { status: 'accepted' },
+    }];
+    await render('step-3', [visibleCountdownSnapshot], reconciledCommands);
+    assert.equal(selector('zcode-snooze-warning-test-countdown-item'), null, 'reconciled command clears unconfirmed warning');
+
+    // 7. Official server frame arrives with snoozed state: final state呈現
+    const snoozedSnapshot = structuredClone(item);
+    snoozedSnapshot.autoResolution = {
+      state: 'snoozed',
+      startedAt: 1000,
+      snoozedAt: 3000,
+    };
+    await render('step-4', [snoozedSnapshot], reconciledCommands);
+    assert.ok(selector('zcode-auto-resolution-snoozed'), 'UI displays official snoozed state');
+    assert.equal(selector('zcode-auto-resolution-countdown'), null, 'countdown removed once officially snoozed');
+  } finally {
+    await React.act(async () => root.unmount());
+    dom.window.close();
+  }
+});
