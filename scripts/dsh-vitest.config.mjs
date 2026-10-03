@@ -1,0 +1,11 @@
+import { createRequire } from 'node:module';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
+const dsh=resolve(process.env.DSH_CHECKOUT??'../dsh');
+const require=createRequire(resolve(dsh,'package.json'));
+const ts=require('typescript');const parsed=ts.readConfigFile(resolve(dsh,'tsconfig.base.json'),ts.sys.readFile).config;
+const aliases=Object.entries(parsed.compilerOptions.paths).sort(([a],[b])=>b.length-a.length).map(([key,paths])=>({find:key.includes('*')?new RegExp('^'+key.replace(/[.*+?^${}()|[\]\\]/g,'\\$&').replace('\\*','(.*)')+'$'):key,replacement:resolve(dsh,paths[0]).replace('*','$1')}));
+aliases.unshift(...Object.entries(parsed.compilerOptions.paths).filter(([key,paths])=>/^@[^/]+\/[^/]+$/.test(key)&&paths[0].includes('/src')).map(([key,paths])=>({find:key+'/src',replacement:resolve(dsh,paths[0].slice(0,paths[0].lastIndexOf('/src')+4))})));
+aliases.push({find:'@testing-library/react',replacement:require.resolve('@testing-library/react')},{find:/^react(?=\/|$)/,replacement:resolve(createRequire(require.resolve('@testing-library/react')).resolve('react/package.json'),'..')},{find:/^react-dom(?=\/|$)/,replacement:resolve(createRequire(require.resolve('@testing-library/react')).resolve('react-dom/package.json'),'..')});
+const {standardDecoratorPlugin,vitestExecArgv}=await import(pathToFileURL(resolve(dsh,'vitest.shared.ts')).href);
+export default {plugins:[standardDecoratorPlugin()],test:{include:['tests/*.dsh.spec.ts'],environment:'jsdom',execArgv:vitestExecArgv,testTimeout:20000},resolve:{alias:aliases,dedupe:['react','react-dom']}};

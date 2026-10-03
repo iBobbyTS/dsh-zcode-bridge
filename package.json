@@ -1,0 +1,8 @@
+{
+  "name": "@dsh-zcode/bridge", "version": "0.1.0", "private": true, "type": "module",
+  "description": "Official ZCode runtime connection and DSH status bundle",
+  "dsh": {"bundle": {"patch": "./cordis.patch.yml"}},
+  "scripts": {"test": "node --test tests/*.test.mjs", "build": "esbuild packages/client/client.jsx --bundle --format=esm --external:react --outfile=packages/client/lib/client.js", "probe": "node scripts/official-probe.mjs"},
+  "dependencies": {"@dsh-zcode/host": "file:./packages/host", "@dsh-zcode/client": "file:./packages/client"},
+  "devDependencies": {"esbuild": "0.25.12", "react": "18.3.1", "react-dom": "18.3.1"}
+}
