@@ -20,13 +20,23 @@ export function ZCodeDirectory({sources,onOpen,t=fallback}){
     {error&&<p role="alert">{t('failure')}: {error}</p>}
     {[...new Set(state.rows.map(row=>row.group))].map(group=><div key={group}><h5>{group||t('ungrouped')}</h5><ul>{state.rows.filter(row=>row.group===group).map(row=><li key={row.key} data-session-key={row.key}>
       <button disabled={busy} onClick={()=>void act(async()=>{await sources.open(row.address);onOpen?.()})} title={t('open')}>{row.title||row.address.sessionId}</button>
-      <label>{t('group')}<input aria-label={`${t('group')}: ${row.title||row.address.sessionId}`} value={row.group} onChange={e=>sources.setGroup(row.address,e.target.value)}/></label>
+      <GroupInput row={row} sources={sources} t={t}/>
     </li>)}</ul></div>)}
     <button disabled={state.page===0} onClick={()=>sources.setDirectory({page:state.page-1})}>{t('previous')}</button>
     <span>{state.page+1} / {Math.max(1,Math.ceil(state.total/state.pageSize))} · {state.total}</span>
     <button disabled={(state.page+1)*state.pageSize>=state.total} onClick={()=>sources.setDirectory({page:state.page+1})}>{t('next')}</button>
     <p>{t('restricted')}</p>
   </section>;
+}
+function GroupInput({row,sources,t}){
+  const [draft,setDraft]=useState(row.group);
+  useEffect(()=>{setDraft(row.group)},[row.group]);
+  const commit=()=>{
+    const trimmed=draft.trim();
+    if(trimmed!==row.group)sources.setGroup(row.address,trimmed);
+    else setDraft(row.group);
+  };
+  return <label>{t('group')}<input aria-label={`${t('group')}: ${row.title||row.address.sessionId}`} value={draft} onChange={e=>setDraft(e.target.value)} onBlur={commit} onKeyDown={e=>{if(e.key==='Enter')commit()}}/></label>;
 }
 function Management({sources,selected,t}){
   const controller=useMemo(()=>new ConversationController(selected.conversation),[selected.conversation]);
