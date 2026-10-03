@@ -3729,7 +3729,9 @@ var v4AttachmentTerminalParamsSchema = z30.object({
   uploadId: v4AttachmentUploadIdSchema,
   sessionId: z30.string().min(1)
 }).strict();
+var v4AttachmentCommitParamsSchema = v4AttachmentTerminalParamsSchema;
 var v4AttachmentCommitResultSchema = v4AttachmentPutResultSchema.strict();
+var v4AttachmentAbortParamsSchema = v4AttachmentTerminalParamsSchema;
 var v4AttachmentAbortResultSchema = z30.object({}).strict();
 var v4AttachmentReadParamsSchema = z30.object({
   sessionId: z30.string().min(1),
@@ -12158,6 +12160,7 @@ export {
   ROW_TARGETING_COMMANDS,
   TopicWireFrameAssembler,
   applyConversationDeltas,
+  attachmentRefSchema,
   clientHelloSchema,
   commandAckSchema,
   commandsQueryResultSchema,
@@ -12168,6 +12171,26 @@ export {
   helloMessageSchema,
   measureTopicNotificationEnvelopeBytes,
   parseCommandEnvelope,
+  sharedContextImportStateSchema,
+  sharedContextRefSchema,
+  v4AttachmentAbortParamsSchema,
+  v4AttachmentAbortResultSchema,
+  v4AttachmentBeginParamsSchema,
+  v4AttachmentBeginResultSchema,
+  v4AttachmentChunkParamsSchema,
+  v4AttachmentChunkResultSchema,
+  v4AttachmentCommitParamsSchema,
+  v4AttachmentCommitResultSchema,
+  v4AttachmentPreviewSourceParamsSchema,
+  v4AttachmentPreviewSourceResultSchema,
+  v4AttachmentPutParamsSchema,
+  v4AttachmentPutResultSchema,
+  v4AttachmentReadParamsSchema,
+  v4AttachmentReadResultSchema,
+  v4ConversationAttachmentReadParamsSchema,
+  v4ConversationAttachmentReadResultSchema,
+  v4ConversationAttachmentStatParamsSchema,
+  v4ConversationAttachmentStatResultSchema,
   v4ConversationResyncParamsSchema,
   v4ConversationResyncResultSchema,
   v4ConversationSubscribeParamsSchema,

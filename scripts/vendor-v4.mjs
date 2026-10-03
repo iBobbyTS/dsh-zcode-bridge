@@ -1,7 +1,7 @@
 // Read-only selective schema/pure-function transplant. No services or runtime imports.
 import { build } from 'esbuild';
 import { readFile, writeFile, mkdir, stat } from 'node:fs/promises';
-import { resolve, relative, dirname } from 'node:path';
+import { resolve, relative } from 'node:path';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 const root=resolve(process.argv[2]??'../reference/ZCode');
@@ -12,7 +12,10 @@ const out='packages/host/vendor/zcode';
 await mkdir(out,{recursive:true});
 const exports={
  'command':['parseCommandEnvelope','commandAckSchema','commandsQueryResultSchema','COMMANDS_REQUIRING_BASE_REVISION','ROW_TARGETING_COMMANDS'],
- 'transport':['conversationTopicFrameSchema','conversationTopicWireCandidateSchema','v4ConversationSubscribeParamsSchema','v4ConversationSubscribeResultSchema','v4ConversationResyncParamsSchema','v4ConversationResyncResultSchema','v4ConversationUnsubscribeParamsSchema','clientHelloSchema','helloMessageSchema'],
+ 'transport':['conversationTopicFrameSchema','conversationTopicWireCandidateSchema','v4ConversationSubscribeParamsSchema','v4ConversationSubscribeResultSchema','v4ConversationResyncParamsSchema','v4ConversationResyncResultSchema','v4ConversationUnsubscribeParamsSchema','clientHelloSchema','helloMessageSchema','v4AttachmentPutParamsSchema','v4AttachmentPutResultSchema','v4AttachmentBeginParamsSchema','v4AttachmentBeginResultSchema','v4AttachmentChunkParamsSchema','v4AttachmentChunkResultSchema','v4AttachmentCommitParamsSchema','v4AttachmentCommitResultSchema','v4AttachmentAbortParamsSchema','v4AttachmentAbortResultSchema','v4AttachmentReadParamsSchema','v4AttachmentReadResultSchema','v4AttachmentPreviewSourceParamsSchema','v4AttachmentPreviewSourceResultSchema','v4ConversationAttachmentReadParamsSchema','v4ConversationAttachmentReadResultSchema','v4ConversationAttachmentStatParamsSchema','v4ConversationAttachmentStatResultSchema'],
+ 'attachment-ref':['attachmentRefSchema'],
+ 'shared-context-ref':['sharedContextRefSchema'],
+ 'shared-context-import':['sharedContextImportStateSchema'],
  'apply':['applyConversationDeltas'],
  'wire-assembler':['TopicWireFrameAssembler'],
  'wire-codec':['encodeTopicWireFrames','measureTopicNotificationEnvelopeBytes'],

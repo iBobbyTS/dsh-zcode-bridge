@@ -19,7 +19,34 @@
       "v4ConversationResyncResultSchema",
       "v4ConversationUnsubscribeParamsSchema",
       "clientHelloSchema",
-      "helloMessageSchema"
+      "helloMessageSchema",
+      "v4AttachmentPutParamsSchema",
+      "v4AttachmentPutResultSchema",
+      "v4AttachmentBeginParamsSchema",
+      "v4AttachmentBeginResultSchema",
+      "v4AttachmentChunkParamsSchema",
+      "v4AttachmentChunkResultSchema",
+      "v4AttachmentCommitParamsSchema",
+      "v4AttachmentCommitResultSchema",
+      "v4AttachmentAbortParamsSchema",
+      "v4AttachmentAbortResultSchema",
+      "v4AttachmentReadParamsSchema",
+      "v4AttachmentReadResultSchema",
+      "v4AttachmentPreviewSourceParamsSchema",
+      "v4AttachmentPreviewSourceResultSchema",
+      "v4ConversationAttachmentReadParamsSchema",
+      "v4ConversationAttachmentReadResultSchema",
+      "v4ConversationAttachmentStatParamsSchema",
+      "v4ConversationAttachmentStatResultSchema"
+    ],
+    "attachment-ref": [
+      "attachmentRefSchema"
+    ],
+    "shared-context-ref": [
+      "sharedContextRefSchema"
+    ],
+    "shared-context-import": [
+      "sharedContextImportStateSchema"
     ],
     "apply": [
       "applyConversationDeltas"
