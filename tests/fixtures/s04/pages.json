@@ -1,0 +1,1186 @@
+{
+  "provenance": {
+    "kind": "official-capture-with-explicit-injections",
+    "sources": [
+      "s04/official.json",
+      "s03a/success.json"
+    ],
+    "paidModelCalls": 0,
+    "changes": [
+      "duplicate first captured catalog row into 65 distinct session IDs/titles for stored-prefix limit=50 boundary",
+      "search is local title filtering, no official search carrier"
+    ]
+  },
+  "sessions": [
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s0",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 0",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s1",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 1",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s2",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 2",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s3",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 3",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s4",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 4",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s5",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 5",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s6",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 6",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s7",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 7",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s8",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 8",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s9",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 9",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s10",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 10",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s11",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 11",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s12",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 12",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s13",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 13",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s14",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 14",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s15",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 15",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s16",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 16",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s17",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 17",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s18",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 18",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s19",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 19",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s20",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 20",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s21",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 21",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s22",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 22",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s23",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 23",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s24",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 24",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s25",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 25",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s26",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 26",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s27",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 27",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s28",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 28",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s29",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 29",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s30",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 30",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s31",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 31",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s32",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 32",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s33",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 33",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s34",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 34",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s35",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 35",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s36",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 36",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s37",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 37",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s38",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 38",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s39",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 39",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s40",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 40",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s41",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 41",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s42",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 42",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s43",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 43",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s44",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 44",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s45",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 45",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s46",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 46",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s47",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 47",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s48",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 48",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s49",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 49",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s50",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 50",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s51",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 51",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s52",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 52",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s53",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 53",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s54",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 54",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s55",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 55",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s56",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 56",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s57",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 57",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s58",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 58",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s59",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 59",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s60",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 60",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s61",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 61",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s62",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 62",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s63",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 63",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    },
+    {
+      "createdAt": 1791057664219,
+      "mode": "build",
+      "model": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "traceId": "498ae678-1ca9-483c-a86a-d51f18d248bf",
+      "sessionId": "s64",
+      "sessionKind": "interactive",
+      "status": "idle",
+      "title": "Title 64",
+      "updatedAt": 1791057664219,
+      "workspace": {
+        "workspacePath": "/fixture/s04-workspace",
+        "workspaceKey": "/fixture/s04-workspace"
+      }
+    }
+  ]
+}
