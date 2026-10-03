@@ -66,7 +66,7 @@ S02.B 的具体 owner 与操作约束：
 | 文档全量门禁 | `pnpm run doc-sync`；[log](../probes/checks/s02a-doc-sync.log) | 42/42 PASS，0 skip |
 | 实际 plugin-manager 安装 | `node ../dsh/node_modules/tsx/dist/cli.mjs --tsconfig ../dsh/tsconfig.base.json scripts/install-probe.ts`；[log](../probes/checks/s02a-plugin-install.log) | PASS；改名包与两个 export artifact 存在，临时 profile 已释放 |
 | 官方最小来源 probe | production BridgeHost connect/listSessions/dispose；[exact invocation](../probes/checks/s02a-official-source.log) | PASS；官方 3.14.4、自有 headless、restricted、sharedSessions unverified、0 model calls、dispose 完成 |
-| whitespace | 两仓 `git diff --check` 与各 commit `git diff --cached --check` | PASS；仅明确列出的文件 staged |
+| whitespace | 最终两仓 `git diff --check` 与 staged `git diff --cached --check` | PASS；仅明确列出的文件 staged；build log 以 JSON 保留原始 stdout |
 
 真实模型执行、真实 GUI 创建/恢复/默认值重启、同官方 GUI 的 shared durable Session、用户 GUI 关闭态、正式 installed native agent-side hook oracle、GUI/GIF/recorded-session producer oracle：**NOT_RUN**，原因是 S01 未验证 auth/shared authority 与 GUI 红线，且 S02.B 拥有 GUI。这些没有被 mock PASS 替代。
 
@@ -76,6 +76,7 @@ S02.B 的具体 owner 与操作约束：
 - 一次 `pnpm exec vitest` 自动触发 install，根 postinstall 拒绝改写全局 hooksPath。检查确认 `.gitconfig` hooksPath 和既有 `.githooks` 文件未变化；没有额外生成 hooks 或 backup。后续直接调用已安装工具/明确关闭 run 前的 install，安装 probe 仍使用 `--ignore-scripts`。没有修改 DSH lockfile。
 - 首轮 fixture 使用 `/var` 而 Host 使用 canonical `/private/var` 导致 sessions-invalid；修正 fixture 从实际请求读取 workspace。首次 VM producer fixture 缺浏览器 AbortController；补真实 platform seed。source 新代码的初次 lint 指出 any-array destructuring、non-null assertion/arrow parens；已修复，最终全仓 oxlint PASS。
 - 首轮 doc-sync 40/42：S01 示例缺双语对、固定 hash 与门禁冲突。主 agent 的 tag/配对裁决已落实，最终 42/42。尝试按文档技能 fetch 时 DSH 无 origin，未 fetch/pull/移动基线；使用任务冻结 checkout。没有隐藏失败检查或重写其历史结果。
+- 归档 docs commit 前，staged whitespace 检查指出 tsdown stdout 的尾空格；worker 漏拦了这次提交。随后将该日志的完整原始 stdout 编码为 JSON（字符未丢弃），以独立后续提交修正，并单独确认 staged/worktree whitespace 通过。
 
 ## 剩余阻塞与父节纠偏
 
