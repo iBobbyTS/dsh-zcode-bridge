@@ -135,6 +135,13 @@ describe('S06 actual producer → command → V4 → view', () => {
       await waitFor(() => expect(screen.getByTestId('zcode-input-result').textContent).toContain('outcome-unknown'));
       expect(screen.getByTestId('zcode-queue-input-a')).toBeDefined();
       expect(f.sent.filter(request => request.params?.type === 'deleteQueueItem')).toHaveLength(1);
+      const original = f.conversation.state.commands.find(command => command.type === 'deleteQueueItem');
+      fireEvent.click(screen.getByTestId(`zcode-query-${original.commandId}`));
+      expect(f.sent.at(-1).method).toBe('v4/commands/query');
+      expect(f.sent.at(-1).params.commands[0].commandId).toBe(original.commandId);
+      await act(async () => { f.response(f.sent.at(-1), { results: [{ key: { sessionId: 'fixture-session', commandId: original.commandId }, result: 'unknown' }] }); });
+      expect(screen.getByTestId('zcode-input-result').textContent).toContain('Query the original command');
+      expect(f.sent.filter(request => request.params?.type === 'deleteQueueItem')).toHaveLength(1);
     } finally { f.dispose(); }
   });
   it('auth-gated mount via the DSH consumer seat disables all S06 execution and preference writes', async () => {

@@ -74,6 +74,7 @@ export function optimisticQueue(items, operation) {
 /** ACK is receipt only; projection and query remain the execution authority. */
 export function commandResultText(record) {
   if (!record?.commandId || !record.state) return 'Command outcome unknown. Query the command before deciding to send again.';
+  if (record.state === 'outcome-unknown') return 'Official result: outcome-unknown. Query the original command before deciding to send again. Only the local preview was cleared; no runtime undo was requested.';
   const status = record.ack?.status ?? record.state;
   const reason = record.ack?.reasonCode ?? record.error;
   return `Official result: ${status}${reason ? ` (${reason})` : ''}. ${['accepted', 'duplicate'].includes(status) ? 'Awaiting authoritative state.' : 'Only the local preview was cleared; this does not undo an accepted command.'}`;

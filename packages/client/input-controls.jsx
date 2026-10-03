@@ -66,6 +66,21 @@ export function ZCodeInputControls({ state, controller }) {
     }
   }
 
+  async function query(commandId) {
+    if (flight.current) return;
+    const token = { controller }; flight.current = token;
+    const epoch = latest.current.snapshot?.logEpoch;
+    setOperation({ type: 'queryCommand' });
+    try {
+      const record = await controller.queryCommand(commandId);
+      if (alive.current && owner.current === token.controller && latest.current.snapshot?.logEpoch === epoch) setResult(commandResultText(record));
+    } catch (error) {
+      if (alive.current && owner.current === token.controller && latest.current.snapshot?.logEpoch === epoch) setResult(`${error.code ?? error.message}. Original command was not resent.`);
+    } finally {
+      if (flight.current === token) { flight.current = null; if (alive.current) setOperation(null); }
+    }
+  }
+
   function send() {
     try {
       const current = latest.current.snapshot;
@@ -143,6 +158,7 @@ export function ZCodeInputControls({ state, controller }) {
       <button disabled={Boolean(operation)} onClick={() => setHeld(null)}>Cancel confirmation</button>
     </div>}
     {result && <p role="status" data-testid="zcode-input-result">{result}</p>}
+    {(state?.commands ?? []).filter(command => command.state === 'outcome-unknown').map(command => <button key={command.commandId} data-testid={`zcode-query-${command.commandId}`} disabled={Boolean(operation) || state?.status !== 'live'} onClick={() => void query(command.commandId)}>Query original {command.type} command {command.commandId.slice(0, 8)}</button>)}
     </div>
   </section>;
 }
