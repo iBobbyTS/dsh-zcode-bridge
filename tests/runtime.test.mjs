@@ -55,3 +55,14 @@ test('CB-1: same-batch valid response and bad frame preserve terminal state and 
   }finally{fixture.finishClose();await connecting;await host.dispose()}
  }
 });
+test('S03.A Host conversation scope stays restricted and owned disposal closes projection API',async()=>{
+ const fixture=batchFaultChild('never'),host=new BridgeHost({workspacePath:tmpdir(),inspect:async()=>batchFaultInstallation,spawnProcess:()=>fixture.child});
+ try{
+  const status=await host.connect();assert.equal(status.connected,true);
+  const address={runtime:'zcode',authority:status.sessionAuthority,workspace:status.workspacePath,sessionId:'scope'};
+  assert.throws(()=>host.createConversation({...address,authority:'foreign'}),{code:'source-address-mismatch'});
+  const conversation=host.createConversation(address);assert.equal(conversation.admission.allowed,false);
+  await assert.rejects(conversation.submit({type:'sendText',payload:{text:'never'}}),{code:'runtime-restricted'});
+  const disposing=host.dispose();fixture.finishClose();await disposing;assert.equal(conversation.state.status,'closed');assert.equal(conversation.admission.allowed,false);
+ }finally{fixture.finishClose();await host.dispose()}
+});

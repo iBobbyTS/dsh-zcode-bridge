@@ -120,7 +120,7 @@ export class ProtocolPeer {
     for(const p of this.#pending.values()){p.cleanup();const e=new BridgeError(code);e.sent=p.sent;p.reject(e)}this.#pending.clear();
     for(const p of this.#reverse.values()){clearTimeout(p.timer);p.controller.abort()}this.#reverse.clear();
     this.#retired.clear();this.#reverseRetired.clear();this.#parts=[];this.#bytes=0;this.#queue=[];this.#queuedBytes=0;
-    this.#notifications.clear();for(const listener of this.#closures)listener(code);this.#closures.clear();
+    this.#notifications.clear();for(const listener of this.#closures){try{listener(code)}catch{ /* Consumer teardown cannot block the transport owner. */ }}this.#closures.clear();
     // Keep error absorbers: queued EPIPE must not crash Host; the owner releases streams.
     this.onClose(code);
   }

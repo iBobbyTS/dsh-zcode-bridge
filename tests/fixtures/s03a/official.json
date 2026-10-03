@@ -1,0 +1,986 @@
+{
+  "provenance": {
+    "kind": "official-runtime-capture",
+    "capturedAt": "2026-10-03T13:00:34.990Z",
+    "version": "3.14.4",
+    "build": "3.14.4.7912",
+    "sha256": "fad4c35c4c36ec210d8a06d3fa0e77de23c8545e2eb6ff90aea1eb38d1e6275f",
+    "paidModelCalls": 0,
+    "stderrBytes": 0,
+    "sanitization": "dedicated workspace/session/subscription identifiers aliased; no model inputs or credentials"
+  },
+  "exchanges": [
+    {
+      "method": "runtime/capabilities",
+      "params": {},
+      "result": {
+        "independentPlanState": true
+      }
+    },
+    {
+      "method": "v4/commands/query",
+      "params": {
+        "commands": [
+          {
+            "sessionId": null,
+            "commandId": "s03a-unknown"
+          }
+        ]
+      },
+      "result": {
+        "results": [
+          {
+            "key": {
+              "sessionId": null,
+              "commandId": "s03a-unknown"
+            },
+            "result": "unknown"
+          }
+        ]
+      }
+    },
+    {
+      "method": "v4/command",
+      "params": {
+        "commandId": "s03a-invalid",
+        "clientId": "s03a-capture",
+        "sessionId": null,
+        "type": "sendText",
+        "payload": {},
+        "issuedAt": 0
+      },
+      "result": {
+        "commandId": "s03a-invalid",
+        "status": "rejected",
+        "reasonCode": "proto.invalidPayload",
+        "message": "[\n  {\n    \"expected\": \"string\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"text\"\n    ],\n    \"message\": \"Invalid input: expected string, received undefined\"\n  }\n]",
+        "revisionAtDecision": 0
+      }
+    },
+    {
+      "method": "v4/command",
+      "params": {
+        "commandId": "05caec8b-15e9-4ca6-a325-233686df49c3",
+        "clientId": "s03a-capture",
+        "sessionId": null,
+        "type": "createSession",
+        "payload": {
+          "workspaceId": "/fixture/workspace"
+        },
+        "issuedAt": 1791032434388
+      },
+      "result": {
+        "commandId": "05caec8b-15e9-4ca6-a325-233686df49c3",
+        "status": "accepted",
+        "revisionAtDecision": 0,
+        "result": {
+          "type": "createSession",
+          "sessionId": "fixture-session"
+        },
+        "memoryEnabled": false
+      }
+    },
+    {
+      "method": "v4/conversation/subscribe",
+      "params": {
+        "topic": "conversation/fixture-session",
+        "connectionId": "s03a-capture",
+        "clientMode": "web-remote-replayable",
+        "workspace": {
+          "workspacePath": "/fixture/workspace",
+          "workspaceKey": "/fixture/workspace"
+        }
+      },
+      "result": {
+        "ack": {
+          "subscriptionId": "fixture-subscription",
+          "mode": "snapshot",
+          "logEpoch": "musegv3e-mrqoweve",
+          "openTiming": {
+            "version": 1,
+            "initialFrameEncodeMs": 0,
+            "sessionRuntimeState": "warm",
+            "snapshotRowCount": 0
+          }
+        }
+      }
+    },
+    {
+      "method": "v4/command",
+      "params": {
+        "commandId": "39699314-f845-4f6a-8a57-ae27630dd6e5",
+        "clientId": "s03a-capture",
+        "sessionId": "fixture-session",
+        "type": "renameSession",
+        "payload": {
+          "title": "S03.A fixture draft"
+        },
+        "issuedAt": 1791032434540
+      },
+      "result": {
+        "commandId": "39699314-f845-4f6a-8a57-ae27630dd6e5",
+        "status": "failed",
+        "revisionAtDecision": 0,
+        "reasonCode": "fault.command.executionFailed",
+        "message": "Session not found: fixture-session"
+      }
+    },
+    {
+      "method": "v4/commands/query",
+      "params": {
+        "commands": [
+          {
+            "sessionId": "fixture-session",
+            "commandId": "39699314-f845-4f6a-8a57-ae27630dd6e5"
+          }
+        ]
+      },
+      "result": {
+        "results": [
+          {
+            "key": {
+              "sessionId": "fixture-session",
+              "commandId": "39699314-f845-4f6a-8a57-ae27630dd6e5"
+            },
+            "result": {
+              "commandId": "39699314-f845-4f6a-8a57-ae27630dd6e5",
+              "status": "failed",
+              "reasonCode": "fault.command.executionFailed",
+              "message": "Session not found: fixture-session",
+              "revisionAtDecision": 0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "method": "v4/command",
+      "params": {
+        "commandId": "a0829b86-cee7-4610-b609-fee185dfc49c",
+        "clientId": "s03a-capture",
+        "sessionId": "fixture-session",
+        "type": "setFollowupMode",
+        "baseRevision": 0,
+        "payload": {
+          "mode": "queue"
+        },
+        "issuedAt": 1791032434572
+      },
+      "result": {
+        "commandId": "a0829b86-cee7-4610-b609-fee185dfc49c",
+        "status": "accepted",
+        "revisionAtDecision": 0,
+        "memoryEnabled": false
+      }
+    },
+    {
+      "method": "v4/commands/query",
+      "params": {
+        "commands": [
+          {
+            "sessionId": "fixture-session",
+            "commandId": "a0829b86-cee7-4610-b609-fee185dfc49c"
+          }
+        ]
+      },
+      "result": {
+        "results": [
+          {
+            "key": {
+              "sessionId": "fixture-session",
+              "commandId": "a0829b86-cee7-4610-b609-fee185dfc49c"
+            },
+            "result": {
+              "memoryEnabled": false,
+              "commandId": "a0829b86-cee7-4610-b609-fee185dfc49c",
+              "status": "accepted",
+              "revisionAtDecision": 0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "method": "v4/command",
+      "params": {
+        "commandId": "0f1385cf-246b-44bb-a03c-4b9b62d9afac",
+        "clientId": "s03a-capture",
+        "sessionId": "fixture-session",
+        "type": "setFollowupMode",
+        "baseRevision": 999999,
+        "payload": {
+          "mode": "queue"
+        },
+        "issuedAt": 1791032434582
+      },
+      "result": {
+        "commandId": "0f1385cf-246b-44bb-a03c-4b9b62d9afac",
+        "status": "stale",
+        "reasonCode": "proto.staleRevision",
+        "revisionAtDecision": 0
+      }
+    },
+    {
+      "method": "v4/conversation/resync",
+      "params": {
+        "topic": "conversation/fixture-session",
+        "connectionId": "s03a-capture",
+        "subscriptionId": "fixture-subscription",
+        "base": null,
+        "forceSnapshot": true
+      },
+      "result": {
+        "ack": {
+          "subscriptionId": "fixture-subscription",
+          "mode": "snapshot",
+          "logEpoch": "musegv3e-mrqoweve"
+        }
+      }
+    },
+    {
+      "method": "v4/conversation/subscribe",
+      "params": {
+        "topic": "conversation/fixture-session",
+        "connectionId": "s03a-continuous",
+        "clientMode": "desktop-continuous",
+        "workspace": {
+          "workspacePath": "/fixture/workspace",
+          "workspaceKey": "/fixture/workspace"
+        }
+      },
+      "result": {
+        "ack": {
+          "subscriptionId": "fixture-continuous-0",
+          "mode": "snapshot",
+          "logEpoch": "musegv3e-mrqoweve",
+          "openTiming": {
+            "version": 1,
+            "initialFrameEncodeMs": 0,
+            "sessionRuntimeState": "warm",
+            "snapshotRowCount": 0
+          }
+        }
+      }
+    },
+    {
+      "method": "v4/conversation/unsubscribe",
+      "params": {
+        "topic": "conversation/fixture-session",
+        "connectionId": "s03a-continuous",
+        "subscriptionId": "fixture-continuous-0"
+      },
+      "result": {}
+    },
+    {
+      "method": "v4/conversation/unsubscribe",
+      "params": {
+        "topic": "conversation/fixture-session",
+        "connectionId": "s03a-capture",
+        "subscriptionId": "fixture-subscription"
+      },
+      "result": {}
+    },
+    {
+      "method": "v4/command",
+      "params": {
+        "commandId": "f1b14de1-653f-4fa2-be71-3437f201ee1f",
+        "clientId": "s03a-capture",
+        "sessionId": "fixture-session",
+        "type": "deleteSession",
+        "payload": {},
+        "issuedAt": 1791032434852
+      },
+      "result": {
+        "commandId": "f1b14de1-653f-4fa2-be71-3437f201ee1f",
+        "status": "accepted",
+        "revisionAtDecision": 1
+      }
+    }
+  ],
+  "notifications": [
+    {
+      "method": "v4/conversation/frame",
+      "params": {
+        "wireVersion": 3,
+        "kind": "complete",
+        "deliveryKind": "initial",
+        "logicalFrameId": "fixture-subscription-lf-1",
+        "logicalFrameOrdinal": 1,
+        "topic": "conversation/fixture-session",
+        "subscriptionId": "fixture-subscription",
+        "frame": {
+          "topic": "conversation/fixture-session",
+          "subscriptionId": "fixture-subscription",
+          "sentAt": 1791032434539,
+          "fromSeq": 0,
+          "toSeq": 0,
+          "payload": {
+            "kind": "snapshot",
+            "snapshot": {
+              "protocolVersion": 1,
+              "sessionId": "fixture-session",
+              "logEpoch": "musegv3e-mrqoweve",
+              "seq": 0,
+              "revision": 0,
+              "control": {
+                "phase": "draft",
+                "sessionEnded": false,
+                "canStop": false,
+                "stopState": "idle",
+                "stopTargetKind": "unknown",
+                "activeWorks": [],
+                "lastError": null,
+                "apiRetry": null
+              },
+              "availability": {
+                "fork": {
+                  "allowed": false,
+                  "reasonCode": "forkTargetNotStable"
+                },
+                "compact": {
+                  "allowed": false,
+                  "reasonCode": "idleCannotCompact"
+                },
+                "switchModelConfig": {
+                  "allowed": true
+                },
+                "setFollowupMode": {
+                  "allowed": true
+                },
+                "queueEdit": {
+                  "allowed": true
+                },
+                "sendQueuedNow": {
+                  "allowed": false,
+                  "reasonCode": "sendQueuedNowRequiresRunning"
+                },
+                "pauseGoal": {
+                  "allowed": false,
+                  "reasonCode": "noGoalToPause"
+                },
+                "resumeGoal": {
+                  "allowed": false,
+                  "reasonCode": "noGoalToResume"
+                }
+              },
+              "inputRouting": {
+                "mode": "startNow"
+              },
+              "meta": {
+                "title": "",
+                "titleSource": "default"
+              },
+              "config": {
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "thought": "max",
+                "thoughtLevels": [
+                  "disabled",
+                  "low",
+                  "high",
+                  "max"
+                ],
+                "followupMode": "queue",
+                "mode": "build",
+                "modelSelection": {
+                  "providerId": "deepseek",
+                  "modelId": "deepseek-flash",
+                  "options": {
+                    "reasoningLevel": "max"
+                  }
+                },
+                "planEnabled": false
+              },
+              "modelTransition": null,
+              "usage": {
+                "contextWindow": null,
+                "cumulative": {
+                  "inputTokens": 0,
+                  "outputTokens": 0,
+                  "cacheReadTokens": 0,
+                  "cacheWriteTokens": 0
+                }
+              },
+              "queue": {
+                "items": [],
+                "autoDrain": true
+              },
+              "pendingInteractions": [],
+              "pendingCommands": [],
+              "backgroundWorks": [],
+              "subagents": {
+                "revision": 0,
+                "childSessionIds": [],
+                "running": [],
+                "endedTotal": 0
+              },
+              "goal": null,
+              "plan": null,
+              "workspaceHookAdmission": null,
+              "rows": {
+                "window": [],
+                "totalCount": 0,
+                "firstRowId": null
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "method": "v4/conversation/frame",
+      "params": {
+        "wireVersion": 3,
+        "kind": "complete",
+        "deliveryKind": "online",
+        "logicalFrameId": "fixture-subscription-lf-2",
+        "logicalFrameOrdinal": 2,
+        "topic": "conversation/fixture-session",
+        "subscriptionId": "fixture-subscription",
+        "frame": {
+          "topic": "conversation/fixture-session",
+          "subscriptionId": "fixture-subscription",
+          "sentAt": 1791032434691,
+          "fromSeq": 0,
+          "toSeq": 1,
+          "payload": {
+            "kind": "deltas",
+            "deltas": []
+          }
+        }
+      }
+    },
+    {
+      "method": "v4/conversation/frame",
+      "params": {
+        "wireVersion": 3,
+        "kind": "complete",
+        "deliveryKind": "recovery",
+        "logicalFrameId": "fixture-subscription-lf-3",
+        "logicalFrameOrdinal": 3,
+        "topic": "conversation/fixture-session",
+        "subscriptionId": "fixture-subscription",
+        "frame": {
+          "topic": "conversation/fixture-session",
+          "subscriptionId": "fixture-subscription",
+          "sentAt": 1791032434835,
+          "fromSeq": 0,
+          "toSeq": 1,
+          "payload": {
+            "kind": "snapshot",
+            "snapshot": {
+              "protocolVersion": 1,
+              "sessionId": "fixture-session",
+              "logEpoch": "musegv3e-mrqoweve",
+              "seq": 1,
+              "revision": 0,
+              "control": {
+                "phase": "draft",
+                "sessionEnded": false,
+                "canStop": false,
+                "stopState": "idle",
+                "stopTargetKind": "unknown",
+                "activeWorks": [],
+                "lastError": null,
+                "apiRetry": null
+              },
+              "availability": {
+                "fork": {
+                  "allowed": false,
+                  "reasonCode": "forkTargetNotStable"
+                },
+                "compact": {
+                  "allowed": false,
+                  "reasonCode": "idleCannotCompact"
+                },
+                "switchModelConfig": {
+                  "allowed": true
+                },
+                "setFollowupMode": {
+                  "allowed": true
+                },
+                "queueEdit": {
+                  "allowed": true
+                },
+                "sendQueuedNow": {
+                  "allowed": false,
+                  "reasonCode": "sendQueuedNowRequiresRunning"
+                },
+                "pauseGoal": {
+                  "allowed": false,
+                  "reasonCode": "noGoalToPause"
+                },
+                "resumeGoal": {
+                  "allowed": false,
+                  "reasonCode": "noGoalToResume"
+                }
+              },
+              "inputRouting": {
+                "mode": "startNow"
+              },
+              "meta": {
+                "title": "",
+                "titleSource": "default"
+              },
+              "config": {
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "thought": "max",
+                "thoughtLevels": [
+                  "disabled",
+                  "low",
+                  "high",
+                  "max"
+                ],
+                "followupMode": "queue",
+                "mode": "build",
+                "modelSelection": {
+                  "providerId": "deepseek",
+                  "modelId": "deepseek-flash",
+                  "options": {
+                    "reasoningLevel": "max"
+                  }
+                },
+                "planEnabled": false
+              },
+              "modelTransition": null,
+              "usage": {
+                "contextWindow": null,
+                "cumulative": {
+                  "inputTokens": 0,
+                  "outputTokens": 0,
+                  "cacheReadTokens": 0,
+                  "cacheWriteTokens": 0
+                }
+              },
+              "queue": {
+                "items": [],
+                "autoDrain": true
+              },
+              "pendingInteractions": [],
+              "pendingCommands": [],
+              "backgroundWorks": [],
+              "subagents": {
+                "revision": 0,
+                "childSessionIds": [],
+                "running": [],
+                "endedTotal": 0
+              },
+              "goal": null,
+              "plan": null,
+              "workspaceHookAdmission": null,
+              "rows": {
+                "window": [],
+                "totalCount": 0,
+                "firstRowId": null
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "method": "v4/conversation/frame",
+      "params": {
+        "wireVersion": 3,
+        "kind": "complete",
+        "deliveryKind": "initial",
+        "logicalFrameId": "fixture-continuous-0-lf-4",
+        "logicalFrameOrdinal": 1,
+        "topic": "conversation/fixture-session",
+        "subscriptionId": "fixture-continuous-0",
+        "frame": {
+          "topic": "conversation/fixture-session",
+          "subscriptionId": "fixture-continuous-0",
+          "sentAt": 1791032434836,
+          "fromSeq": 0,
+          "toSeq": 1,
+          "payload": {
+            "kind": "snapshot",
+            "snapshot": {
+              "protocolVersion": 1,
+              "sessionId": "fixture-session",
+              "logEpoch": "musegv3e-mrqoweve",
+              "seq": 1,
+              "revision": 0,
+              "control": {
+                "phase": "draft",
+                "sessionEnded": false,
+                "canStop": false,
+                "stopState": "idle",
+                "stopTargetKind": "unknown",
+                "activeWorks": [],
+                "lastError": null,
+                "apiRetry": null
+              },
+              "availability": {
+                "fork": {
+                  "allowed": false,
+                  "reasonCode": "forkTargetNotStable"
+                },
+                "compact": {
+                  "allowed": false,
+                  "reasonCode": "idleCannotCompact"
+                },
+                "switchModelConfig": {
+                  "allowed": true
+                },
+                "setFollowupMode": {
+                  "allowed": true
+                },
+                "queueEdit": {
+                  "allowed": true
+                },
+                "sendQueuedNow": {
+                  "allowed": false,
+                  "reasonCode": "sendQueuedNowRequiresRunning"
+                },
+                "pauseGoal": {
+                  "allowed": false,
+                  "reasonCode": "noGoalToPause"
+                },
+                "resumeGoal": {
+                  "allowed": false,
+                  "reasonCode": "noGoalToResume"
+                }
+              },
+              "inputRouting": {
+                "mode": "startNow"
+              },
+              "meta": {
+                "title": "",
+                "titleSource": "default"
+              },
+              "config": {
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "thought": "max",
+                "thoughtLevels": [
+                  "disabled",
+                  "low",
+                  "high",
+                  "max"
+                ],
+                "followupMode": "queue",
+                "mode": "build",
+                "modelSelection": {
+                  "providerId": "deepseek",
+                  "modelId": "deepseek-flash",
+                  "options": {
+                    "reasoningLevel": "max"
+                  }
+                },
+                "planEnabled": false
+              },
+              "modelTransition": null,
+              "usage": {
+                "contextWindow": null,
+                "cumulative": {
+                  "inputTokens": 0,
+                  "outputTokens": 0,
+                  "cacheReadTokens": 0,
+                  "cacheWriteTokens": 0
+                }
+              },
+              "queue": {
+                "items": [],
+                "autoDrain": true
+              },
+              "pendingInteractions": [],
+              "pendingCommands": [],
+              "backgroundWorks": [],
+              "subagents": {
+                "revision": 0,
+                "childSessionIds": [],
+                "running": [],
+                "endedTotal": 0
+              },
+              "goal": null,
+              "plan": null,
+              "workspaceHookAdmission": null,
+              "rows": {
+                "window": [],
+                "totalCount": 0,
+                "firstRowId": null
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "method": "v4/conversation/frame",
+      "params": {
+        "wireVersion": 3,
+        "kind": "complete",
+        "deliveryKind": "initial",
+        "logicalFrameId": "fixture-continuous-1-lf-5",
+        "logicalFrameOrdinal": 1,
+        "topic": "conversation/fixture-session",
+        "subscriptionId": "fixture-continuous-1",
+        "frame": {
+          "topic": "conversation/fixture-session",
+          "subscriptionId": "fixture-continuous-1",
+          "sentAt": 1791032434839,
+          "fromSeq": 0,
+          "toSeq": 1,
+          "payload": {
+            "kind": "snapshot",
+            "snapshot": {
+              "protocolVersion": 1,
+              "sessionId": "fixture-session",
+              "logEpoch": "musegv3e-mrqoweve",
+              "seq": 1,
+              "revision": 0,
+              "control": {
+                "phase": "draft",
+                "sessionEnded": false,
+                "canStop": false,
+                "stopState": "idle",
+                "stopTargetKind": "unknown",
+                "activeWorks": [],
+                "lastError": null,
+                "apiRetry": null
+              },
+              "availability": {
+                "fork": {
+                  "allowed": false,
+                  "reasonCode": "forkTargetNotStable"
+                },
+                "compact": {
+                  "allowed": false,
+                  "reasonCode": "idleCannotCompact"
+                },
+                "switchModelConfig": {
+                  "allowed": true
+                },
+                "setFollowupMode": {
+                  "allowed": true
+                },
+                "queueEdit": {
+                  "allowed": true
+                },
+                "sendQueuedNow": {
+                  "allowed": false,
+                  "reasonCode": "sendQueuedNowRequiresRunning"
+                },
+                "pauseGoal": {
+                  "allowed": false,
+                  "reasonCode": "noGoalToPause"
+                },
+                "resumeGoal": {
+                  "allowed": false,
+                  "reasonCode": "noGoalToResume"
+                }
+              },
+              "inputRouting": {
+                "mode": "startNow"
+              },
+              "meta": {
+                "title": "",
+                "titleSource": "default"
+              },
+              "config": {
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "thought": "max",
+                "thoughtLevels": [
+                  "disabled",
+                  "low",
+                  "high",
+                  "max"
+                ],
+                "followupMode": "queue",
+                "mode": "build",
+                "modelSelection": {
+                  "providerId": "deepseek",
+                  "modelId": "deepseek-flash",
+                  "options": {
+                    "reasoningLevel": "max"
+                  }
+                },
+                "planEnabled": false
+              },
+              "modelTransition": null,
+              "usage": {
+                "contextWindow": null,
+                "cumulative": {
+                  "inputTokens": 0,
+                  "outputTokens": 0,
+                  "cacheReadTokens": 0,
+                  "cacheWriteTokens": 0
+                }
+              },
+              "queue": {
+                "items": [],
+                "autoDrain": true
+              },
+              "pendingInteractions": [],
+              "pendingCommands": [],
+              "backgroundWorks": [],
+              "subagents": {
+                "revision": 0,
+                "childSessionIds": [],
+                "running": [],
+                "endedTotal": 0
+              },
+              "goal": null,
+              "plan": null,
+              "workspaceHookAdmission": null,
+              "rows": {
+                "window": [],
+                "totalCount": 0,
+                "firstRowId": null
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "method": "v4/conversation/frame",
+      "params": {
+        "wireVersion": 3,
+        "kind": "complete",
+        "deliveryKind": "recovery",
+        "logicalFrameId": "fixture-continuous-1-lf-6",
+        "logicalFrameOrdinal": 2,
+        "topic": "conversation/fixture-session",
+        "subscriptionId": "fixture-continuous-1",
+        "frame": {
+          "topic": "conversation/fixture-session",
+          "subscriptionId": "fixture-continuous-1",
+          "sentAt": 1791032434851,
+          "fromSeq": 0,
+          "toSeq": 2,
+          "payload": {
+            "kind": "snapshot",
+            "snapshot": {
+              "protocolVersion": 1,
+              "sessionId": "fixture-session",
+              "logEpoch": "musegv3e-mrqoweve",
+              "seq": 2,
+              "revision": 1,
+              "control": {
+                "phase": "draft",
+                "sessionEnded": false,
+                "canStop": false,
+                "stopState": "idle",
+                "stopTargetKind": "unknown",
+                "activeWorks": [],
+                "lastError": null,
+                "apiRetry": null
+              },
+              "availability": {
+                "fork": {
+                  "allowed": false,
+                  "reasonCode": "forkTargetNotStable"
+                },
+                "compact": {
+                  "allowed": false,
+                  "reasonCode": "idleCannotCompact"
+                },
+                "switchModelConfig": {
+                  "allowed": true
+                },
+                "setFollowupMode": {
+                  "allowed": true
+                },
+                "queueEdit": {
+                  "allowed": true
+                },
+                "sendQueuedNow": {
+                  "allowed": false,
+                  "reasonCode": "sendQueuedNowRequiresRunning"
+                },
+                "pauseGoal": {
+                  "allowed": false,
+                  "reasonCode": "noGoalToPause"
+                },
+                "resumeGoal": {
+                  "allowed": false,
+                  "reasonCode": "noGoalToResume"
+                }
+              },
+              "inputRouting": {
+                "mode": "startNow"
+              },
+              "meta": {
+                "title": "",
+                "titleSource": "default"
+              },
+              "config": {
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "thought": "max",
+                "thoughtLevels": [
+                  "disabled",
+                  "low",
+                  "high",
+                  "max"
+                ],
+                "followupMode": "guide",
+                "mode": "build",
+                "modelSelection": {
+                  "providerId": "deepseek",
+                  "modelId": "deepseek-flash",
+                  "options": {
+                    "reasoningLevel": "max"
+                  }
+                },
+                "planEnabled": false
+              },
+              "modelTransition": null,
+              "usage": {
+                "contextWindow": null,
+                "cumulative": {
+                  "inputTokens": 0,
+                  "outputTokens": 0,
+                  "cacheReadTokens": 0,
+                  "cacheWriteTokens": 0
+                }
+              },
+              "queue": {
+                "items": [],
+                "autoDrain": true
+              },
+              "pendingInteractions": [],
+              "pendingCommands": [],
+              "backgroundWorks": [],
+              "subagents": {
+                "revision": 0,
+                "childSessionIds": [],
+                "running": [],
+                "endedTotal": 0
+              },
+              "goal": null,
+              "plan": null,
+              "workspaceHookAdmission": null,
+              "rows": {
+                "window": [],
+                "totalCount": 0,
+                "firstRowId": null
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "productionOracle": {
+    "status": "live",
+    "profile": "replayable",
+    "subscriptionId": "fixture-continuous-1",
+    "initialSeq": 1,
+    "resyncSeq": 2,
+    "commandState": "accepted-awaiting-terminal",
+    "commandAck": {
+      "memoryEnabled": false,
+      "commandId": "01a101da-209f-7ad1-a01d-291e95beffd6",
+      "status": "accepted",
+      "revisionAtDecision": 0
+    },
+    "queryState": "accepted-awaiting-terminal",
+    "paidModelCalls": 0
+  }
+}

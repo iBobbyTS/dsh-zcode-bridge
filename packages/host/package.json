@@ -5,7 +5,9 @@
   "main": "index.mjs",
   "exports": {
     ".": "./index.mjs",
-    "./runtime": "./runtime.mjs"
+    "./runtime": "./runtime.mjs",
+    "./conversation": "./conversation.mjs",
+    "./protocol": "./protocol.mjs"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "~4.0.0"

@@ -2,11 +2,12 @@ import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { realpath } from 'node:fs/promises';
 import { inspectInstallation, runtimeEnv, BridgeError } from './installation.mjs';
+import { V4Conversation } from './conversation.mjs';
 import { ProtocolPeer } from './protocol.mjs';
 export const initialStatus=()=>({state:'unavailable',reason:'not-connected',auth:'unconfirmed',connected:false});
 /** Owns only children it launches; there is no attach or shared-process killer. */
 export class BridgeHost {
-  #status=initialStatus(); #peer; #child; #operation; #disposed=false; #stop; #disposePromise;
+  #conversations=new Set(); #clientId='bridge-'+randomUUID(); #status=initialStatus(); #peer; #child; #operation; #disposed=false; #stop; #disposePromise;
   constructor({appPath,workspacePath,inspect=inspectInstallation,spawnProcess=spawn,onStatus=()=>{}}={}){this.appPath=appPath;this.workspacePath=workspacePath;this.inspect=inspect;this.spawnProcess=spawnProcess;this.onStatus=onStatus}
   get status(){return structuredClone(this.#status)}
   /** Read official catalog facts only. An address query never activates a Session. */
@@ -25,6 +26,14 @@ export class BridgeHost {
       return {address:{runtime:'zcode',authority:status.sessionAuthority,workspace:status.workspacePath,sessionId:session.sessionId},title:session.title,cwd:session.workspace.workspacePath,running:undefined};
     });
     return {sessions,scope:{authority:status.sessionAuthority,workspace:status.workspacePath},availability:{state:status.state,reason:status.reason,capabilities:{create:false,open:false,nativeAgent:false}}};
+  }
+  /** Scoped API for S03.B. Read projection is permitted; restricted runtime never admits actions. */
+  createConversation(address,{onChange=()=>{}}={}){
+    const status=this.status;
+    if(this.#disposed||!status.connected||!this.#peer||this.#peer.closed)throw new BridgeError('source-unavailable');
+    if(!address||address.runtime!=='zcode'||address.authority!==status.sessionAuthority||address.workspace!==status.workspacePath||typeof address.sessionId!=='string'||!address.sessionId)throw new BridgeError('source-address-mismatch');
+    const conversation=new V4Conversation(this.#peer,{address,workspace:{workspacePath:status.workspacePath,workspaceKey:status.workspacePath},connectionId:status.sessionAuthority,clientId:this.#clientId,runnable:status.state==='available',onChange:state=>{if(state.status==='closed')this.#conversations.delete(conversation);onChange(state)}});
+    this.#conversations.add(conversation);return conversation;
   }
   #publish(change){this.#status={...this.#status,...change};this.onStatus(this.status)}
   connect(){

@@ -1,0 +1,33 @@
+{
+  "provenance": {
+    "source": "official.json",
+    "runtimeSha256": "fad4c35c4c36ec210d8a06d3fa0e77de23c8545e2eb6ff90aea1eb38d1e6275f",
+    "paidModelCalls": 0,
+    "kind": "fault-injection",
+    "changes": [
+      "real online delta subscription replaced by old-subscription",
+      "interval -> (14,1000]",
+      "ordinal/id -> 5/injected-lf-5"
+    ]
+  },
+  "frame": {
+    "wireVersion": 3,
+    "kind": "complete",
+    "deliveryKind": "online",
+    "logicalFrameId": "injected-lf-5",
+    "logicalFrameOrdinal": 5,
+    "topic": "conversation/fixture-session",
+    "subscriptionId": "old-subscription",
+    "frame": {
+      "topic": "conversation/fixture-session",
+      "subscriptionId": "old-subscription",
+      "sentAt": 1791032434691,
+      "fromSeq": 14,
+      "toSeq": 1000,
+      "payload": {
+        "kind": "deltas",
+        "deltas": []
+      }
+    }
+  }
+}
