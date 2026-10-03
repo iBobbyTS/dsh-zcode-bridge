@@ -6,8 +6,10 @@ const sourceEndpoint='sessions';
 export function apply(ctx,config={}) {
   const host=new BridgeHost({appPath:config.appPath,workspacePath:config.workspacePath});
   ctx.effect(()=>()=>host.dispose(),'zcode-bridge: owned runtime');
-  ctx.inject(['webServer'],()=>{
-    ctx.effect(()=>ctx.connection.rpc.handle(CHANNEL,async(endpoint,payload,signal)=>{
+  ctx.inject(['webServer'],webCtx=>{
+    // Connection binds routes to the Context reading the service. The injected
+    // child owns webServer access and releases the route when it disappears.
+    webCtx.effect(()=>webCtx.connection.rpc.handle(CHANNEL,async(endpoint,payload,signal)=>{
       if(endpoint===sourceEndpoint){
         if(!payload||typeof payload!=='object'||Array.isArray(payload)||Object.keys(payload).some(key=>key!=='address'))return {ok:false,error:{code:'invalid-payload',message:'Only a Session address may be queried',details:{}}};
         try{return {ok:true,value:await host.listSessions({address:payload.address,signal})}}
