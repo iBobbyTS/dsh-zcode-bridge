@@ -17,6 +17,7 @@ export class RuntimeSessions {
     rpc: ConnectionHandle['rpc']
     connectionGeneration?: ConnectionHandle['generation']
     nativeAuthority: string
+    settings?: Pick<Storage, 'getItem' | 'setItem'>
   })
   /** Native and official catalog facts, keyed by the complete runtime address. */
   readonly list: ObservableSnapshot<readonly RuntimeSessionSummary[]>

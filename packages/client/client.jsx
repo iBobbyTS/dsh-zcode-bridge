@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { statusText } from './status.mjs';
 import { StatusController } from './controller.mjs';
+import {ZCodeDirectory,ZCodeSessionPanel,directoryLocales} from './directory-view.jsx';
+export {ZCodeDirectory,ZCodeSessionPanel} from './directory-view.jsx';
 import { installRuntimeSessions } from './sources.mjs';
 export { ZCodeConversationView, ConversationController } from './conversation-view.jsx';
 export const inject=['slots','locale','connection'];
@@ -8,6 +10,12 @@ const zh={title:'ZCode',description:'官方安装与连接状态'},en={title:'ZC
 /** A bundle-owned configuration page in the existing Plugins slot. */
 export function apply(ctx){
   ctx.effect(()=>installRuntimeSessions(ctx),'zcode-bridge: native source injection');
+  ctx.inject(['runtimeSessions','layout'],scope=>{
+    scope.effect(()=>scope.locale.register('zcodeDirectory',directoryLocales),'zcode-bridge: directory locale');
+    scope.slots.inject('sidebar.workspaces.runtimeDirectory',()=>scope.slots.register({name:'sidebar.workspaces.runtimeDirectory',id:'zcode-directory',locale:'zcodeDirectory',inject:()=>({sources:scope.runtimeSessions,onOpen:()=>scope.layout.selectPanel('zcode-session')})},ZCodeDirectory));
+    scope.slots.inject('main',()=>scope.slots.register({name:'main',key:'zcode-session',id:'zcode-session',locale:'zcodeDirectory',inject:()=>({sources:scope.runtimeSessions})},ZCodeSessionPanel));
+    void scope.runtimeSessions.refresh();
+  });
   ctx.effect(()=>ctx.locale.register('zcodeBridge',{zh,en}),'zcode-bridge: locale');
   ctx.effect(()=>ctx.slots.inject('plugins.bundle.config',()=>ctx.slots.register({name:'plugins.bundle.config',id:'zcode-bridge-status',key:'@dsh-zcode/bridge',locale:'zcodeBridge',inject:()=>({rpc:ctx.connection.rpc,connectionState:ctx.connection.state})},StatusCard)),'zcode-bridge: page');
 }

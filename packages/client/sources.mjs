@@ -1,6 +1,7 @@
-import {createNativeSessionSource,parseRuntimeSessionAddress,runtimeSessionKey} from '@deepseek-ai/dsh-api-session-controller/client';
+import {createNativeSessionSource,parseRuntimeSessionAddress,parseRuntimeSessionKey,runtimeSessionKey} from '@deepseek-ai/dsh-api-session-controller/client';
 import {notifySubscribers} from '@deepseek-ai/dsh-client-store';
 import React from 'react';
+import {RemoteConversation} from './remote-conversation.mjs';
 import {ZCodeConversationView} from './conversation-view.jsx';
 
 const unavailable=reason=>Object.freeze({state:'unavailable',reason,capabilities:Object.freeze({create:false,open:false,nativeAgent:false})});
@@ -10,25 +11,75 @@ const sourceError=code=>Object.assign(new Error(code),{code});
 export class RuntimeSessions {
   #native;#rows=Object.freeze([]);#zcodeRows=Object.freeze([]);#availability=unavailable('not-connected');
   #listeners=new Set();#availabilityListeners=new Set();#references=new Set();#subscriptions=[];
+  #directoryListeners=new Set();#selectionListeners=new Set();#deleted=new Set();#groups={};#settings;#settingsError=null;#catalog={complete:false,truncated:false,sharedGui:'unverified'};#directory;#query='';#page=0;#pageSize=20;#selected=null;#opened=new Map();#openVersion=0;
   #closed=false;#generation=0;#readVersion=0;#requests=new Set();#reads=new Set();#refresh;#scope;#disposal;#conversationResolver;
-  constructor({sessions,rpc,connectionGeneration,nativeAuthority,conversationResolver}){
+  constructor({sessions,rpc,connectionGeneration,nativeAuthority,conversationResolver,settings}){
     if(typeof nativeAuthority!=='string'||!nativeAuthority)throw sourceError('native-authority-required');
     this.rpc=rpc;
+    try{this.#settings=settings??globalThis.localStorage;if(!this.#settings)this.#settingsError='local-settings-unavailable';const raw=this.#settings?.getItem('dsh.zcode.local-groups');if(raw){const groups=JSON.parse(raw);if(!groups||typeof groups!=='object'||Array.isArray(groups)||Object.entries(groups).some(([key,value])=>parseRuntimeSessionKey(key).runtime!=='zcode'||typeof value!=='string'))throw sourceError('local-groups-invalid');this.#groups=groups}}
+    catch(error){this.#settingsError=error.code??'local-settings-unavailable';this.#settings=undefined}
+
     this.#conversationResolver=conversationResolver;
     this.#native=createNativeSessionSource(sessions,nativeAuthority,'native-session-store');
     this.#subscriptions.push(this.#native.list.subscribe(()=>this.#publish()));
     if(connectionGeneration)this.#subscriptions.push(connectionGeneration.subscribe(()=>{
-      this.#generation++;this.#refresh=undefined;for(const request of this.#requests)request.abort();
+      this.#generation++;this.#openVersion++;this.#refresh=undefined;for(const request of this.#requests)request.abort();
       this.#scope=undefined;this.#zcodeRows=Object.freeze([]);this.#availability=unavailable('host-unreachable');this.#publish();
     }));
     this.#publish();
   }
   list={getSnapshot:()=>this.#rows,subscribe:listener=>this.#subscribe(this.#listeners,listener)};
   zcodeAvailability={getSnapshot:()=>this.#availability,subscribe:listener=>this.#subscribe(this.#availabilityListeners,listener)};
+  directory={getSnapshot:()=>this.#directory,subscribe:listener=>this.#subscribe(this.#directoryListeners,listener)};
+  selection={getSnapshot:()=>this.#selected,subscribe:listener=>this.#subscribe(this.#selectionListeners,listener)};
+  setDirectory({query=this.#query,page=this.#page,pageSize=this.#pageSize}={}){
+    if(typeof query!=='string'||query.length>1000||!Number.isSafeInteger(page)||page<0||!Number.isSafeInteger(pageSize)||pageSize<1||pageSize>100)throw sourceError('directory-query-invalid');
+    this.#page=query!==this.#query?0:page;this.#query=query;this.#pageSize=pageSize;this.#publish();
+  }
+  setGroup(address,group){
+    const fixed=parseRuntimeSessionAddress(address),key=runtimeSessionKey(fixed);
+    if(this.#closed||fixed.runtime!=='zcode'||this.#deleted.has(key)||typeof group!=='string'||group.length>100)throw sourceError('local-group-invalid');
+    this.#groups={...this.#groups};if(group.trim())this.#groups[key]=group.trim();else delete this.#groups[key];
+    this.#saveGroups();this.#publish();
+  }
+  #saveGroups(){try{this.#settings?.setItem('dsh.zcode.local-groups',JSON.stringify(this.#groups))}catch{this.#settingsError='local-settings-write-failed'}}
+  #remove(address){
+    const key=runtimeSessionKey(address);this.#deleted.add(key);delete this.#groups[key];this.#saveGroups();
+    this.#zcodeRows=Object.freeze(this.#zcodeRows.filter(row=>row.key!==key));
+    this.#publish();
+  }
+  async open(address){
+    if(this.#closed)throw sourceError('disposed');const version=++this.#openVersion,fixed=parseRuntimeSessionAddress(address);
+    if(fixed.runtime!=='zcode'||this.#deleted.has(runtimeSessionKey(fixed)))throw sourceError('session-deleted');
+    await this.refreshAddress(fixed);
+    const conversation=this.#conversationResolver?.(fixed)??new RemoteConversation(this.rpc,fixed);
+    const remove=conversation.subscribe(state=>{if(state.error==='session-deleted')this.#remove(fixed)});
+    this.#opened.set(conversation,remove);
+    try{
+      await conversation.connect();if(this.#closed||version!==this.#openVersion)throw sourceError('disposed');
+      const reference=this.retain(fixed,{source:'mainView',conversation});
+      const previous=this.#selected;this.#selected=Object.freeze({address:fixed,reference,conversation});
+      if(previous){previous.reference.release();this.#opened.get(previous.conversation)?.();void previous.conversation.cancel().catch(()=>{});this.#opened.delete(previous.conversation)}
+      notifySubscribers(this.#selectionListeners,'[zcode-bridge] selection');return reference;
+    }catch(error){remove();this.#opened.delete(conversation);await conversation.cancel();throw error}
+  }
+  async disconnect(){this.#openVersion++;const selected=this.#selected;this.#selected=null;if(selected){selected.reference.release();this.#opened.get(selected.conversation)?.();this.#opened.delete(selected.conversation);await selected.conversation.cancel()}notifySubscribers(this.#selectionListeners,'[zcode-bridge] selection')}
+  async manage(address,type,payload,commandId){
+    const key=runtimeSessionKey(address),selected=this.#selected;
+    if(!selected||runtimeSessionKey(selected.address)!==key)throw sourceError('open-session-first');
+    const result=await selected.conversation.submit({type,payload,...(commandId?{commandId}:{})});
+    if(type==='deleteSession'&&['accepted','duplicate'].includes(result.ack?.status))this.#remove(address);
+    await this.refresh();return result;
+  }
+  async queryManagement(commandId){const selected=this.#selected;if(!selected)throw sourceError('open-session-first');const result=await selected.conversation.queryCommand(commandId);if(result.type==='deleteSession'&&['accepted','duplicate'].includes(result.ack?.status))this.#remove(selected.address);await this.refresh();return result}
   #subscribe(listeners,listener){if(this.#closed)return ()=>{};listeners.add(listener);return ()=>listeners.delete(listener)}
   #publish(){
     if(this.#closed)return;
+    const matches=this.#zcodeRows.filter(row=>!this.#deleted.has(row.key)&&(row.title||row.address.sessionId).toLocaleLowerCase().includes(this.#query.toLocaleLowerCase()));
+    this.#page=Math.min(this.#page,Math.max(0,Math.ceil(matches.length/this.#pageSize)-1));
+    this.#directory=Object.freeze({rows:Object.freeze(matches.slice(this.#page*this.#pageSize,(this.#page+1)*this.#pageSize).map(row=>({...row,group:this.#groups[row.key]??''}))),query:this.#query,page:this.#page,pageSize:this.#pageSize,total:matches.length,catalog:this.#catalog,settingsError:this.#settingsError});
     this.#rows=Object.freeze([...this.#native.list.getSnapshot(),...this.#zcodeRows]);
+    notifySubscribers(this.#directoryListeners,'[zcode-bridge] directory');
     notifySubscribers(this.#listeners,'[zcode-bridge] Session sources');
     notifySubscribers(this.#availabilityListeners,'[zcode-bridge] availability');
   }
@@ -74,9 +125,13 @@ export class RuntimeSessions {
         return Object.freeze({address:fixed,key:runtimeSessionKey(fixed),title:row.title,cwd:fixed.workspace,running:undefined});
       });
       if(new Set(rows.map(row=>row.key)).size!==rows.length)throw sourceError('sessions-invalid');
+      if(value.catalog&&(typeof value.catalog.complete!=='boolean'||typeof value.catalog.truncated!=='boolean'||value.catalog.complete===value.catalog.truncated||value.catalog.sharedGui!=='unverified'||!Array.isArray(value.catalog.deleted)||value.catalog.deleted.some(id=>typeof id!=='string'||!id)))throw sourceError('sessions-invalid');
+      this.#catalog=Object.freeze(value.catalog??{complete:false,truncated:true,sharedGui:'unverified'});
+      for(const sessionId of value.catalog?.deleted??[])this.#remove({runtime:'zcode',...value.scope,sessionId});
+      const visible=rows.filter(row=>!this.#deleted.has(row.key));
       const sameScope=this.#scope?.authority===value.scope.authority&&this.#scope?.workspace===value.scope.workspace;
       this.#scope=Object.freeze({...value.scope});
-      this.#zcodeRows=Object.freeze(address&&sameScope?[...this.#zcodeRows.filter(row=>runtimeSessionKey(address)!==row.key),...rows]:rows);
+      this.#zcodeRows=Object.freeze(address&&sameScope?[...this.#zcodeRows.filter(row=>runtimeSessionKey(address)!==row.key),...visible]:visible);
       this.#availability=Object.freeze({state:value.availability.state,reason:value.availability.reason,capabilities:Object.freeze({create:false,open:false,nativeAgent:false})});
       this.#publish();
     }catch(error){
@@ -128,10 +183,11 @@ export class RuntimeSessions {
   dispose(){
     if(this.#disposal)return this.#disposal;this.#closed=true;this.#generation++;
     for(const reference of this.#references)reference.release();
+    const cleanups=[];for(const [conversation,remove] of this.#opened){remove();cleanups.push(conversation.cancel())}this.#opened.clear();this.#selected=null;this.#directoryListeners.clear();this.#selectionListeners.clear();
     for(const unsubscribe of this.#subscriptions)unsubscribe();this.#subscriptions=[];
     for(const request of this.#requests)request.abort();this.#requests.clear();
     this.#listeners.clear();this.#availabilityListeners.clear();this.#rows=Object.freeze([]);this.#zcodeRows=Object.freeze([]);this.#availability=unavailable('disposed');
-    this.#disposal=Promise.allSettled(this.#reads).then(()=>{});return this.#disposal;
+    this.#disposal=Promise.allSettled([...this.#reads,...cleanups]).then(()=>{});return this.#disposal;
   }
 }
 
