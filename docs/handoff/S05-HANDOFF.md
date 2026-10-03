@@ -54,7 +54,7 @@
    - `buildElicitationContent(questions, drafts)`: 导出纯函数，精准遵循官方 elicitation answer 协议（多题单选/多选/freeText 格式化，对照 `ElicitationDialog.tsx:267-298`）。
    - `ZCodePendingInteractions`:
      - 软准入横幅：`workspaceHookAdmission` 触发 `requestWorkspaceHookReview`；当 admission 缺少 `workspaceIdentity` 时遵循 R16 禁用按钮并提供不可用说明，不进行 `state?.address` 死回退。
-     - 多题问卷卡片：支持题目上下翻页、草稿不丢失、单选/复选/文本输入、首次交互自动触发 snooze 并核对 ACK 回执（若 rejected 则回滚 snoozed 显示并呈现官方告警语义）、接受/拒绝（带部分答案）/取消。
+     - 多题问卷卡片：支持题目上下翻页、草稿不丢失、单选/复选/文本输入（严格对照官方 `ElicitationDialog.tsx:206` 按选项拆分 selectedValues 与 customAnswer，并支持字符串与数字键）；排队问卷在未分配 autoResolution 计时前不发送 premature snooze 且不虚标已延期，保留首次交互意图待官方计时就绪时提交；snooze 被拒时回滚显示且允许再次交互重试；官方后续 autoResolution 状态具有最终权威，本地值不得覆盖。
      - 计划审核卡片：显示 markdown 计划文本、快照计划条目状态清单、Goal 摘要与目标状态、Approve Plan（提交 approve）、Reject Plan（若输入反馈理由，按官方 GUI 等价通道提交 `accept + answer_0=feedback` 以触发官方 deny-with-reason 并保留反馈；无反馈时发送 `decline`）。
      - Hook 安全审核卡片：展示危险告警、工作区标识、Hook 计数、来源文件列表、条目启闭 toggle、单项/批量 trust、已信任项 revoke。
      - 官方结果回显：完整保留并回显官方 `status` 与 `reasonCode`（如 `proto.alreadyResolved` 来自 `command.ts:175` / `interaction-registry.ts:158`，`workspace_hooks_require_trust_capable_host` 来自 `workspaceHookReviewCommands.ts:115`，`workspace_hooks_snapshot_mismatch` 来自 `workspaceHookReviewCommands.ts:82` 等），不造假。倒计时过期由官方 `autoResolution` 状态机与 snapshot 权威同步，不编造非官方 RPC 错误码。
@@ -69,7 +69,8 @@
    - 夹具生成脚本 `scripts/make-s05-fixtures.mjs`。
 4. **自动化测试套件**:
    - `tests/s05-commands.test.mjs`: 5 个 Node 单元测试，验证命令交互防护、wire payload 构造、snooze 确认与拒绝流转、计划审核审批与带反馈驳回契约。
-   - `tests/s05.dsh.spec.ts`: 14 个 DSH Vitest 集成测试，覆盖问卷答题、拒绝保留草稿、取消、计划通过、计划带反馈驳回、计划无反馈 decline、Hook 审核启闭/信任/撤销、官方原因回显 (alreadyResolved / hookHostUnsupported / hookMismatch)、自动倒计时过期状态机下线、snooze 拒绝回滚告警、缺工作区标识 R16 禁用、重连恢复、未知类型 Fail-safe 与 DSH `renderSessionArea` 挂载槽。
+   - `tests/s05-cb6-state-regression.test.mjs`: 2 个 Node 单元测试（源自审查复现脚本 `CB6-S05-state-repro.mjs`），覆盖 CB6-1 自由文本草稿回填/修改替换不混入/数字键支持，以及 CB6-2 排队项不虚标/就绪自动触发延期/官方状态权威。
+   - `tests/s05.dsh.spec.ts`: 16 个 DSH Vitest 集成测试，覆盖问卷答题、拒绝保留草稿、取消、计划通过、计划带反馈驳回、计划无反馈 decline、Hook 审核启闭/信任/撤销、官方原因回显 (alreadyResolved / hookHostUnsupported / hookMismatch)、自动倒计时过期状态机下线、snooze 拒绝回滚告警、缺工作区标识 R16 禁用、重连恢复、未知类型 Fail-safe、DSH `renderSessionArea` 挂载槽，以及 CB6-1/CB6-2 真实链路集成。
 
 ---
 
@@ -77,8 +78,8 @@
 
 | Check 项 | 命令 | 结果 | 耗时 |
 |---|---|---|---|
-| Bridge 单元测试 (Node test runner) | `npm test` | **58/58 PASS** (新增 5 项，原 53 项无回退) | 1.1s |
-| Bridge DSH 集成测试 (Vitest) | `node ../dsh/node_modules/vitest/vitest.mjs run --config scripts/dsh-vitest.config.mjs` | **50/50 PASS** (新增 s05 14 项，全 6 个套件 0 fail) | 5.7s |
+| Bridge 单元测试 (Node test runner) | `npm test` | **60/60 PASS** (新增 CB6 2 项，全 60 项无回退) | 0.9s |
+| Bridge DSH 集成测试 (Vitest) | `node ../dsh/node_modules/vitest/vitest.mjs run --config scripts/dsh-vitest.config.mjs` | **52/52 PASS** (新增 CB6 2 项，全 6 个套件 0 fail) | 6.0s |
 | DSH 原生定向回归 (Vitest) | `pnpm vitest run packages/api/session-controller/tests packages/client/ui-session/tests packages/client/ui-workspace/tests` | **1367/1367 PASS** (57 文件，0 fail) | 11.12s |
 | DSH 类型检查 | `pnpm_config_verify_deps_before_run=false pnpm typecheck:contracts-ready` | **PASS** (0 errors) | 2.5s |
 | DSH 文档门禁 | `pnpm_config_verify_deps_before_run=false pnpm test:docs` | **21/21 PASS** (0 failed) | 43.17s |

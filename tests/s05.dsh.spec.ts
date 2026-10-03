@@ -740,4 +740,150 @@ describe('S05 User Interactions, Plan Review & Hook Trust', () => {
       f.dispose();
     }
   });
+
+  it('CB6-1: questionnaire draft parsing restores free text into custom input and accepts string/numeric keys without mixing old draft notes on edit', async () => {
+    const f = createConversationFixture();
+    try {
+      const draftFixture = structuredClone(questionnaireFixture.initial);
+      const q = draftFixture.frame.payload.snapshot.pendingInteractions[0];
+      delete q.autoResolution;
+      q.payload.questions = [{ question: 'Notes?', header: 'Notes', options: [], multiSelect: false }];
+      q.payload.answerDrafts = { answer_0: ['old notes'] };
+
+      await f.open(draftFixture, questionnaireFixture.ack);
+      render(React.createElement(ZCodeConversationView, { conversation: f.conversation }));
+
+      const input = screen.getByTestId('zcode-q-custom-input') as HTMLInputElement;
+      expect(input.value).toBe('old notes');
+
+      await act(async () => {
+        fireEvent.change(input, { target: { value: 'replacement notes' } });
+      });
+      expect(input.value).toBe('replacement notes');
+
+      const submitBtn = screen.getByTestId('zcode-questionnaire-submit');
+      await act(async () => {
+        fireEvent.click(submitBtn);
+      });
+
+      const resolveCmd = f.sent.find(s => s.params?.type === 'resolveInteraction');
+      expect(resolveCmd).toBeDefined();
+      const content = resolveCmd.params.payload.answer.content;
+      expect(content.answer_0).toBe('replacement notes');
+      expect(content.answers['Notes?']).toBe('replacement notes');
+      expect(content.answer).toBe('replacement notes');
+
+      // Numeric draft key test
+      const fNum = createConversationFixture();
+      try {
+        const numFixture = structuredClone(draftFixture);
+        numFixture.frame.payload.snapshot.pendingInteractions[0].payload.answerDrafts = { '0': ['saved numeric notes'] };
+        await fNum.open(numFixture, questionnaireFixture.ack);
+        render(React.createElement(ZCodeConversationView, { conversation: fNum.conversation }));
+
+        const numInput = screen.getAllByTestId('zcode-q-custom-input').at(-1) as HTMLInputElement;
+        expect(numInput.value).toBe('saved numeric notes');
+
+        const numSubmit = screen.getAllByTestId('zcode-questionnaire-submit').at(-1);
+        await act(async () => {
+          fireEvent.click(numSubmit);
+        });
+
+        const numResolve = fNum.sent.find(s => s.params?.type === 'resolveInteraction');
+        expect(numResolve).toBeDefined();
+        const numContent = numResolve.params.payload.answer.content;
+        expect(numContent.answer_0).toBe('saved numeric notes');
+        expect(numContent.answers['Notes?']).toBe('saved numeric notes');
+      } finally {
+        fNum.dispose();
+      }
+    } finally {
+      f.dispose();
+    }
+  });
+
+  it('CB6-2: queued questionnaire without autoResolution does not trigger snooze or display false snoozed state; head promotion submits deferred snooze and respects authoritative official state', async () => {
+    const f = createConversationFixture();
+    try {
+      const queuedFixture = structuredClone(questionnaireFixture.initial);
+      const queuedItem = queuedFixture.frame.payload.snapshot.pendingInteractions[0];
+      queuedItem.interactionId = 'queued-item';
+      delete queuedItem.autoResolution;
+      queuedItem.payload.questions = [{ question: 'Queued?', header: 'Queued', options: [], multiSelect: false }];
+      queuedItem.payload.answerDrafts = {};
+
+      await f.open(queuedFixture, questionnaireFixture.ack);
+      render(React.createElement(ZCodeConversationView, { conversation: f.conversation }));
+
+      // 1. Queued item typing does NOT send snooze command and does NOT display snoozed badge
+      const input = screen.getByTestId('zcode-q-custom-input');
+      await act(async () => {
+        fireEvent.change(input, { target: { value: 'typing while queued' } });
+      });
+
+      const earlySnooze = f.sent.find(s => s.params?.type === 'snoozeInteractionAutoResolution');
+      expect(earlySnooze).toBeUndefined();
+      expect(screen.queryByTestId('zcode-auto-resolution-snoozed')).toBeNull();
+      expect(screen.queryByTestId('zcode-auto-resolution-countdown')).toBeNull();
+
+      // 2. Promotion to head: server sends snapshot where autoResolution is activated
+      const promotedFrame = structuredClone(queuedFixture);
+      promotedFrame.logicalFrameId = 'promoted-lf';
+      promotedFrame.logicalFrameOrdinal = 2;
+      promotedFrame.frame.toSeq = 1;
+      promotedFrame.frame.payload.snapshot.seq = 1;
+      promotedFrame.frame.payload.snapshot.revision = 1;
+      promotedFrame.frame.payload.snapshot.pendingInteractions[0].autoResolution = {
+        state: 'hiddenGrace',
+        startedAt: Date.now() - 1000,
+        visibleAt: Date.now() + 30000,
+        deadlineAt: Date.now() + 60000,
+      };
+
+      await act(async () => {
+        f.wire(promotedFrame);
+      });
+
+      // Deferred snooze intent is submitted once autoResolution is ready!
+      let deferredSnooze: any;
+      await waitFor(() => {
+        deferredSnooze = f.sent.find(s => s.params?.type === 'snoozeInteractionAutoResolution');
+        expect(deferredSnooze).toBeDefined();
+      });
+      expect(deferredSnooze.params.payload.interactionId).toBe('queued-item');
+
+      // Acknowledge snooze
+      await act(async () => {
+        f.response(deferredSnooze, {
+          status: 'accepted',
+          commandId: deferredSnooze.params.commandId,
+          revisionAtDecision: 2,
+        });
+      });
+
+      // Server frame arrives with official state: 'snoozed'
+      const snoozedFrame = structuredClone(promotedFrame);
+      snoozedFrame.logicalFrameId = 'snoozed-lf';
+      snoozedFrame.logicalFrameOrdinal = 3;
+      snoozedFrame.frame.toSeq = 2;
+      snoozedFrame.frame.payload.snapshot.seq = 2;
+      snoozedFrame.frame.payload.snapshot.revision = 2;
+      snoozedFrame.frame.payload.snapshot.pendingInteractions[0].autoResolution = {
+        state: 'snoozed',
+        startedAt: Date.now() - 1000,
+        snoozedAt: Date.now(),
+      };
+
+      await act(async () => {
+        f.wire(snoozedFrame);
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('zcode-auto-resolution-snoozed')).toBeDefined();
+        expect(screen.queryByTestId('zcode-auto-resolution-countdown')).toBeNull();
+      });
+    } finally {
+      f.dispose();
+    }
+  });
 });

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useSyncExternalStore } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useSyncExternalStore } from 'react';
 
 /**
  * Controller wrapping a V4Conversation instance for reactive React rendering and actions.
@@ -488,6 +488,103 @@ export function ZCodePendingInteractions({
   const [snoozedInteractions, setSnoozedInteractions] = useState({});
   const [snoozeWarnings, setSnoozeWarnings] = useState({});
 
+  const snoozeIntentsRef = useRef(new Set());
+  const inFlightSnoozeRef = useRef(new Set());
+  const sentSnoozeRef = useRef(new Set());
+
+  const sendSnooze = useCallback((interactionId) => {
+    inFlightSnoozeRef.current.add(interactionId);
+    sentSnoozeRef.current.add(interactionId);
+    setSnoozedInteractions(prev => ({ ...prev, [interactionId]: true }));
+    try {
+      const maybePromise = onSnooze?.(interactionId);
+      if (maybePromise && typeof maybePromise.then === 'function') {
+        maybePromise
+          .then(record => {
+            inFlightSnoozeRef.current.delete(interactionId);
+            const isRejected = record?.ack?.status === 'rejected' || record?.state === 'rejected';
+            if (isRejected) {
+              sentSnoozeRef.current.delete(interactionId);
+              snoozeIntentsRef.current.delete(interactionId);
+              setSnoozedInteractions(prev => ({ ...prev, [interactionId]: false }));
+              const reason = record?.ack?.reasonCode ?? record?.error ?? 'rejected';
+              setSnoozeWarnings(prev => ({
+                ...prev,
+                [interactionId]: `Warning: Auto-resolution snooze rejected (${reason})`,
+              }));
+            }
+          })
+          .catch(err => {
+            inFlightSnoozeRef.current.delete(interactionId);
+            sentSnoozeRef.current.delete(interactionId);
+            snoozeIntentsRef.current.delete(interactionId);
+            setSnoozedInteractions(prev => ({ ...prev, [interactionId]: false }));
+            setSnoozeWarnings(prev => ({
+              ...prev,
+              [interactionId]: `Warning: Auto-resolution snooze failed (${err.code ?? err.message ?? 'error'})`,
+            }));
+          });
+      } else {
+        inFlightSnoozeRef.current.delete(interactionId);
+      }
+    } catch (err) {
+      inFlightSnoozeRef.current.delete(interactionId);
+      sentSnoozeRef.current.delete(interactionId);
+      snoozeIntentsRef.current.delete(interactionId);
+      setSnoozedInteractions(prev => ({ ...prev, [interactionId]: false }));
+      setSnoozeWarnings(prev => ({
+        ...prev,
+        [interactionId]: `Warning: Auto-resolution snooze failed (${err.code ?? err.message ?? 'error'})`,
+      }));
+    }
+  }, [onSnooze]);
+
+  const triggerSnooze = useCallback((interactionId) => {
+    snoozeIntentsRef.current.add(interactionId);
+    const interaction = interactions.find(item => item.interactionId === interactionId);
+    const autoRes = interaction?.autoResolution;
+
+    // 无 autoResolution 的排队项不发 snooze（保留首次操作意图，待官方计时就绪再提交，不标记已延期不阻断后续输入）
+    if (!autoRes) {
+      return;
+    }
+    if (autoRes.state === 'snoozed') {
+      return;
+    }
+    if (inFlightSnoozeRef.current.has(interactionId) || sentSnoozeRef.current.has(interactionId)) {
+      return;
+    }
+    sendSnooze(interactionId);
+  }, [interactions, sendSnooze]);
+
+  useEffect(() => {
+    // 1. 排队项就绪或有未发送意图：当官方 autoResolution 到达时补发一次 snooze
+    for (const item of interactions) {
+      const id = item.interactionId;
+      if (
+        item.autoResolution &&
+        item.autoResolution.state !== 'snoozed' &&
+        snoozeIntentsRef.current.has(id) &&
+        !inFlightSnoozeRef.current.has(id) &&
+        !sentSnoozeRef.current.has(id)
+      ) {
+        sendSnooze(id);
+      }
+    }
+    // 2. 权威同步：当没有在飞的 snooze 请求时，后续官方 autoResolution.state 具有最终权威，本地值不得覆盖
+    for (const item of interactions) {
+      const id = item.interactionId;
+      const officialState = item.autoResolution?.state;
+      if (officialState && !inFlightSnoozeRef.current.has(id)) {
+        if (officialState === 'snoozed') {
+          setSnoozedInteractions(prev => (prev[id] === true ? prev : { ...prev, [id]: true }));
+        } else if (officialState === 'hiddenGrace' || officialState === 'expired' || officialState === 'resolved') {
+          setSnoozedInteractions(prev => (prev[id] ? { ...prev, [id]: false } : prev));
+        }
+      }
+    }
+  }, [interactions, sendSnooze]);
+
   const hasInteractions = interactions.length > 0;
   const hasAdmission = Boolean(hookAdmission && hookAdmission.pendingCount > 0);
   const hasResults = Object.keys(results).length > 0;
@@ -511,41 +608,6 @@ export function ZCodePendingInteractions({
       }));
     } finally {
       setSubmitting(prev => ({ ...prev, [interactionId]: false }));
-    }
-  };
-
-  const triggerSnooze = (interactionId) => {
-    if (snoozedInteractions[interactionId]) return;
-    setSnoozedInteractions(prev => ({ ...prev, [interactionId]: true }));
-    try {
-      const maybePromise = onSnooze?.(interactionId);
-      if (maybePromise && typeof maybePromise.then === 'function') {
-        maybePromise
-          .then(record => {
-            const isRejected = record?.ack?.status === 'rejected' || record?.state === 'rejected';
-            if (isRejected) {
-              setSnoozedInteractions(prev => ({ ...prev, [interactionId]: false }));
-              const reason = record?.ack?.reasonCode ?? record?.error ?? 'rejected';
-              setSnoozeWarnings(prev => ({
-                ...prev,
-                [interactionId]: `Warning: Auto-resolution snooze rejected (${reason})`,
-              }));
-            }
-          })
-          .catch(err => {
-            setSnoozedInteractions(prev => ({ ...prev, [interactionId]: false }));
-            setSnoozeWarnings(prev => ({
-              ...prev,
-              [interactionId]: `Warning: Auto-resolution snooze failed (${err.code ?? err.message ?? 'error'})`,
-            }));
-          });
-      }
-    } catch (err) {
-      setSnoozedInteractions(prev => ({ ...prev, [interactionId]: false }));
-      setSnoozeWarnings(prev => ({
-        ...prev,
-        [interactionId]: `Warning: Auto-resolution snooze failed (${err.code ?? err.message ?? 'error'})`,
-      }));
     }
   };
 
@@ -772,7 +834,13 @@ export function ZCodePendingInteractions({
         const result = results[id];
         const isBusy = submitting[id];
         const autoRes = interaction.autoResolution;
-        const isSnoozed = snoozedInteractions[id] === true || (snoozedInteractions[id] === undefined && autoRes?.state === 'snoozed');
+        const isOfficialSnoozed = autoRes?.state === 'snoozed';
+        const isOptimisticSnoozed =
+          snoozedInteractions[id] === true &&
+          autoRes?.state !== 'hiddenGrace' &&
+          autoRes?.state !== 'expired' &&
+          autoRes?.state !== 'resolved';
+        const isSnoozed = isOfficialSnoozed || isOptimisticSnoozed;
 
         // Detect Plan Review
         const isPlanReview =
@@ -1073,8 +1141,12 @@ export function ZCodePendingInteractions({
                 activeIndex: payload.currentQuestionIndex ?? 0,
                 drafts: Object.fromEntries(
                   questions.map((q, idx) => {
-                    const savedDraft = payload.answerDrafts?.[`answer_${idx}`] ?? [];
-                    return [idx, { selectedValues: savedDraft, customAnswer: '' }];
+                    const rawDraft = payload.answerDrafts?.[`answer_${idx}`] ?? payload.answerDrafts?.[String(idx)] ?? [];
+                    const draftValues = Array.isArray(rawDraft) ? rawDraft : rawDraft != null ? [String(rawDraft)] : [];
+                    const optionValues = new Set((q.options ?? []).map(opt => (typeof opt === 'object' && opt !== null ? opt.value : opt)));
+                    const selectedValues = draftValues.filter(v => optionValues.has(v));
+                    const customAnswer = draftValues.filter(v => !optionValues.has(v)).join(', ');
+                    return [idx, { selectedValues, customAnswer }];
                   })
                 ),
               };
