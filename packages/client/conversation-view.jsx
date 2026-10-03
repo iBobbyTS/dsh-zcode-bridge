@@ -486,6 +486,7 @@ export function ZCodePendingInteractions({
   const [questionnaireState, setQuestionnaireState] = useState({});
   const [planFeedback, setPlanFeedback] = useState({});
   const [snoozedInteractions, setSnoozedInteractions] = useState({});
+  const [snoozeWarnings, setSnoozeWarnings] = useState({});
 
   const hasInteractions = interactions.length > 0;
   const hasAdmission = Boolean(hookAdmission && hookAdmission.pendingCount > 0);
@@ -517,8 +518,35 @@ export function ZCodePendingInteractions({
     if (snoozedInteractions[interactionId]) return;
     setSnoozedInteractions(prev => ({ ...prev, [interactionId]: true }));
     try {
-      void onSnooze?.(interactionId);
-    } catch {}
+      const maybePromise = onSnooze?.(interactionId);
+      if (maybePromise && typeof maybePromise.then === 'function') {
+        maybePromise
+          .then(record => {
+            const isRejected = record?.ack?.status === 'rejected' || record?.state === 'rejected';
+            if (isRejected) {
+              setSnoozedInteractions(prev => ({ ...prev, [interactionId]: false }));
+              const reason = record?.ack?.reasonCode ?? record?.error ?? 'rejected';
+              setSnoozeWarnings(prev => ({
+                ...prev,
+                [interactionId]: `Warning: Auto-resolution snooze rejected (${reason})`,
+              }));
+            }
+          })
+          .catch(err => {
+            setSnoozedInteractions(prev => ({ ...prev, [interactionId]: false }));
+            setSnoozeWarnings(prev => ({
+              ...prev,
+              [interactionId]: `Warning: Auto-resolution snooze failed (${err.code ?? err.message ?? 'error'})`,
+            }));
+          });
+      }
+    } catch (err) {
+      setSnoozedInteractions(prev => ({ ...prev, [interactionId]: false }));
+      setSnoozeWarnings(prev => ({
+        ...prev,
+        [interactionId]: `Warning: Auto-resolution snooze failed (${err.code ?? err.message ?? 'error'})`,
+      }));
+    }
   };
 
   const handleHookTrust = async (interaction, reviewItemIds) => {
@@ -568,9 +596,21 @@ export function ZCodePendingInteractions({
         generation: interaction.payload.generation,
         interactionId: interaction.payload.interactionId,
       };
-      await onHookToggle?.(target, reviewItemId, enabled);
+      const record = await onHookToggle?.(target, reviewItemId, enabled);
+      const isRejected = record?.ack?.status === 'rejected' || record?.state === 'rejected';
+      if (isRejected) {
+        const reasonCode = record?.ack?.reasonCode ?? record?.error ?? record?.state;
+        const status = record?.ack?.status ?? record?.state ?? 'rejected';
+        setResults(prev => ({
+          ...prev,
+          [id]: { status, reasonCode: reasonCode || status },
+        }));
+      }
     } catch (err) {
-      console.warn('Failed to toggle hook item:', err);
+      setResults(prev => ({
+        ...prev,
+        [id]: { status: 'error', reasonCode: err.code ?? err.message ?? 'failed' },
+      }));
     } finally {
       setSubmitting(prev => ({ ...prev, [id]: false }));
     }
@@ -601,13 +641,13 @@ export function ZCodePendingInteractions({
   };
 
   const handleHookRequestReview = async () => {
-    if (!hookAdmission) return;
+    if (!hookAdmission || !hookAdmission.workspaceIdentity) return;
     const admissionKey = 'hook-admission';
     setSubmitting(prev => ({ ...prev, [admissionKey]: true }));
     try {
       const payload = {
-        sessionId: state?.snapshot?.sessionId ?? state?.address?.sessionId ?? '',
-        workspaceIdentity: hookAdmission.workspaceIdentity ?? state?.address?.workspace ?? '',
+        sessionId: state?.snapshot?.sessionId ?? '',
+        workspaceIdentity: hookAdmission.workspaceIdentity,
         bundleDigest: hookAdmission.bundleDigest,
       };
       const record = await onHookRequestReview?.(payload);
@@ -675,24 +715,35 @@ export function ZCodePendingInteractions({
               Workspace hooks require security review ({hookAdmission.pendingCount} pending)
             </span>
           </div>
-          <button
-            type="button"
-            data-testid="zcode-hook-request-review-btn"
-            disabled={submitting['hook-admission']}
-            onClick={handleHookRequestReview}
-            style={{
-              padding: '4px 10px',
-              borderRadius: '4px',
-              border: '1px solid #d97706',
-              background: '#ffffff',
-              color: '#b45309',
-              fontWeight: 600,
-              fontSize: '12px',
-              cursor: submitting['hook-admission'] ? 'default' : 'pointer',
-            }}
-          >
-            {submitting['hook-admission'] ? 'Requesting…' : 'Request Review'}
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button
+              type="button"
+              data-testid="zcode-hook-request-review-btn"
+              disabled={Boolean(submitting['hook-admission']) || !hookAdmission.workspaceIdentity}
+              onClick={handleHookRequestReview}
+              title={!hookAdmission.workspaceIdentity ? 'Workspace identity unavailable per R16 restricted mode' : undefined}
+              style={{
+                padding: '4px 10px',
+                borderRadius: '4px',
+                border: '1px solid #d97706',
+                background: !hookAdmission.workspaceIdentity ? '#f3f4f6' : '#ffffff',
+                color: !hookAdmission.workspaceIdentity ? '#9ca3af' : '#b45309',
+                fontWeight: 600,
+                fontSize: '12px',
+                cursor: (submitting['hook-admission'] || !hookAdmission.workspaceIdentity) ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {submitting['hook-admission'] ? 'Requesting…' : 'Request Review'}
+            </button>
+            {!hookAdmission.workspaceIdentity && (
+              <span
+                data-testid="zcode-hook-request-review-disabled-hint"
+                style={{ fontSize: '11px', color: '#6b7280' }}
+              >
+                (Workspace identity unavailable per R16)
+              </span>
+            )}
+          </div>
         </div>
       )}
 
@@ -721,7 +772,7 @@ export function ZCodePendingInteractions({
         const result = results[id];
         const isBusy = submitting[id];
         const autoRes = interaction.autoResolution;
-        const isSnoozed = snoozedInteractions[id] || autoRes?.state === 'snoozed';
+        const isSnoozed = snoozedInteractions[id] === true || (snoozedInteractions[id] === undefined && autoRes?.state === 'snoozed');
 
         // Detect Plan Review
         const isPlanReview =
@@ -785,6 +836,19 @@ export function ZCodePendingInteractions({
                   >
                     ⏳ Auto-resolving countdown active
                   </span>
+                )}
+                {snoozeWarnings[id] && (
+                  <div
+                    data-testid={`zcode-snooze-warning-${id}`}
+                    style={{
+                      marginTop: '4px',
+                      color: '#b45309',
+                      fontSize: '11px',
+                      fontWeight: 500,
+                    }}
+                  >
+                    ⚠️ {snoozeWarnings[id]}
+                  </div>
                 )}
               </div>
             )}
@@ -974,9 +1038,15 @@ export function ZCodePendingInteractions({
                       triggerSnooze(id);
                       const promptText = payload.prompt ?? 'Review this implementation plan.';
                       const fb = (planFeedback[id] ?? '').trim();
-                      void handleResolve(id, {
+                      void handleResolve(id, fb ? {
+                        action: 'accept',
+                        content: {
+                          answers: { [promptText]: fb },
+                          answer_0: fb,
+                          answer: fb,
+                        },
+                      } : {
                         action: 'decline',
-                        ...(fb ? { content: { feedback: fb, answers: { [promptText]: fb } } } : {}),
                       });
                     }}
                     style={{

@@ -325,8 +325,32 @@ describe('S05 User Interactions, Plan Review & Hook Trust', () => {
       const resolveReq = f.sent.find(s => s.params?.type === 'resolveInteraction');
       expect(resolveReq).toBeDefined();
       expect(resolveReq.params.payload.interactionId).toBe('plan-review-1');
+      // CA6-1: With feedback, sends accept + answer_0 per official broker normalizePlanApprovalAnswer
+      expect(resolveReq.params.payload.answer.action).toBe('accept');
+      expect(resolveReq.params.payload.answer.content.answer_0).toBe('Please add rollback steps before deploy.');
+      expect(resolveReq.params.payload.answer.content.answers[planReviewFixture.initial.frame.payload.snapshot.pendingInteractions[0].payload.prompt]).toBe('Please add rollback steps before deploy.');
+    } finally {
+      f.dispose();
+    }
+  });
+
+  it('rejects implementation plan without feedback sending decline action', async () => {
+    const f = createConversationFixture();
+    try {
+      await f.open(planReviewFixture.initial, planReviewFixture.ack);
+
+      render(React.createElement(ZCodeConversationView, { conversation: f.conversation }));
+
+      const rejectBtn = screen.getByTestId('zcode-plan-reject-btn');
+      await act(async () => {
+        fireEvent.click(rejectBtn);
+      });
+
+      const resolveReq = f.sent.find(s => s.params?.type === 'resolveInteraction');
+      expect(resolveReq).toBeDefined();
+      expect(resolveReq.params.payload.interactionId).toBe('plan-review-1');
       expect(resolveReq.params.payload.answer.action).toBe('decline');
-      expect(resolveReq.params.payload.answer.content.feedback).toBe('Please add rollback steps before deploy.');
+      expect(resolveReq.params.payload.answer.content).toBeUndefined();
     } finally {
       f.dispose();
     }
@@ -423,14 +447,14 @@ describe('S05 User Interactions, Plan Review & Hook Trust', () => {
     }
   });
 
-  it('faithfully renders official runtime result codes for expired, late, resolved by other, revoked, and unsupported host', async () => {
+  it('faithfully renders official runtime result codes for alreadyResolved, hookHostUnsupported, and hookMismatch', async () => {
     const f = createConversationFixture();
     try {
       await f.open(questionnaireFixture.initial, questionnaireFixture.ack);
 
       render(React.createElement(ZCodeConversationView, { conversation: f.conversation }));
 
-      // 1. Peer returns proto.alreadyResolved
+      // 1. Peer returns proto.alreadyResolved (late / answered elsewhere)
       const cancelBtn = screen.getByTestId('zcode-questionnaire-cancel');
       await act(async () => {
         fireEvent.click(cancelBtn);
@@ -448,6 +472,190 @@ describe('S05 User Interactions, Plan Review & Hook Trust', () => {
         const resultEl = screen.getByTestId('zcode-interaction-result-q-multi-1');
         expect(resultEl.textContent).toContain('Official result: proto.alreadyResolved (noop)');
       });
+    } finally {
+      f.dispose();
+      cleanup();
+    }
+
+    // 2. Peer returns hookHostUnsupported and hookMismatch on hook review actions
+    const fHook = createConversationFixture({
+      address: {
+        runtime: 'zcode' as const,
+        authority: 'test-authority',
+        workspace: '/workspace/project-root',
+        sessionId: hookReviewFixture.initial.frame.payload.snapshot.sessionId,
+      },
+    });
+    try {
+      await fHook.open(hookReviewFixture.initial, hookReviewFixture.ack);
+      render(React.createElement(ZCodeConversationView, { conversation: fHook.conversation }));
+
+      // 2a. Trust item -> rejected with workspace_hooks_require_trust_capable_host
+      const trustAllBtn = screen.getByTestId('zcode-hook-trust-all-btn');
+      await act(async () => {
+        fireEvent.click(trustAllBtn);
+      });
+      const trustCmd = fHook.sent.find(s => s.params?.type === 'respondWorkspaceHookReview');
+      expect(trustCmd).toBeDefined();
+
+      await act(async () => {
+        fHook.response(trustCmd, {
+          ...expiredLateFixture.responses.hookHostUnsupported,
+          commandId: trustCmd.params.commandId,
+        });
+      });
+
+      await waitFor(() => {
+        const resultEl = screen.getByTestId('zcode-interaction-result-hook-flow-1');
+        expect(resultEl.textContent).toContain('Official result: workspace_hooks_require_trust_capable_host (rejected)');
+      });
+    } finally {
+      fHook.dispose();
+      cleanup();
+    }
+
+    // 2b. Toggle item -> rejected with workspace_hooks_snapshot_mismatch in separate conversation
+    const fHookToggle = createConversationFixture({
+      address: {
+        runtime: 'zcode' as const,
+        authority: 'test-authority',
+        workspace: '/workspace/project-root',
+        sessionId: hookReviewFixture.initial.frame.payload.snapshot.sessionId,
+      },
+    });
+    try {
+      await fHookToggle.open(hookReviewFixture.initial, hookReviewFixture.ack);
+      render(React.createElement(ZCodeConversationView, { conversation: fHookToggle.conversation }));
+
+      const toggle1 = screen.getByTestId('zcode-hook-toggle-item-lint-hook') as HTMLInputElement;
+      await act(async () => {
+        fireEvent.click(toggle1);
+      });
+      const toggleCmd = fHookToggle.sent.find(s => s.params?.type === 'toggleWorkspaceHookReviewItem');
+      expect(toggleCmd).toBeDefined();
+
+      await act(async () => {
+        fHookToggle.response(toggleCmd, {
+          ...expiredLateFixture.responses.hookMismatch,
+          commandId: toggleCmd.params.commandId,
+        });
+      });
+
+      await waitFor(() => {
+        const resultEl = screen.getByTestId('zcode-interaction-result-hook-flow-1');
+        expect(resultEl.textContent).toContain('Official result: workspace_hooks_snapshot_mismatch (rejected)');
+      });
+    } finally {
+      fHookToggle.dispose();
+      cleanup();
+    }
+  });
+
+  it('models autoResolution countdown and unmounts cleanly when server timeout resolves interaction', async () => {
+    const f = createConversationFixture();
+    try {
+      await f.open(questionnaireFixture.initial, questionnaireFixture.ack);
+      render(React.createElement(ZCodeConversationView, { conversation: f.conversation }));
+
+      // Initial active countdown
+      expect(screen.getByTestId('zcode-auto-resolution-countdown')).toBeDefined();
+      expect(screen.getByTestId('zcode-questionnaire-card')).toBeDefined();
+
+      // Server frame arrives where auto-resolution deadline expired and interaction was removed by host
+      const expiredSnapshotFrame = structuredClone(questionnaireFixture.initial);
+      expiredSnapshotFrame.logicalFrameId = 'fixture-subscription-lf-expired';
+      expiredSnapshotFrame.logicalFrameOrdinal = 2;
+      expiredSnapshotFrame.frame.toSeq = 1;
+      expiredSnapshotFrame.frame.payload.snapshot.seq = 1;
+      expiredSnapshotFrame.frame.payload.snapshot.revision = 1;
+      expiredSnapshotFrame.frame.payload.snapshot.pendingInteractions = [];
+
+      await act(async () => {
+        f.wire(expiredSnapshotFrame);
+      });
+
+      await waitFor(() => {
+        expect(screen.queryByTestId('zcode-questionnaire-card')).toBeNull();
+        expect(screen.queryByTestId('zcode-auto-resolution-countdown')).toBeNull();
+      });
+    } finally {
+      f.dispose();
+    }
+  });
+
+  it('rolls back snoozed display and renders official warning when snooze command is rejected', async () => {
+    const f = createConversationFixture();
+    try {
+      await f.open(questionnaireFixture.initial, questionnaireFixture.ack);
+      render(React.createElement(ZCodeConversationView, { conversation: f.conversation }));
+
+      expect(screen.getByTestId('zcode-auto-resolution-countdown')).toBeDefined();
+
+      // User interacts to trigger snooze
+      const prodRadio = screen.getByTestId('zcode-option-production');
+      await act(async () => {
+        fireEvent.click(prodRadio);
+      });
+
+      // Optimistically snoozed
+      expect(screen.getByTestId('zcode-auto-resolution-snoozed')).toBeDefined();
+
+      const snoozeCmd = f.sent.find(s => s.params?.type === 'snoozeInteractionAutoResolution');
+      expect(snoozeCmd).toBeDefined();
+
+      // Peer rejects snooze
+      await act(async () => {
+        f.response(snoozeCmd, {
+          status: 'rejected',
+          reasonCode: 'proto.alreadyResolved',
+          commandId: snoozeCmd.params.commandId,
+          revisionAtDecision: 1,
+        });
+      });
+
+      // Assert rollback to countdown and warning rendered
+      await waitFor(() => {
+        expect(screen.getByTestId('zcode-auto-resolution-countdown')).toBeDefined();
+        expect(screen.queryByTestId('zcode-auto-resolution-snoozed')).toBeNull();
+        const warning = screen.getByTestId('zcode-snooze-warning-q-multi-1');
+        expect(warning.textContent).toContain('Warning: Auto-resolution snooze rejected (proto.alreadyResolved)');
+      });
+    } finally {
+      f.dispose();
+    }
+  });
+
+  it('disables request review button and renders R16 disabled hint when workspaceHookAdmission lacks workspaceIdentity', async () => {
+    const f = createConversationFixture({
+      address: {
+        runtime: 'zcode' as const,
+        authority: 'test-authority',
+        workspace: '/workspace/project-root',
+        sessionId: hookReviewFixture.initial.frame.payload.snapshot.sessionId,
+      },
+    });
+    try {
+      const initialWithoutIdentity = structuredClone(hookReviewFixture.initial);
+      delete initialWithoutIdentity.frame.payload.snapshot.workspaceHookAdmission.workspaceIdentity;
+
+      await f.open(initialWithoutIdentity, hookReviewFixture.ack);
+      render(React.createElement(ZCodeConversationView, { conversation: f.conversation }));
+
+      const banner = screen.getByTestId('zcode-hook-admission-banner');
+      expect(banner).toBeDefined();
+
+      const btn = screen.getByTestId('zcode-hook-request-review-btn') as HTMLButtonElement;
+      expect(btn.disabled).toBe(true);
+
+      const hint = screen.getByTestId('zcode-hook-request-review-disabled-hint');
+      expect(hint.textContent).toContain('Workspace identity unavailable per R16');
+
+      // Clicking disabled button sends no command
+      await act(async () => {
+        fireEvent.click(btn);
+      });
+      const reqCmd = f.sent.find(s => s.params?.type === 'requestWorkspaceHookReview');
+      expect(reqCmd).toBeUndefined();
     } finally {
       f.dispose();
     }

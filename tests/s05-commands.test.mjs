@@ -8,6 +8,7 @@ import { V4Conversation } from '../packages/host/conversation.mjs';
 
 const hookFixture = JSON.parse(readFileSync(resolve('tests/fixtures/s05/hook-review.json'), 'utf8'));
 const qFixture = JSON.parse(readFileSync(resolve('tests/fixtures/s05/questionnaire.json'), 'utf8'));
+const planFixture = JSON.parse(readFileSync(resolve('tests/fixtures/s05/plan-review.json'), 'utf8'));
 
 function createTestConversation({ runnable = true } = {}) {
   const input = new PassThrough();
@@ -232,6 +233,112 @@ describe('S05 V4Conversation Interaction Commands & Carrier Enforcement', () => 
       });
       const snoozeRecord = await snoozePromise;
       assert.equal(snoozeRecord.state, 'noop');
+      assert.equal(snoozeRecord.ack.reasonCode, 'proto.alreadyResolved');
+    } finally {
+      f.dispose();
+    }
+  });
+
+  it('submits plan approval resolve commands matching official broker normalization logic', async () => {
+    const f = createTestConversation();
+    try {
+      await f.open(planFixture.initial, planFixture.ack);
+
+      const planInteraction = planFixture.initial.frame.payload.snapshot.pendingInteractions[0];
+      const prompt = planInteraction.payload.prompt;
+
+      // 1. Rejection with feedback: wire sends accept + answer_0/answers
+      const rejectWithFeedbackPromise = f.conversation.submit({
+        type: 'resolveInteraction',
+        payload: {
+          interactionId: planInteraction.interactionId,
+          answer: {
+            action: 'accept',
+            content: {
+              answers: { [prompt]: 'Needs rollback steps' },
+              answer_0: 'Needs rollback steps',
+              answer: 'Needs rollback steps',
+            },
+          },
+        },
+      });
+
+      const reqWithFeedback = f.sent.find(
+        s => s.params?.type === 'resolveInteraction' && s.params?.payload?.answer?.action === 'accept'
+      );
+      assert.ok(reqWithFeedback, 'resolveInteraction for plan reject with feedback should be sent');
+      assert.equal(reqWithFeedback.params.payload.answer.action, 'accept');
+      assert.equal(reqWithFeedback.params.payload.answer.content.answer_0, 'Needs rollback steps');
+
+      // Verify alignment with official broker normalizePlanApprovalAnswer logic:
+      // answers[prompt] ?? answer_0 produces the feedback, which triggers deny with plan_approval_feedback
+      const extractedAnswer = reqWithFeedback.params.payload.answer.content.answers[prompt]
+        ?? reqWithFeedback.params.payload.answer.content.answer_0;
+      assert.equal(extractedAnswer, 'Needs rollback steps');
+      assert.notEqual(extractedAnswer, 'approve');
+
+      f.response(reqWithFeedback, {
+        status: 'accepted',
+        commandId: reqWithFeedback.params.commandId,
+        revisionAtDecision: 1,
+      });
+      const recordFeedback = await rejectWithFeedbackPromise;
+      assert.equal(recordFeedback.state, 'accepted-awaiting-terminal');
+
+      // 2. Rejection without feedback: wire sends decline without content
+      const rejectNoFeedbackPromise = f.conversation.submit({
+        type: 'resolveInteraction',
+        payload: {
+          interactionId: planInteraction.interactionId,
+          answer: {
+            action: 'decline',
+          },
+        },
+      });
+
+      const reqNoFeedback = f.sent.find(
+        s => s.params?.type === 'resolveInteraction' && s.params?.payload?.answer?.action === 'decline'
+      );
+      assert.ok(reqNoFeedback, 'resolveInteraction for plan reject without feedback should be sent');
+      assert.equal(reqNoFeedback.params.payload.answer.action, 'decline');
+      assert.equal(reqNoFeedback.params.payload.answer.content, undefined);
+
+      f.response(reqNoFeedback, {
+        status: 'accepted',
+        commandId: reqNoFeedback.params.commandId,
+        revisionAtDecision: 2,
+      });
+      const recordNoFeedback = await rejectNoFeedbackPromise;
+      assert.equal(recordNoFeedback.state, 'accepted-awaiting-terminal');
+    } finally {
+      f.dispose();
+    }
+  });
+
+  it('tracks snooze command rejection and transitions record state to rejected', async () => {
+    const f = createTestConversation();
+    try {
+      await f.open(qFixture.initial, qFixture.ack);
+
+      const qInteraction = qFixture.initial.frame.payload.snapshot.pendingInteractions[0];
+      const snoozePromise = f.conversation.submit({
+        type: 'snoozeInteractionAutoResolution',
+        payload: { interactionId: qInteraction.interactionId },
+      });
+
+      const snoozeReq = f.sent.find(s => s.params?.type === 'snoozeInteractionAutoResolution');
+      assert.ok(snoozeReq);
+
+      f.response(snoozeReq, {
+        status: 'rejected',
+        reasonCode: 'proto.alreadyResolved',
+        commandId: snoozeReq.params.commandId,
+        revisionAtDecision: 1,
+      });
+
+      const snoozeRecord = await snoozePromise;
+      assert.equal(snoozeRecord.state, 'rejected');
+      assert.equal(snoozeRecord.ack.status, 'rejected');
       assert.equal(snoozeRecord.ack.reasonCode, 'proto.alreadyResolved');
     } finally {
       f.dispose();

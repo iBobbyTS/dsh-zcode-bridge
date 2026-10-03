@@ -243,16 +243,6 @@ const responses = {
     reasonCode: 'proto.alreadyResolved',
     revisionAtDecision: 1,
   },
-  expired: {
-    status: 'noop',
-    reasonCode: 'proto.interactionExpired',
-    revisionAtDecision: 1,
-  },
-  revoked: {
-    status: 'rejected',
-    reasonCode: 'proto.revoked',
-    revisionAtDecision: 1,
-  },
   hookHostUnsupported: {
     status: 'rejected',
     reasonCode: 'workspace_hooks_require_trust_capable_host',
@@ -325,7 +315,7 @@ const s05Fixtures = {
     provenance: {
       ...prefix,
       kind: 'official-response-codes',
-      changes: ['Official reason codes for alreadyResolved, interactionExpired, revoked, and workspace_hooks_require_trust_capable_host'],
+      changes: ['Official reason codes for alreadyResolved, workspace_hooks_require_trust_capable_host, and workspace_hooks_snapshot_mismatch'],
     },
     responses,
   },
