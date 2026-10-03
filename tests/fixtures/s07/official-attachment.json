@@ -1,0 +1,419 @@
+{
+  "provenance": {
+    "kind": "official-runtime-capture",
+    "capturedAt": "2026-10-03T23:25:36.746Z",
+    "paidModelCalls": 0,
+    "sanitization": "dedicated workspace/session ids aliased; stderr counted only",
+    "version": "3.14.4",
+    "build": "3.14.4.7912",
+    "sha256": "fad4c35c4c36ec210d8a06d3fa0e77de23c8545e2eb6ff90aea1eb38d1e6275f",
+    "verified": true
+  },
+  "exchanges": [
+    {
+      "method": "runtime/capabilities",
+      "params": {},
+      "result": {
+        "independentPlanState": true
+      }
+    },
+    {
+      "method": "v4/command",
+      "type": "createSession",
+      "result": {
+        "commandId": "57477988-e9bf-45cb-96e7-ce19a4a22caf",
+        "status": "accepted",
+        "revisionAtDecision": 0,
+        "result": {
+          "type": "createSession",
+          "sessionId": "fixture-s07-draft"
+        },
+        "memoryEnabled": false
+      }
+    },
+    {
+      "method": "v4/attachment/begin",
+      "params": {
+        "connectionId": "s07-capture-connection",
+        "sessionId": "fixture-s07-draft",
+        "uploadId": "upload-06749d34-958e-42e0-be9f-fbad2105b356",
+        "fileName": "archive.bin",
+        "mime": "application/octet-stream",
+        "totalBytes": 716800,
+        "totalChunks": 2,
+        "checksum": "sha256:bcf1438e0e5e4148c609ba3a67adc12a633e741669ebd836bbec45eb44f0e1dd"
+      },
+      "result": {
+        "uploadId": "upload-06749d34-958e-42e0-be9f-fbad2105b356",
+        "state": "staging",
+        "nextChunkIndex": 0
+      }
+    },
+    {
+      "method": "v4/attachment/chunk",
+      "params": {
+        "connectionId": "s07-capture-connection",
+        "sessionId": "fixture-s07-draft",
+        "uploadId": "upload-06749d34-958e-42e0-be9f-fbad2105b356",
+        "chunkIndex": 0,
+        "dataBase64": "<base64:393216 bytes>"
+      },
+      "result": {
+        "uploadId": "upload-06749d34-958e-42e0-be9f-fbad2105b356",
+        "nextChunkIndex": 1
+      }
+    },
+    {
+      "method": "v4/attachment/chunk",
+      "params": {
+        "connectionId": "s07-capture-connection",
+        "sessionId": "fixture-s07-draft",
+        "uploadId": "upload-06749d34-958e-42e0-be9f-fbad2105b356",
+        "chunkIndex": 0,
+        "dataBase64": "<base64:393216 bytes>"
+      },
+      "result": {
+        "uploadId": "upload-06749d34-958e-42e0-be9f-fbad2105b356",
+        "nextChunkIndex": 1
+      }
+    },
+    {
+      "method": "v4/attachment/chunk",
+      "params": {
+        "connectionId": "s07-capture-connection",
+        "sessionId": "fixture-s07-draft",
+        "uploadId": "upload-06749d34-958e-42e0-be9f-fbad2105b356",
+        "chunkIndex": 1,
+        "dataBase64": "<base64:323584 bytes>"
+      },
+      "result": {
+        "uploadId": "upload-06749d34-958e-42e0-be9f-fbad2105b356",
+        "nextChunkIndex": 2
+      }
+    },
+    {
+      "method": "v4/attachment/commit",
+      "params": {
+        "connectionId": "s07-capture-connection",
+        "sessionId": "fixture-s07-draft",
+        "uploadId": "upload-06749d34-958e-42e0-be9f-fbad2105b356"
+      },
+      "result": {
+        "ref": "zcode-artifact://fixture-s07-draft/tool-result-26b3b34b-52ca-450e-89c2-ead7e6157d81"
+      }
+    },
+    {
+      "method": "v4/attachment/begin",
+      "params": {
+        "connectionId": "s07-capture-connection",
+        "sessionId": "fixture-s07-draft",
+        "uploadId": "upload-06749d34-958e-42e0-be9f-fbad2105b356",
+        "fileName": "archive.bin",
+        "mime": "application/octet-stream",
+        "totalBytes": 716800,
+        "totalChunks": 2,
+        "checksum": "sha256:bcf1438e0e5e4148c609ba3a67adc12a633e741669ebd836bbec45eb44f0e1dd"
+      },
+      "result": {
+        "uploadId": "upload-06749d34-958e-42e0-be9f-fbad2105b356",
+        "state": "committed",
+        "nextChunkIndex": 2,
+        "ref": "zcode-artifact://fixture-s07-draft/tool-result-26b3b34b-52ca-450e-89c2-ead7e6157d81"
+      }
+    },
+    {
+      "method": "v4/attachment/commit",
+      "params": {
+        "connectionId": "s07-capture-connection",
+        "sessionId": "fixture-s07-draft",
+        "uploadId": "upload-06749d34-958e-42e0-be9f-fbad2105b356"
+      },
+      "result": {
+        "ref": "zcode-artifact://fixture-s07-draft/tool-result-26b3b34b-52ca-450e-89c2-ead7e6157d81"
+      }
+    },
+    {
+      "method": "v4/attachment/begin",
+      "params": {
+        "connectionId": "s07-capture-connection",
+        "sessionId": "fixture-s07-draft",
+        "uploadId": "upload-a3bf0b2e-c22d-4d5a-a86d-1a34ff26415f",
+        "fileName": "abort.txt",
+        "mime": "text/plain",
+        "totalBytes": 393216,
+        "totalChunks": 2,
+        "checksum": "sha256:c403526fc3d40eeedcad1239be986bf6be65fb10413f08898bbebe5f1a45c8b3"
+      },
+      "result": {
+        "uploadId": "upload-a3bf0b2e-c22d-4d5a-a86d-1a34ff26415f",
+        "state": "staging",
+        "nextChunkIndex": 0
+      }
+    },
+    {
+      "method": "v4/attachment/chunk",
+      "params": {
+        "connectionId": "s07-capture-connection",
+        "sessionId": "fixture-s07-draft",
+        "uploadId": "upload-a3bf0b2e-c22d-4d5a-a86d-1a34ff26415f",
+        "chunkIndex": 0,
+        "dataBase64": "<base64:393216 bytes>"
+      },
+      "result": {
+        "uploadId": "upload-a3bf0b2e-c22d-4d5a-a86d-1a34ff26415f",
+        "nextChunkIndex": 1
+      }
+    },
+    {
+      "method": "v4/attachment/abort",
+      "params": {
+        "connectionId": "s07-capture-connection",
+        "sessionId": "fixture-s07-draft",
+        "uploadId": "upload-a3bf0b2e-c22d-4d5a-a86d-1a34ff26415f"
+      },
+      "result": {}
+    },
+    {
+      "method": "v4/attachment/commit",
+      "params": {
+        "connectionId": "s07-capture-connection",
+        "sessionId": "fixture-s07-draft",
+        "uploadId": "upload-a3bf0b2e-c22d-4d5a-a86d-1a34ff26415f"
+      },
+      "error": {
+        "code": "runtime-rejected",
+        "protocolCode": -32603
+      }
+    },
+    {
+      "method": "v4/attachment/begin",
+      "params": {
+        "connectionId": "s07-capture-connection",
+        "sessionId": "fixture-s07-draft",
+        "uploadId": "upload-303988ff-010c-4001-a052-dd19ea4f90f3",
+        "fileName": "z.txt",
+        "mime": "text/plain",
+        "totalBytes": 0,
+        "totalChunks": 1,
+        "checksum": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "error": {
+        "code": "runtime-rejected",
+        "protocolCode": -32603
+      }
+    },
+    {
+      "method": "v4/attachment/begin",
+      "params": {
+        "connectionId": "s07-capture-connection",
+        "sessionId": "fixture-s07-draft",
+        "uploadId": "upload-04c8c7a0-6c62-4c6d-abb1-47cdaa92030a",
+        "fileName": "big.bin",
+        "mime": "application/octet-stream",
+        "totalBytes": 2097152,
+        "totalChunks": 1,
+        "checksum": "sha256:5647f05ec18958947d32874eeb788fa396a05d0bab7c1b71f112ceb7e9b31eee"
+      },
+      "error": {
+        "code": "runtime-rejected",
+        "protocolCode": -32603
+      }
+    },
+    {
+      "method": "v4/attachment/begin",
+      "params": {
+        "connectionId": "s07-capture-connection",
+        "sessionId": "fixture-s07-draft",
+        "uploadId": "upload-a2701dc6-1cfa-40db-a7b9-673010a6bbf7",
+        "fileName": "many.bin",
+        "mime": "application/octet-stream",
+        "totalBytes": 1024,
+        "totalChunks": 65,
+        "checksum": "sha256:5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef"
+      },
+      "error": {
+        "code": "runtime-rejected",
+        "protocolCode": -32603
+      }
+    },
+    {
+      "method": "v4/attachment/read",
+      "params": {
+        "sessionId": "fixture-s07-draft",
+        "ref": "zcode-artifact://fixture-s07-draft/tool-result-26b3b34b-52ca-450e-89c2-ead7e6157d81",
+        "offset": 0,
+        "limit": 524288
+      },
+      "error": {
+        "code": "runtime-rejected",
+        "protocolCode": -32603
+      }
+    },
+    {
+      "method": "v4/attachment/read",
+      "params": {
+        "sessionId": "fixture-s07-draft",
+        "ref": "zcode-artifact://fixture-s07-draft/tool-result-26b3b34b-52ca-450e-89c2-ead7e6157d81",
+        "target": {
+          "rowId": 0,
+          "entityId": "capture-entity"
+        },
+        "attachmentIndex": 0,
+        "offset": 0,
+        "limit": 524288
+      },
+      "error": {
+        "code": "runtime-rejected",
+        "protocolCode": -32603
+      }
+    },
+    {
+      "method": "v4/conversation/attachmentStat",
+      "params": {
+        "sessionId": "fixture-s07-draft",
+        "ref": "zcode-artifact://fixture-s07-draft/tool-result-26b3b34b-52ca-450e-89c2-ead7e6157d81",
+        "target": {
+          "rowId": 0,
+          "entityId": "capture-entity"
+        },
+        "attachmentIndex": 0
+      },
+      "error": {
+        "code": "runtime-rejected",
+        "protocolCode": -32603
+      }
+    },
+    {
+      "method": "v4/conversation/attachmentRead",
+      "params": {
+        "sessionId": "fixture-s07-draft",
+        "ref": "zcode-artifact://fixture-s07-draft/tool-result-26b3b34b-52ca-450e-89c2-ead7e6157d81",
+        "target": {
+          "rowId": 0,
+          "entityId": "capture-entity"
+        },
+        "attachmentIndex": 0,
+        "offset": 0,
+        "limit": 524288
+      },
+      "error": {
+        "code": "runtime-rejected",
+        "protocolCode": -32603
+      }
+    },
+    {
+      "method": "v4/command",
+      "type": "discardSharedContext",
+      "result": {
+        "commandId": "55c48894-ac18-4d34-8253-083dae9dcb65",
+        "status": "failed",
+        "revisionAtDecision": 0,
+        "reasonCode": "fault.command.inputRejected",
+        "message": "shared context is not pending"
+      }
+    },
+    {
+      "method": "v4/command",
+      "type": "deleteSession",
+      "result": {
+        "commandId": "fb3351c7-37d8-4283-b6b6-b5a7e4dca019",
+        "status": "accepted",
+        "revisionAtDecision": 0
+      }
+    }
+  ],
+  "draftCreated": true,
+  "begin": {
+    "uploadId": "upload-06749d34-958e-42e0-be9f-fbad2105b356",
+    "state": "staging",
+    "nextChunkIndex": 0
+  },
+  "chunkA": {
+    "uploadId": "upload-06749d34-958e-42e0-be9f-fbad2105b356",
+    "nextChunkIndex": 1
+  },
+  "duplicateChunkA": {
+    "uploadId": "upload-06749d34-958e-42e0-be9f-fbad2105b356",
+    "nextChunkIndex": 1
+  },
+  "chunkB": {
+    "uploadId": "upload-06749d34-958e-42e0-be9f-fbad2105b356",
+    "nextChunkIndex": 2
+  },
+  "commit": {
+    "ref": "zcode-artifact://fixture-s07-draft/tool-result-26b3b34b-52ca-450e-89c2-ead7e6157d81"
+  },
+  "beginAgain": {
+    "uploadId": "upload-06749d34-958e-42e0-be9f-fbad2105b356",
+    "state": "committed",
+    "nextChunkIndex": 2,
+    "ref": "zcode-artifact://fixture-s07-draft/tool-result-26b3b34b-52ca-450e-89c2-ead7e6157d81"
+  },
+  "commitAgain": {
+    "ref": "zcode-artifact://fixture-s07-draft/tool-result-26b3b34b-52ca-450e-89c2-ead7e6157d81"
+  },
+  "abortBegin": {
+    "uploadId": "upload-a3bf0b2e-c22d-4d5a-a86d-1a34ff26415f",
+    "state": "staging",
+    "nextChunkIndex": 0
+  },
+  "abort": {},
+  "commitAfterAbort": null,
+  "zeroByteBadChunks": null,
+  "chunkCountInsufficient": null,
+  "tooManyChunks": null,
+  "attachmentRead": null,
+  "attachmentReadTarget": null,
+  "conversationAttachmentStat": null,
+  "conversationAttachmentRead": null,
+  "discardUnknownContext": {
+    "commandId": "55c48894-ac18-4d34-8253-083dae9dcb65",
+    "status": "failed",
+    "revisionAtDecision": 0,
+    "reasonCode": "fault.command.inputRejected",
+    "message": "shared context is not pending"
+  },
+  "rawErrors": [
+    {
+      "code": -32603,
+      "name": "Error",
+      "message": "Error: fault.attachment.uploadNotFound"
+    },
+    {
+      "code": -32603,
+      "name": "ZodError",
+      "message": "ZodError: ["
+    },
+    {
+      "code": -32603,
+      "name": "Error",
+      "message": "Error: fault.attachment.chunkCountInsufficient"
+    },
+    {
+      "code": -32603,
+      "name": "ZodError",
+      "message": "ZodError: ["
+    },
+    {
+      "code": -32603,
+      "name": "Error",
+      "message": "Error: fault.attachment.previewRefNotAuthorized"
+    },
+    {
+      "code": -32603,
+      "name": "Error",
+      "message": "Error: fault.attachment.previewRefNotAuthorized"
+    },
+    {
+      "code": -32603,
+      "name": "ZCodeAttachmentFaultError",
+      "message": "ZCodeAttachmentFaultError: fault.attachment.shareStatNotAuthorized"
+    },
+    {
+      "code": -32603,
+      "name": "ZCodeAttachmentFaultError",
+      "message": "ZCodeAttachmentFaultError: fault.attachment.shareReadNotAuthorized"
+    }
+  ],
+  "status": "PASS"
+}
