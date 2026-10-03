@@ -42,6 +42,37 @@ export function attachmentChunkCount(byteLength) {
   return Math.ceil(byteLength / ATTACHMENT_UPLOAD_CHUNK_BYTES);
 }
 
+/**
+ * Official media dispatch: `attachmentRead` (preview carrier) only serves image/video/PDF, while any
+ * other MIME must use `conversationAttachmentRead`. Both kinds are strings, so callers must compare
+ * the value instead of relying on truthiness (a `document` value is still truthy).
+ */
+export function attachmentMediaKind(mime) {
+  const value = String(mime ?? '').split(';', 1)[0].trim().toLowerCase();
+  if (value.startsWith('image/') || value.startsWith('video/') || value === 'application/pdf') return 'media';
+  return 'document';
+}
+
+/** How a successfully read payload should be presented, derived from the returned mediaType. */
+export function attachmentPreviewKind(mediaType) {
+  const value = String(mediaType ?? '').split(';', 1)[0].trim().toLowerCase();
+  if (value.startsWith('image/')) return 'image';
+  if (value.startsWith('video/')) return 'video';
+  if (value === 'application/pdf') return 'pdf';
+  if (value.startsWith('text/') || value === 'application/json' || value === 'application/xml' || value.endsWith('+json') || value.endsWith('+xml')) return 'text';
+  return 'binary';
+}
+
+/** Strict base64 -> bytes for official read payloads; null when the payload is not decodable. */
+export function decodeBase64Bytes(value) {
+  if (typeof value !== 'string') return null;
+  let binary;
+  try { binary = atob(value); } catch { return null; }
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return bytes;
+}
+
 function throwIfAborted(signal) {
   if (!signal?.aborted) return;
   const error = new Error('cancelled');

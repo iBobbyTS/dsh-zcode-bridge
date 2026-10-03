@@ -94,23 +94,41 @@ export function ZCodeInputControls({ state, controller }) {
     const files = [...(event.target.files ?? [])]; event.target.value = '';
     if (!files.length || flight.current) return;
     const token = { controller }; flight.current = token;
+    // Cancellation identity spans the whole local read + upload lifecycle: the controller exists
+    // before `arrayBuffer()` so Cancel is effective while bytes are still being read.
+    const cancellable = new AbortController();
+    abortUpload.current = cancellable;
+    const cancelled = () => cancellable.signal.aborted;
+    const reportCancelled = () => {
+      if (alive.current && owner.current === controller) {
+        setUpload(null);
+        setResult('Upload cancelled; no attachment was added and no runtime upload was shown.');
+      }
+    };
     setUpload({ name: files[0].name, phase: 'reading', uploadedBytes: 0, totalBytes: 0 }); setResult('');
     try {
       for (const file of files) {
+        if (cancelled()) { reportCancelled(); return; }
         const bytes = new Uint8Array(await file.arrayBuffer());
-        if (!alive.current || owner.current !== controller) return;
-        abortUpload.current = new AbortController();
+        if (cancelled()) { reportCancelled(); return; }
+        if (!alive.current || owner.current !== controller || flight.current !== token) return;
         const { ref } = await controller.uploadAttachment({ fileName: file.name, mime: file.type || 'application/octet-stream', bytes }, {
-          signal: abortUpload.current.signal,
-          onProgress: progress => { if (alive.current && owner.current === controller) setUpload({ name: file.name, ...progress }); },
+          signal: cancellable.signal,
+          onProgress: progress => { if (alive.current && owner.current === controller && !cancelled()) setUpload({ name: file.name, ...progress }); },
         });
+        if (cancelled()) { reportCancelled(); return; }
         if (!alive.current || owner.current !== controller) return;
         setAttachments(current => [...current, { ref, fileName: file.name, mime: file.type || 'application/octet-stream', bytes: bytes.byteLength }]);
       }
+      if (cancelled()) { reportCancelled(); return; }
       setUpload(null);
       setResult('Attachment upload committed through the official transaction. It is session-bound and stays local until sent with an input.');
     } catch (error) {
-      if (alive.current && owner.current === controller) { setUpload(null); setResult(`${error.code ?? error.message}. No attachment was added; the upload transaction was aborted and no runtime attachment is shown.`); }
+      if (cancelled() || error?.name === 'AbortError' || error?.code === 'cancelled') {
+        reportCancelled();
+      } else if (alive.current && owner.current === controller) {
+        setUpload(null); setResult(`${error.code ?? error.message}. No attachment was added; the upload transaction was aborted and no runtime attachment is shown.`);
+      }
     } finally {
       abortUpload.current = null;
       if (flight.current === token) { flight.current = null; if (alive.current) setUpload(null); }

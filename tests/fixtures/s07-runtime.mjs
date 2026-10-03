@@ -21,6 +21,12 @@ export function s07Runtime(name = 'success', { runnable = true, fixtureRoot = re
     clientId: 'fixture-s07', connectionId, runnable, managementAllowed: true,
   });
   let ordinal = 1;
+  const readCounts = { media: 0, document: 0 };
+  // A read override may be a single result or a sequence returned in call order (last one repeats).
+  function nextReadResult(source, count) {
+    if (Array.isArray(source)) return source[Math.min(count, source.length - 1)];
+    return source ?? null;
+  }
   function response(request, result) { input.write(JSON.stringify({ id: request.id, result }) + '\n'); }
   function failure(request, message) { input.write(JSON.stringify({ id: request.id, error: { code: -32603, message } }) + '\n'); }
   const keyOf = params => `${params.connectionId}\0${params.sessionId}\0${params.uploadId}`;
@@ -66,9 +72,21 @@ export function s07Runtime(name = 'success', { runnable = true, fixtureRoot = re
           continue;
         }
         if (method === 'v4/attachment/abort') { uploads.delete(keyOf(params)); response(request, {}); continue; }
-        if (method === 'v4/attachment/read') { if (behavior.readError || !fixture.readResult) { failure(request, behavior.readError ?? 'fault.attachment.previewRefNotAuthorized'); continue; } response(request, fixture.readResult); continue; }
+        if (method === 'v4/attachment/read') {
+          if (behavior.readError) { failure(request, behavior.readError); continue; }
+          const result = nextReadResult(behavior.readResults ?? behavior.readResult ?? fixture.readResult, readCounts.media);
+          readCounts.media += 1;
+          if (!result) { failure(request, 'fault.attachment.previewRefNotAuthorized'); continue; }
+          response(request, result); continue;
+        }
         if (method === 'v4/conversation/attachmentStat') { if (behavior.statError || !fixture.statResult) { failure(request, behavior.statError ?? 'fault.attachment.shareStatNotAuthorized'); continue; } response(request, fixture.statResult); continue; }
-        if (method === 'v4/conversation/attachmentRead') { if (behavior.readError || !fixture.readResult) { failure(request, behavior.readError ?? 'fault.attachment.shareReadNotAuthorized'); continue; } response(request, fixture.readResult); continue; }
+        if (method === 'v4/conversation/attachmentRead') {
+          if (behavior.readError) { failure(request, behavior.readError); continue; }
+          const result = nextReadResult(behavior.conversationReadResults ?? behavior.conversationReadResult ?? fixture.readResult, readCounts.document);
+          readCounts.document += 1;
+          if (!result) { failure(request, 'fault.attachment.shareReadNotAuthorized'); continue; }
+          response(request, result); continue;
+        }
         if (method === 'v4/conversation/subscribe' || method === 'v4/conversation/resync') continue;
         // v4/command and anything else: the test answers explicitly through ack().
       } catch (error) { failure(request, error.code ?? error.message); }

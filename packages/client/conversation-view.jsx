@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useSyncExternalStore } from 'react';
 import { ZCodeInputControls } from './input-controls.jsx';
+import { attachmentMediaKind, attachmentPreviewKind, decodeBase64Bytes, encodeBase64 } from './attachment.mjs';
 
 /**
  * Controller wrapping a V4Conversation instance for reactive React rendering and actions.
@@ -2177,33 +2178,72 @@ export function ZCodeCommandLedger({ state }) {
  * Message / turn rows rendering.
  * R08 invariant: Reasoning nodes are rendered in dedicated collapsible/styled nodes, never flattened into assistant text.
  */
-function attachmentMediaKind(mime) {
-  const value = String(mime ?? '').split(';', 1)[0].trim().toLowerCase();
-  if (value.startsWith('image/') || value.startsWith('video/') || value === 'application/pdf') return 'media';
-  return 'document';
+const ATTACHMENT_PREVIEW_READ_BYTES = 512 * 1024;
+const ATTACHMENT_PREVIEW_MAX_FRAGMENTS = 64;
+
+function decodePreviewText(bytes) {
+  try { return new TextDecoder('utf-8', { fatal: false }).decode(bytes); }
+  catch { return null; }
+}
+
+function hexPreview(bytes, max = 32) {
+  return [...bytes.subarray(0, max)].map(value => value.toString(16).padStart(2, '0')).join(' ');
+}
+
+/** Read every official chunk of a payload (image/video/PDF preview or share read) and aggregate it. */
+async function readAttachmentContent(controller, { isMedia, ref, target, attachmentIndex }) {
+  const chunks = [];
+  let aggregated = 0;
+  let meta = null;
+  let offset = 0;
+  for (let fragment = 0; fragment < ATTACHMENT_PREVIEW_MAX_FRAGMENTS; fragment += 1) {
+    const read = isMedia
+      ? await controller.attachmentRead({ ref, target, attachmentIndex, offset, limit: ATTACHMENT_PREVIEW_READ_BYTES })
+      : await controller.conversationAttachmentRead({ ref, target, attachmentIndex, offset, limit: ATTACHMENT_PREVIEW_READ_BYTES });
+    meta = read;
+    const bytes = decodeBase64Bytes(read.dataBase64);
+    if (!bytes) throw new Error('fault.attachment.invalidBase64');
+    chunks.push(bytes); aggregated += bytes.byteLength;
+    const next = read.nextOffset ?? null;
+    if (next === null || next <= offset || aggregated >= (read.totalBytes ?? aggregated)) break;
+    offset = next;
+  }
+  const combined = new Uint8Array(aggregated);
+  let cursor = 0;
+  for (const chunk of chunks) { combined.set(chunk, cursor); cursor += chunk.byteLength; }
+  return { meta, combined };
 }
 
 /** Sent-attachment preview/read/stat through the official session-scoped carriers; never a path read. */
 function ZCodeRowAttachment({ attachment, controller, target, index }) {
   const [result, setResult] = useState('');
+  const [preview, setPreview] = useState(null);
   const [busy, setBusy] = useState(false);
   if (!attachment || typeof attachment.ref !== 'string' || !attachment.ref) {
     return <div data-testid="zcode-attachment-unknown">Attachment reference unavailable in this projection.</div>;
   }
-  const media = attachmentMediaKind(attachment.mime);
+  const isMedia = attachmentMediaKind(attachment.mime) === 'media';
   async function run(action) {
     if (busy || !controller) return;
-    setBusy(true); setResult('');
+    setBusy(true); setResult(''); setPreview(null);
     try {
       if (action === 'stat') {
         const stat = await controller.conversationAttachmentStat({ ref: attachment.ref, target, attachmentIndex: index });
         setResult(`Official stat: ${stat.mediaType}, ${stat.totalBytes} bytes${stat.mtimeMs !== undefined ? `, mtime ${stat.mtimeMs}` : ''}.`);
-      } else if (media) {
-        const read = await controller.attachmentRead({ ref: attachment.ref, target, attachmentIndex: index, offset: 0, limit: 512 * 1024 });
-        setResult(`Official preview read: ${read.mediaType}, ${read.totalBytes} bytes; next offset ${read.nextOffset ?? 'end'}.`);
       } else {
-        const read = await controller.conversationAttachmentRead({ ref: attachment.ref, target, attachmentIndex: index, offset: 0, limit: 512 * 1024 });
-        setResult(`Official attachment read: ${read.mediaType}, ${read.totalBytes} bytes; next offset ${read.nextOffset ?? 'end'}.`);
+        const { meta, combined } = await readAttachmentContent(controller, { isMedia, ref: attachment.ref, target, attachmentIndex: index });
+        const kind = attachmentPreviewKind(meta.mediaType);
+        const nextOffset = meta.nextOffset === null || meta.nextOffset === undefined ? 'end' : meta.nextOffset;
+        setResult(isMedia
+          ? `Official preview read: ${meta.mediaType}, ${meta.totalBytes} bytes; next offset ${nextOffset}.`
+          : `Official attachment read: ${meta.mediaType}, ${meta.totalBytes} bytes; next offset ${nextOffset}.`);
+        if (kind === 'image' || kind === 'video' || kind === 'pdf') {
+          setPreview({ kind, mediaType: meta.mediaType, totalBytes: meta.totalBytes, url: `data:${meta.mediaType};base64,${encodeBase64(combined)}` });
+        } else if (kind === 'text') {
+          setPreview({ kind, mediaType: meta.mediaType, totalBytes: meta.totalBytes, text: decodePreviewText(combined) });
+        } else {
+          setPreview({ kind: 'binary', mediaType: meta.mediaType, totalBytes: meta.totalBytes, readBytes: combined.byteLength, hex: hexPreview(combined) });
+        }
       }
     } catch (error) {
       setResult(`${error.code ?? error.message}. The official session carrier decides authorization; no host path read was attempted.`);
@@ -2212,8 +2252,13 @@ function ZCodeRowAttachment({ attachment, controller, target, index }) {
   return <div data-testid={`zcode-attachment-ref-${attachment.ref}`} style={{ marginTop: 4, fontSize: 12 }}>
     <span>{attachment.fileName ?? 'attachment'} ({attachment.mime ?? 'unknown type'}, {attachment.bytes ?? 'unknown'} bytes)</span>
     <button disabled={busy || !controller} onClick={() => void run('stat')}>Stat</button>
-    <button disabled={busy || !controller} onClick={() => void run(media ? 'preview' : 'read')}>{media ? 'Preview' : 'Read'}</button>
+    <button disabled={busy || !controller} onClick={() => void run(isMedia ? 'preview' : 'read')}>{isMedia ? 'Preview' : 'Read'}</button>
     {result && <small data-testid="zcode-attachment-read-result">{result}</small>}
+    {preview?.kind === 'image' && <img data-testid="zcode-attachment-preview-image" alt={attachment.fileName ?? 'attachment preview'} src={preview.url} style={{ display: 'block', maxWidth: '100%', maxHeight: 240, marginTop: 4 }} />}
+    {preview?.kind === 'video' && <video data-testid="zcode-attachment-preview-video" controls src={preview.url} style={{ display: 'block', maxWidth: '100%', maxHeight: 240, marginTop: 4 }} />}
+    {preview?.kind === 'pdf' && <object data-testid="zcode-attachment-preview-pdf" data={preview.url} type="application/pdf" style={{ display: 'block', width: '100%', height: 240, marginTop: 4 }}>{attachment.fileName ?? 'attachment'} preview</object>}
+    {preview?.kind === 'text' && <pre data-testid="zcode-attachment-preview-text" style={{ whiteSpace: 'pre-wrap', marginTop: 4, maxHeight: 200, overflow: 'auto' }}>{preview.text}</pre>}
+    {preview?.kind === 'binary' && <small data-testid="zcode-attachment-preview-binary">Binary content {preview.mediaType}, {preview.totalBytes} bytes ({preview.readBytes} read). First bytes: {preview.hex || 'none'}</small>}
   </div>;
 }
 
