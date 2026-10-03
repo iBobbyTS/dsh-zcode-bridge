@@ -64,3 +64,16 @@ d7bf85f0e2 feat(session-controller): export runtime settings and address types
 ## 6. 自评
 
 **COMPLETE**（S02.B 范围内；worker 不做父级 admission）。
+
+---
+
+## S02.B CODE 评审修复记录（REPAIR，2026-10-02；由修复 worker agent_id 10000540 final_text 原文归档，主 agent 机械写入）
+
+前次交付的"真实 Producer 已覆盖"表述经独立评审核实为过度（实际用手写假件，即 CB-A2），特此纠正。修复提交（DSH 仓，基线 32ad52766a）：`07d087967b`（fix：runtimeSessions 反应式解析 + 契约去重，闭合 CB-A1/CB-A3）、`18a844f4d5`（feat：创建选择器 + 侧栏/Header logo 接线，闭合 CB-A4）、`19026fc161`（test：真实 Producer + 动态发现 + 持久化往返，闭合 CB-A2）。
+
+- **CB-A1**：`UiSession` 构造改惰性 getter `() => ctx.get('runtimeSessions')`，`apply(ctx)` 内 `ctx.inject(['runtimeSessions'])` 反应式观察；`SessionRuntimeController` 支持 resolver + `notifySourcesChanged()` 动态重绑；fallback native authority 对齐 Host origin（`location.origin`），不再恒报 `zcode-bridge-not-installed`。
+- **CB-A2**：测试直接只读 import bridge 真实 `RuntimeSessions`/`installRuntimeSessions`，演练真实晚装配时序（apply 先行→bridge 动态装载→目录扩展→卸载回退）；仅跨进程 RPC 调用点保留显式标注 boundary fixture（与 bridge 仓测试规范一致）；持久化往返 + 损坏拦截测试。
+- **CB-A3**：删除契约常量/parser 复制，统一从 `@deepseek-ai/dsh-api-session-controller/client` import；store 重载/写入以 `isSessionRuntime` 严格守卫，损坏/未知值显式抛错，不静默落 native。
+- **CB-A4**：`RuntimeCreationPicker`（D1/Z1 选择、默认徽标、受限禁用 + 三 key 原因映射）；`SessionRowRuntimeLogo`（`sidebar.session.row.leading`）与 `SessionHeaderRuntimeLogo`（`conversation.session.header.actions`）slot 接线；i18n 归属合规（verify-client-ui-i18n 1003 文件 PASS）。
+
+验证速查：S02.B spec 15/15、native 回归 949/949（934 基线+15）、bridge 集成 14/14、tsc（含全量聚合）、oxlint 5181 文件 0 警告、verify-client-ui-i18n、test:docs 21/21、git diff --check 全 PASS；主 agent 本地复跑 15/15 一致。packaged GUI 级仍 NOT_RUN（S01 auth 前提）。本记录不自行宣称评审闭合。
