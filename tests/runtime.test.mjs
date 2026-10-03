@@ -6,6 +6,7 @@ import {spawn} from 'node:child_process';
 import {mkdtemp, mkdir, writeFile, rm} from 'node:fs/promises';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
+import {batchFaultChild,batchFaultInstallation} from './fixtures/batch-fault.mjs';
 const installation={launcher:process.execPath,cjs:'fake',providerConfig:'fake',verified:true};
 test('install missing, helper missing and unsupported platform remain distinguishable',async()=>{
  await assert.rejects(inspectInstallation('/missing-zcode.app'),{code:'installation-missing'});
@@ -30,4 +31,27 @@ test('owned process EOF cleanup preserves an unrelated process',async()=>{
 test('metadata validates helper absence on a real filesystem fixture',async()=>{
  const root=await mkdtemp(join(tmpdir(),'s01-missing-helper-'));const app=join(root,'ZCode.app');
  try{await mkdir(join(app,'Contents'),{recursive:true});await writeFile(join(app,'Contents/Info.plist'),'<?xml version="1.0"?><plist version="1.0"><dict><key>CFBundleIdentifier</key><string>dev.zcode.app</string><key>CFBundleShortVersionString</key><string>3.14.4</string><key>CFBundleVersion</key><string>3.14.4.7912</string></dict></plist>');await assert.rejects(inspectInstallation(app),{code:'helper-missing'})}finally{await rm(root,{recursive:true,force:true})}
+});
+
+test('CB-1: same-batch valid response and bad frame preserve terminal state and await cleanup',async()=>{
+ for(const failOn of ['session/list','runtime/capabilities']){
+  const fixture=batchFaultChild(failOn),statuses=[];
+  const host=new BridgeHost({workspacePath:tmpdir(),inspect:async()=>batchFaultInstallation,spawnProcess:()=>fixture.child,onStatus:status=>statuses.push(status)});
+  let settled=false;
+  const connecting=host.connect();connecting.then(()=>{settled=true});
+  try{
+   await fixture.eof;
+   await new Promise(resolve=>setImmediate(resolve));
+   assert.equal(host.status.connected,false);
+   assert.equal(host.status.reason,'protocol-invalid');
+   assert.equal(settled,false,'connect must wait for the owned child cleanup barrier');
+   fixture.finishClose();
+   const result=await connecting;
+   assert.equal(result.connected,false);
+   assert.equal(result.state,'unavailable');
+   assert.equal(result.reason,'protocol-invalid');
+   assert.equal(statuses.some(status=>status.connected),false);
+   assert.equal(fixture.requests.some(request=>request.method==='session/close'),false);
+  }finally{fixture.finishClose();await connecting;await host.dispose()}
+ }
 });

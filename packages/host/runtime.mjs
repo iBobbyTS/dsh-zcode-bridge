@@ -16,6 +16,7 @@ export class BridgeHost {
     this.#operation=this.#connect().finally(()=>{this.#operation=undefined});return this.#operation;
   }
   async #connect(){
+    let peer,stop,terminalReason;
     this.#status=initialStatus();this.#publish({state:'restricted',reason:'connecting',connected:false,auth:'unconfirmed'});
     try{
       const installation=await this.inspect(this.appPath);
@@ -27,24 +28,28 @@ export class BridgeHost {
       const child=this.spawnProcess(installation.launcher,[installation.cjs,'app-server','--stdio'],{cwd:workspacePath,env:runtimeEnv(installation.providerConfig),stdio:['pipe','pipe','pipe']});
       this.#child=child;
       const exited=new Promise(resolve=>child.once('close',resolve));
-      let stopping;this.#stop=()=>stopping??=stopOwned(child,exited);
+      let stopping;stop=this.#stop=()=>stopping??=stopOwned(child,exited);
       let stderrBytes=0;child.stderr.on('data',b=>{stderrBytes+=b.length}); // never collect raw diagnostics/credentials
-      child.once('error',()=>{this.#peer?.close('launch-failed')});
-      this.#peer=new ProtocolPeer(child.stdout,child.stdin,{
+      child.once('error',()=>{peer?.close('launch-failed')});
+      peer=this.#peer=new ProtocolPeer(child.stdout,child.stdin,{
         onAuthUnavailable:()=>this.#publish({state:'restricted',reason:'official-auth-source-missing',auth:'unavailable'}),
-        onClose:reason=>{this.#publish({state:'unavailable',reason,connected:false});void this.#stop?.()},
+        onClose:reason=>{terminalReason=reason;this.#publish({state:'unavailable',reason,connected:false});void stop()},
       });
-      const capabilities=await this.#peer.request('runtime/capabilities',{});
+      const capabilities=await peer.request('runtime/capabilities',{});
       if(!capabilities||typeof capabilities.independentPlanState!=='boolean')throw new BridgeError('capabilities-invalid');
       const workspace={workspacePath,workspaceKey:workspacePath};
-      const list=await this.#peer.request('session/list',{workspace,limit:5});
+      const list=await peer.request('session/list',{workspace,limit:5});
       if(!list||!Array.isArray(list.sessions))throw new BridgeError('sessions-invalid');
       if(this.#disposed)throw new BridgeError('disposed');
+      // A later frame in the same stdout batch may have closed this peer
+      // after fulfilling the response but before this continuation resumed.
+      if(peer.closed){await stop();return this.status}
       this.#publish({state:'restricted',reason:installation.verified?'official-auth-source-missing':'runtime-unverified',connected:true,auth:'unavailable',authority:'official-cli-default-storage',sharedSessions:'unverified',pid:child.pid,capabilities,sessionCount:list.sessions.length,roundTrip:{method:'session/list',response:'validated',at:new Date().toISOString()},stderrBytes});
       return this.status;
     }catch(e){
-      this.#peer?.close(e instanceof BridgeError?e.code:'launch-failed');await this.#stop?.();
-      this.#publish({state:'unavailable',reason:this.#disposed?'disposed':e instanceof BridgeError?e.code:'launch-failed',connected:false});
+      const reason=terminalReason??(e instanceof BridgeError?e.code:'launch-failed');
+      peer?.close(reason);await stop?.();
+      this.#publish({state:'unavailable',reason:this.#disposed?'disposed':reason,connected:false});
       return this.status;
     }
   }

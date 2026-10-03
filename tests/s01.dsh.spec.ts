@@ -8,6 +8,8 @@ import { apply, inject, StatusCard } from '../packages/client/lib/client.js'
 import { apply as hostApply, inject as hostInject } from '../packages/host/index.mjs'
 import { BridgeHost } from '../packages/host/runtime.mjs'
 import { resolve } from 'node:path'
+import { tmpdir } from 'node:os'
+import { batchFaultChild, batchFaultInstallation } from './fixtures/batch-fault.mjs'
 
 describe('S01 DSH existing slots and lifecycle',()=>{
  it('registers the bundle page and removes it with the Cordis fiber',async()=>{
@@ -68,4 +70,18 @@ it('bundle and DSH config overlay compose via existing include machinery',()=>{
  expect(entries.map((x:any)=>x.id)).toEqual(['zcode-bridge-host','zcode-bridge-client']);
  const overlay=loadOverlayPatches('dsh',resolve('../dsh/apps/cli/config/examples/zcode-bridge/cordis.patch.yml'));
  expect(composeEntries([patches,overlay])[0].config.workspacePath).toContain('zcode-test-workspace');
+});
+
+it('CB-1: same-batch list response and bad frame leave the status card reconnect button enabled',async()=>{
+ const fixture=batchFaultChild();
+ const host=new BridgeHost({workspacePath:tmpdir(),inspect:async()=>batchFaultInstallation,spawnProcess:()=>fixture.child});
+ const connecting=host.connect();
+ try{
+  await fixture.eof;fixture.finishClose();
+  const result=await connecting;
+  expect(result.connected).toBe(false);expect(result.reason).toBe('protocol-invalid');
+  render(React.createElement(StatusCard,{view:'page',rpc:{call:async()=>({ok:true,value:host.status})}}));
+  await waitFor(()=>expect(screen.getByRole('status').textContent).toBe('Official protocol frame was invalid'));
+  expect((screen.getByRole('button',{name:'Connect official runtime'}) as HTMLButtonElement).disabled).toBe(false);
+ }finally{cleanup();fixture.finishClose();await connecting;await host.dispose()}
 });
