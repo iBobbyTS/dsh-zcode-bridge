@@ -209,3 +209,29 @@ test('CA3-1 subscribe ACK observer cannot arm an initial deadline after replacin
   t.mock.timers.tick(100);assert.equal(f.conversation.state.status,'live');assert.equal(f.sent.filter(x=>x.method==='v4/conversation/resync').length,1);
  }finally{f.dispose();t.mock.timers.reset()}
 });
+test('CB3-1 equal-watermark resume consumes its first online interval without an initial frame',async()=>{
+ for(const clientMode of ['desktop-continuous','web-remote-replayable']){
+  const f=fixture({clientMode});try{
+   await f.open(fixtures.gap.initial);const reconnect=f.conversation.connect(),request=f.sent.at(-1);
+   assert.deepEqual(request.params.base,{logEpoch:fixtures.gap.ack.ack.logEpoch,seq:10});
+   const ack=clone(fixtures.gap.ack);ack.ack.mode='resume';ack.ack.subscriptionId='resume-subscription';
+   const online=clone(fixtures.gap.advance);online.subscriptionId=online.frame.subscriptionId=ack.ack.subscriptionId;online.logicalFrameOrdinal=1;online.logicalFrameId='resume-online-1';
+   // Official equal-watermark subscribe emits only ACK; the next owned frame is online.
+   f.input.write(JSON.stringify({id:request.id,result:ack})+'\n'+JSON.stringify({method:'v4/conversation/frame',params:online})+'\n');await reconnect;
+   assert.equal(f.conversation.state.snapshot.seq,12);assert.equal(f.conversation.state.status,'live');assert.equal(f.sent.filter(x=>x.method==='v4/conversation/resync').length,0);
+  }finally{f.dispose()}
+ }
+});
+test('CB3-1 idle equal-watermark resume stays live beyond the initial frame deadline',async t=>{
+ t.mock.timers.enable({apis:['setTimeout']});
+ for(const clientMode of ['desktop-continuous','web-remote-replayable']){
+  const f=fixture({clientMode,frameTimeoutMs:20,peerTimeout:1000});try{
+   await f.open(fixtures.gap.initial);const reconnect=f.conversation.connect();
+   const ack=clone(fixtures.gap.ack);ack.ack.mode='resume';ack.ack.subscriptionId='idle-resume-subscription';f.response(f.sent.at(-1),ack);await reconnect;
+   t.mock.timers.tick(100);
+   assert.equal(f.conversation.state.status,'live');assert.equal(f.conversation.state.snapshot.seq,10);assert.equal(f.conversation.state.snapshot.logEpoch,ack.ack.logEpoch);
+   assert.equal(f.sent.filter(x=>x.method==='v4/conversation/resync').length,0);assert.equal(f.peer.pendingCount,0);
+  }finally{f.dispose()}
+ }
+ t.mock.timers.reset();
+});

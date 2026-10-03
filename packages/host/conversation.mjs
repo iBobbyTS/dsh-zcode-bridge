@@ -68,8 +68,15 @@ export class V4Conversation {
       if(!nonempty(ack.subscriptionId)||!nonempty(ack.logEpoch))throw new BridgeError('subscription-ack-invalid');
       if(this.#closed||generation!==this.#generation){this.#orphans.push(this.#unsubscribe(ack.subscriptionId));return result}
       if(this.#state.status==='error'||this.#flight!==flight)return result;
-      if(ack.mode==='resume'&&(!base||base.logEpoch!==ack.logEpoch))throw new BridgeError('subscription-base-invalid');
-      this.#appliedBase=ack.mode==='resume';this.#publish({subscriptionId:ack.subscriptionId,logEpoch:ack.logEpoch});this.#deadline(flight);return result;
+      const held=this.#state.snapshot;
+      if(ack.mode==='resume'&&(!base||base.logEpoch!==ack.logEpoch||!this.#appliedBase||held?.logEpoch!==base.logEpoch||held?.seq!==base.seq))throw new BridgeError('subscription-base-invalid');
+      this.#appliedBase=ack.mode==='resume';
+      if(this.#appliedBase){
+        // Equal-watermark resume has no initial frame. Keep the held base and consume either replay or online deltas.
+        clearTimeout(this.#frameTimer);this.#flight=null;
+        this.#publish({subscriptionId:ack.subscriptionId,logEpoch:ack.logEpoch,status:'live'});
+      }else{this.#publish({subscriptionId:ack.subscriptionId,logEpoch:ack.logEpoch});this.#deadline(flight)}
+      return result;
     }}).catch(e=>{if(!this.#closed&&generation===this.#generation)this.#fail(e.code??'subscription-invalid');throw e}).finally(()=>{this.#connect=null});
     request.then(operation.resolve,operation.reject);return operation.promise;
   }
