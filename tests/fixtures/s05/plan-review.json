@@ -1,0 +1,228 @@
+{
+  "provenance": {
+    "source": "tests/fixtures/s03a/official.json",
+    "runtimeSha256": "fad4c35c4c36ec210d8a06d3fa0e77de23c8545e2eb6ff90aea1eb38d1e6275f",
+    "paidModelCalls": 0,
+    "kind": "derived-plan-approval",
+    "changes": [
+      "Added ExitPlanMode plan_approval interaction with markdown plan text, snapshot plan items, and goal state"
+    ]
+  },
+  "ack": {
+    "ack": {
+      "subscriptionId": "fixture-subscription",
+      "mode": "snapshot",
+      "logEpoch": "musegv3e-mrqoweve",
+      "openTiming": {
+        "version": 1,
+        "initialFrameEncodeMs": 0,
+        "sessionRuntimeState": "warm",
+        "snapshotRowCount": 0
+      }
+    }
+  },
+  "initial": {
+    "wireVersion": 3,
+    "kind": "complete",
+    "deliveryKind": "initial",
+    "logicalFrameId": "fixture-subscription-lf-1",
+    "logicalFrameOrdinal": 1,
+    "topic": "conversation/fixture-session",
+    "subscriptionId": "fixture-subscription",
+    "frame": {
+      "topic": "conversation/fixture-session",
+      "subscriptionId": "fixture-subscription",
+      "sentAt": 1791032434539,
+      "fromSeq": 0,
+      "toSeq": 0,
+      "payload": {
+        "kind": "snapshot",
+        "snapshot": {
+          "protocolVersion": 1,
+          "sessionId": "fixture-session",
+          "logEpoch": "musegv3e-mrqoweve",
+          "seq": 0,
+          "revision": 0,
+          "control": {
+            "phase": "draft",
+            "sessionEnded": false,
+            "canStop": false,
+            "stopState": "idle",
+            "stopTargetKind": "unknown",
+            "activeWorks": [],
+            "lastError": null,
+            "apiRetry": null
+          },
+          "availability": {
+            "fork": {
+              "allowed": false,
+              "reasonCode": "forkTargetNotStable"
+            },
+            "compact": {
+              "allowed": false,
+              "reasonCode": "idleCannotCompact"
+            },
+            "switchModelConfig": {
+              "allowed": true
+            },
+            "setFollowupMode": {
+              "allowed": true
+            },
+            "queueEdit": {
+              "allowed": true
+            },
+            "sendQueuedNow": {
+              "allowed": false,
+              "reasonCode": "sendQueuedNowRequiresRunning"
+            },
+            "pauseGoal": {
+              "allowed": false,
+              "reasonCode": "noGoalToPause"
+            },
+            "resumeGoal": {
+              "allowed": false,
+              "reasonCode": "noGoalToResume"
+            }
+          },
+          "inputRouting": {
+            "mode": "startNow"
+          },
+          "meta": {
+            "title": "",
+            "titleSource": "default"
+          },
+          "config": {
+            "provider": "deepseek",
+            "model": "deepseek-flash",
+            "thought": "max",
+            "thoughtLevels": [
+              "disabled",
+              "low",
+              "high",
+              "max"
+            ],
+            "followupMode": "queue",
+            "mode": "build",
+            "modelSelection": {
+              "providerId": "deepseek",
+              "modelId": "deepseek-flash",
+              "options": {
+                "reasoningLevel": "max"
+              }
+            },
+            "planEnabled": false
+          },
+          "modelTransition": null,
+          "usage": {
+            "contextWindow": null,
+            "cumulative": {
+              "inputTokens": 0,
+              "outputTokens": 0,
+              "cacheReadTokens": 0,
+              "cacheWriteTokens": 0
+            }
+          },
+          "queue": {
+            "items": [],
+            "autoDrain": true
+          },
+          "pendingInteractions": [
+            {
+              "interactionId": "plan-review-1",
+              "kind": "userInput",
+              "anchorRowId": null,
+              "createdAt": 1700000010000,
+              "autoResolution": {
+                "state": "visibleCountdown",
+                "startedAt": 1700000010000,
+                "visibleAt": 1700000010000,
+                "deadlineAt": 1700000070000
+              },
+              "payload": {
+                "kind": "userInput",
+                "prompt": "Review and approve implementation plan for release pipeline execution.",
+                "freeText": true,
+                "toolName": "ExitPlanMode",
+                "schema": {
+                  "interaction": "plan_approval",
+                  "toolName": "ExitPlanMode",
+                  "plan": "# Implementation Plan: Release Pipeline\n\n1. Audit file permissions\n2. Compile bundles with esbuild\n3. Execute integration tests\n4. Publish artifacts"
+                }
+              }
+            }
+          ],
+          "pendingCommands": [],
+          "backgroundWorks": [],
+          "subagents": {
+            "revision": 0,
+            "childSessionIds": [],
+            "running": [],
+            "endedTotal": 0
+          },
+          "goal": {
+            "targetId": "goal-release-v1",
+            "objective": "Deliver verified production bridge build with zero model leakage",
+            "summaryTitle": "Bridge Release Pipeline",
+            "timeUsedSeconds": 145,
+            "activeRunStartedAtMs": 1700000000000,
+            "status": "active",
+            "iteration": 2,
+            "verifications": [
+              {
+                "iteration": 1,
+                "outcome": "pass",
+                "at": 1700000005000,
+                "anchorRowId": null,
+                "reason": "Schema compilation succeeded"
+              }
+            ],
+            "iterations": [
+              {
+                "iteration": 1,
+                "items": [
+                  {
+                    "id": "step-1",
+                    "content": "Audit workspace file permissions and dependencies",
+                    "status": "completed"
+                  }
+                ],
+                "updatedAt": 1700000005000
+              }
+            ]
+          },
+          "plan": {
+            "items": [
+              {
+                "id": "step-1",
+                "content": "Audit workspace file permissions and dependencies",
+                "status": "completed"
+              },
+              {
+                "id": "step-2",
+                "content": "Compile production client bundles with esbuild",
+                "status": "inProgress"
+              },
+              {
+                "id": "step-3",
+                "content": "Execute end-to-end integration test matrix",
+                "status": "pending"
+              },
+              {
+                "id": "step-4",
+                "content": "Publish release artifacts to distribution repository",
+                "status": "pending"
+              }
+            ],
+            "updatedAt": 1700000010000
+          },
+          "workspaceHookAdmission": null,
+          "rows": {
+            "window": [],
+            "totalCount": 0,
+            "firstRowId": null
+          }
+        }
+      }
+    }
+  }
+}

