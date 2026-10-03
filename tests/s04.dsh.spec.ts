@@ -14,8 +14,8 @@ import {B02} from './fixtures/b02.mjs'
 const pages=JSON.parse(readFileSync('tests/fixtures/s04/pages.json','utf8'))
 const conflicts=JSON.parse(readFileSync('tests/fixtures/s04/conflict.json','utf8'))
 afterEach(cleanup)
-async function setup(options={}){
- const store=controlledStore(options),host=new BridgeHost({workspacePath:tmpdir(),inspect:async()=>({verified:true,launcher:'fixture',cjs:'fixture',providerConfig:'fixture'}),spawnProcess:()=>store.child()});await host.connect()
+async function setup(options:any={}){
+ const store=controlledStore(options),host=new BridgeHost({workspacePath:tmpdir(),catalogLimit:options.catalogLimit,inspect:async()=>({verified:true,launcher:'fixture',cjs:'fixture',providerConfig:'fixture'}),spawnProcess:()=>store.child()});await host.connect()
  const rpc={call:vi.fn(async(_channel:string,endpoint:string,payload:any)=>{try{return {ok:true,value:endpoint==='sessions'?await host.listSessions(payload):payload.operation==='open'?await host.openConversation(payload.address):await host.conversationOperation(payload)}}catch(e:any){return {ok:false,error:{code:e.code??e.message}}}})}
  const native={list:createSnapshotStore({ids:['s0'],byId:{s0:{displayTitle:'native s0',running:false,cwd:'/native'}},phase:'ready'}),refresh:vi.fn(async()=>{}),create:vi.fn(),retain:vi.fn()}
  const make=()=>new RuntimeSessions({sessions:native as never,rpc:rpc as never,nativeAuthority:B02.D1.authority,settings:localStorage})
@@ -65,7 +65,7 @@ it('directory UI searches, pages, opens with fixed address and labels scope/trun
 })
 it('transient source failure preserves local groups and fixed identities until explicit same-store refresh',async()=>{
  localStorage.clear();const f=await setup()
- try{f.a.setGroup(f.address,'keep');await f.a.open(f.address);const original=f.rpc.call.getMockImplementation()!;f.rpc.call.mockResolvedValueOnce({ok:false,error:{code:'host-unreachable'}} as never);await f.a.refresh();expect(f.a.zcodeAvailability.getSnapshot().state).toBe('unavailable');expect(f.a.selection.getSnapshot()!.address).toEqual(f.address);f.rpc.call.mockImplementation(original);await f.a.refresh();expect(f.a.directory.getSnapshot().rows[0].group).toBe('keep');expect(f.store.requests.filter((r:any)=>r.method==='v4/command')).toHaveLength(0)
+ try{f.a.setGroup(f.address,'keep');await f.a.open(f.address);const original=f.rpc.call.getMockImplementation()!;f.rpc.call.mockResolvedValueOnce({ok:false,error:{code:'host-unreachable'}} as never);await f.a.refresh();expect(f.a.zcodeAvailability.getSnapshot().state).toBe('unavailable');expect(f.a.directory.getSnapshot().catalog.complete).toBe(false);expect(f.a.selection.getSnapshot()!.address).toEqual(f.address);f.rpc.call.mockImplementation(original);await f.a.refresh();expect(f.a.directory.getSnapshot().rows[0].group).toBe('keep');expect(f.store.requests.filter((r:any)=>r.method==='v4/command')).toHaveLength(0)
  }finally{await f.close()}
 })
 it('an open ACK arriving after view release cleans its handle and never deletes the official session',async()=>{
@@ -90,4 +90,9 @@ it('unknown command query uses the same client id and preserves unknown without 
  const remote=new RemoteConversation(rpc,B02.Z1)
  try{await remote.connect();const result=await remote.submit({type:'renameSession',payload:{title:'unknown'}});expect(result.state).toBe('outcome-unknown');await remote.queryCommand(result.commandId);expect(rpc.call.mock.calls.filter(c=>c[2].operation==='command')).toHaveLength(1);expect(rpc.call.mock.calls.find(c=>c[2].operation==='query')![2].commandId).toBe(result.commandId);expect(remote.state.commands[0].state).toBe('outcome-unknown')}
  finally{await remote.cancel()}
+})
+
+it('a targeted open/read cannot promote a truncated global catalog to complete',async()=>{
+ const f=await setup({count:65,catalogLimit:50})
+ try{expect(f.a.directory.getSnapshot().catalog.truncated).toBe(true);await f.a.refreshAddress(f.address);expect(f.a.directory.getSnapshot().catalog.complete).toBe(false);expect(f.a.directory.getSnapshot().catalog.truncated).toBe(true);expect(f.a.directory.getSnapshot().total).toBe(50)}finally{await f.close()}
 })

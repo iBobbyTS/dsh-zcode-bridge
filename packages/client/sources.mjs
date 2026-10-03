@@ -24,7 +24,7 @@ export class RuntimeSessions {
     this.#subscriptions.push(this.#native.list.subscribe(()=>this.#publish()));
     if(connectionGeneration)this.#subscriptions.push(connectionGeneration.subscribe(()=>{
       this.#generation++;this.#openVersion++;this.#refresh=undefined;for(const request of this.#requests)request.abort();
-      this.#scope=undefined;this.#zcodeRows=Object.freeze([]);this.#availability=unavailable('host-unreachable');this.#publish();
+      this.#scope=undefined;this.#catalog=Object.freeze({complete:false,truncated:false,sharedGui:'unverified'});this.#zcodeRows=Object.freeze([]);this.#availability=unavailable('host-unreachable');this.#publish();
     }));
     this.#publish();
   }
@@ -126,17 +126,18 @@ export class RuntimeSessions {
       });
       if(new Set(rows.map(row=>row.key)).size!==rows.length)throw sourceError('sessions-invalid');
       if(value.catalog&&(typeof value.catalog.complete!=='boolean'||typeof value.catalog.truncated!=='boolean'||value.catalog.complete===value.catalog.truncated||value.catalog.sharedGui!=='unverified'||!Array.isArray(value.catalog.deleted)||value.catalog.deleted.some(id=>typeof id!=='string'||!id)))throw sourceError('sessions-invalid');
-      this.#catalog=Object.freeze(value.catalog??{complete:false,truncated:true,sharedGui:'unverified'});
+      const sameScope=this.#scope?.authority===value.scope.authority&&this.#scope?.workspace===value.scope.workspace;
+      if(!address)this.#catalog=Object.freeze(value.catalog??{complete:false,truncated:true,sharedGui:'unverified'});
+      else if(!sameScope)this.#catalog=Object.freeze({complete:false,truncated:false,sharedGui:'unverified'});
       for(const sessionId of value.catalog?.deleted??[])this.#remove({runtime:'zcode',...value.scope,sessionId});
       const visible=rows.filter(row=>!this.#deleted.has(row.key));
-      const sameScope=this.#scope?.authority===value.scope.authority&&this.#scope?.workspace===value.scope.workspace;
       this.#scope=Object.freeze({...value.scope});
       this.#zcodeRows=Object.freeze(address&&sameScope?[...this.#zcodeRows.filter(row=>runtimeSessionKey(address)!==row.key),...visible]:visible);
       this.#availability=Object.freeze({state:value.availability.state,reason:value.availability.reason,capabilities:Object.freeze({create:false,open:false,nativeAgent:false})});
       this.#publish();
     }catch(error){
       if(!this.#closed&&generation===this.#generation&&version===this.#readVersion){
-        this.#zcodeRows=Object.freeze([]);this.#availability=unavailable(error.code??'host-unreachable');this.#publish();
+        this.#catalog=Object.freeze({complete:false,truncated:false,sharedGui:'unverified'});this.#zcodeRows=Object.freeze([]);this.#availability=unavailable(error.code??'host-unreachable');this.#publish();
         if(address)throw error;
       }
     }finally{this.#requests.delete(abort)}
