@@ -1024,4 +1024,154 @@ describe('S05 User Interactions, Plan Review & Hook Trust', () => {
       f.dispose();
     }
   });
+
+  it('FB6B-1: snooze timeout -> reconcile -> failed (fault.command.executionFailed) echoes official reasonCode, ends unconfirmed, and restores active retry', async () => {
+    const f = createConversationFixture();
+    try {
+      await f.open(questionnaireFixture.initial, questionnaireFixture.ack);
+      render(React.createElement(ZCodeConversationView, { conversation: f.conversation }));
+
+      // 1. Initial questionnaire card rendering
+      expect(screen.getByTestId('zcode-questionnaire-card')).toBeDefined();
+      expect(screen.getByTestId('zcode-auto-resolution-countdown').textContent).toContain('Auto-resolving countdown active');
+      expect(screen.queryByTestId('zcode-auto-resolution-snoozed')).toBeNull();
+
+      // 2. User selects production -> triggers snooze RPC to peer
+      const prodRadio = screen.getByTestId('zcode-option-production');
+      await act(async () => {
+        fireEvent.click(prodRadio);
+      });
+
+      let snoozeReq: any;
+      await waitFor(() => {
+        snoozeReq = f.sent.find(s => s.params?.type === 'snoozeInteractionAutoResolution');
+        expect(snoozeReq).toBeDefined();
+      });
+      const snoozeCmdId = snoozeReq.params.commandId;
+
+      // 3. Snooze RPC times out: wait past 100ms timeout
+      await new Promise(r => setTimeout(r, 150));
+
+      const cmdRecord = f.conversation.command(snoozeCmdId);
+      expect(cmdRecord?.state).toBe('outcome-unknown');
+
+      // UI displays unconfirmed status
+      await waitFor(() => {
+        expect(screen.queryByTestId('zcode-auto-resolution-snoozed')).toBeNull();
+        expect(screen.getByTestId('zcode-auto-resolution-countdown')).toBeDefined();
+        expect(screen.getByTestId('zcode-auto-resolution-unconfirmed')).toBeDefined();
+      });
+      const warningElem = screen.getByTestId(`zcode-snooze-warning-${snoozeReq.params.payload.interactionId}`);
+      expect(warningElem.textContent).toContain('结果未确认');
+      expect(warningElem.textContent).toContain(snoozeCmdId);
+
+      // 4. B04: typing / interacting more does NOT blind-resend snooze while unconfirmed
+      const countBefore = f.sent.filter(s => s.params?.type === 'snoozeInteractionAutoResolution').length;
+      const stagingRadio = screen.getByTestId('zcode-option-staging');
+      await act(async () => {
+        fireEvent.click(stagingRadio);
+      });
+      const countAfter = f.sent.filter(s => s.params?.type === 'snoozeInteractionAutoResolution').length;
+      expect(countAfter).toBe(countBefore);
+
+      // 5. Subsequent official visibleCountdown snapshot arrives: countdown is authoritative
+      const countdownFrame = structuredClone(questionnaireFixture.initial);
+      countdownFrame.logicalFrameId = 'countdown-lf-2';
+      countdownFrame.logicalFrameOrdinal = 2;
+      countdownFrame.frame.toSeq = 1;
+      countdownFrame.frame.payload.snapshot.seq = 1;
+      countdownFrame.frame.payload.snapshot.revision = 1;
+      countdownFrame.frame.payload.snapshot.pendingInteractions[0].autoResolution = {
+        state: 'visibleCountdown',
+        startedAt: Date.now() - 2000,
+        visibleAt: Date.now() - 1000,
+        deadlineAt: Date.now() + 50000,
+      };
+      await act(async () => {
+        f.wire(countdownFrame);
+      });
+      await waitFor(() => {
+        expect(screen.queryByTestId('zcode-auto-resolution-snoozed')).toBeNull();
+        expect(screen.getByTestId('zcode-auto-resolution-countdown')).toBeDefined();
+      });
+
+      // 6. Click Reconcile button
+      const reconcileBtn = screen.getByTestId(`zcode-snooze-reconcile-btn-${snoozeReq.params.payload.interactionId}`);
+      expect(reconcileBtn).toBeDefined();
+
+      let queryPromise: Promise<void>;
+      await act(async () => {
+        queryPromise = (async () => {
+          fireEvent.click(reconcileBtn);
+        })();
+      });
+
+      let queryReq: any;
+      await waitFor(() => {
+        queryReq = f.sent.find(s => s.method === 'v4/commands/query');
+        expect(queryReq).toBeDefined();
+      });
+      expect(queryReq.params.commands[0].commandId).toBe(snoozeCmdId);
+
+      // 7. Peer responds to query with failed + official reasonCode: fault.command.executionFailed
+      await act(async () => {
+        f.response(queryReq, {
+          results: [{
+            key: {
+              sessionId: queryReq.params.commands[0].sessionId,
+              commandId: queryReq.params.commands[0].commandId,
+            },
+            result: {
+              status: 'failed',
+              commandId: snoozeCmdId,
+              reasonCode: 'fault.command.executionFailed',
+              revisionAtDecision: 2,
+            },
+          }],
+        });
+      });
+      await queryPromise!;
+
+      // 8. Reconciled failed: ends unconfirmed state, echoes official failure with reasonCode, visible countdown continues
+      await waitFor(() => {
+        expect(screen.queryByTestId('zcode-auto-resolution-unconfirmed')).toBeNull();
+        expect(screen.queryByTestId(`zcode-snooze-reconcile-btn-${snoozeReq.params.payload.interactionId}`)).toBeNull();
+      });
+      const failedWarning = screen.getByTestId(`zcode-snooze-warning-${snoozeReq.params.payload.interactionId}`);
+      expect(failedWarning.textContent).toContain('Warning: Auto-resolution snooze failed');
+      expect(failedWarning.textContent).toContain('fault.command.executionFailed');
+      expect(screen.getByTestId('zcode-auto-resolution-countdown')).toBeDefined();
+      expect(screen.queryByTestId('zcode-auto-resolution-snoozed')).toBeNull();
+
+      // 9. Active retry restored: user selects an option -> triggers a brand new snooze RPC
+      const totalSnoozesBeforeRetry = f.sent.filter(s => s.params?.type === 'snoozeInteractionAutoResolution').length;
+      await act(async () => {
+        fireEvent.click(prodRadio);
+      });
+
+      let retrySnoozeReq: any;
+      await waitFor(() => {
+        const snoozes = f.sent.filter(s => s.params?.type === 'snoozeInteractionAutoResolution');
+        expect(snoozes.length).toBe(totalSnoozesBeforeRetry + 1);
+        retrySnoozeReq = snoozes[snoozes.length - 1];
+        expect(retrySnoozeReq.params.commandId).not.toBe(snoozeCmdId);
+      });
+
+      // 10. Peer accepts retry snooze
+      await act(async () => {
+        f.response(retrySnoozeReq, {
+          status: 'accepted',
+          commandId: retrySnoozeReq.params.commandId,
+          revisionAtDecision: 3,
+        });
+      });
+
+      // Warning cleared after retry succeeds
+      await waitFor(() => {
+        expect(screen.queryByTestId(`zcode-snooze-warning-${snoozeReq.params.payload.interactionId}`)).toBeNull();
+      });
+    } finally {
+      f.dispose();
+    }
+  });
 });

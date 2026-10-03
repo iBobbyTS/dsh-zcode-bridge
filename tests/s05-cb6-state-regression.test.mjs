@@ -338,3 +338,102 @@ test('FB6-1: snooze timeout yields outcome-unknown and unconfirmed UI; official 
     dom.window.close();
   }
 });
+
+test('FB6B-1: snooze timeout -> reconcile -> failed (fault.command.executionFailed) echoes official reasonCode, ends unconfirmed state, and restores active retry', async () => {
+  const dom = new JSDOM('<div id="root"></div>', { url: 'http://localhost' });
+  globalThis.window = dom.window;
+  globalThis.document = dom.window.document;
+  globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+  const React = require('react');
+  const { createRoot } = require('react-dom/client');
+  const { Simulate } = require('react-dom/test-utils');
+
+  const code = buildSync({
+    entryPoints: [resolve(repo, 'packages/client/conversation-view.jsx')],
+    bundle: true, write: false, platform: 'node', format: 'cjs', external: ['react'],
+  }).outputFiles[0].text;
+  const mod = { exports: {} };
+  vm.runInThisContext('(function(require,module,exports){' + code + '\n})')(require, mod, mod.exports);
+  const { ZCodePendingInteractions } = mod.exports;
+  const root = createRoot(document.getElementById('root'));
+  const qBase = JSON.parse(readFileSync(resolve(repo, 'tests/fixtures/s05/questionnaire.json'))).initial.frame.payload.snapshot.pendingInteractions[0];
+  const selector = id => document.querySelector(`[data-testid="${id}"]`);
+
+  const onResolve = async () => ({ state: 'accepted-awaiting-terminal', ack: { status: 'accepted' } });
+  let snoozeCalls = 0;
+  let nextSnoozeResult = { commandId: 'cmd-snooze-timeout-fb6b-1', state: 'outcome-unknown', error: 'request-timeout' };
+  const snooze = async () => {
+    snoozeCalls++;
+    return nextSnoozeResult;
+  };
+
+  async function render(key, interactions, commands = [], onSnooze = snooze) {
+    await React.act(async () => root.render(React.createElement(ZCodePendingInteractions, {
+      key, state: { snapshot: { pendingInteractions: interactions }, commands }, onResolve, onSnooze,
+    })));
+  }
+
+  try {
+    const item = structuredClone(qBase);
+    item.interactionId = 'test-countdown-fb6b-1';
+    item.autoResolution = {
+      state: 'visibleCountdown',
+      startedAt: 1000,
+      visibleAt: 2000,
+      deadlineAt: 60000,
+    };
+    item.payload.questions = [{ question: 'Environment?', header: 'Env', options: [], multiSelect: false }];
+    item.payload.answerDrafts = {};
+
+    // 1. Initial render shows countdown active
+    await render('session-fb6b-1', [item]);
+    assert.ok(selector('zcode-auto-resolution-countdown'), 'countdown must be active initially');
+    assert.equal(selector('zcode-auto-resolution-snoozed'), null, 'must not be snoozed initially');
+
+    // 2. User types in custom input -> triggers snooze
+    await React.act(async () => Simulate.change(selector('zcode-q-custom-input'), { target: { value: 'first input' } }));
+    assert.equal(snoozeCalls, 1, 'snooze is invoked on user input');
+
+    // 3. Snooze RPC yielded outcome-unknown: UI displays unconfirmed warning
+    assert.ok(selector('zcode-auto-resolution-unconfirmed'), 'unconfirmed badge must be displayed');
+    const warning = selector('zcode-snooze-warning-test-countdown-fb6b-1');
+    assert.ok(warning, 'snooze warning must be rendered');
+    assert.ok(warning.textContent.includes('结果未确认'), 'warning must indicate 结果未确认');
+    assert.ok(warning.textContent.includes('cmd-snooze-timeout-fb6b-1'), 'warning must include commandId');
+
+    // 4. Typing again does NOT resend while unconfirmed (B04)
+    await React.act(async () => Simulate.change(selector('zcode-q-custom-input'), { target: { value: 'second input' } }));
+    assert.equal(snoozeCalls, 1, 'typing again must not blind-resend snooze while unconfirmed');
+
+    // 5. Query reconcile returns failed with fault.command.executionFailed
+    const failedCommands = [{
+      commandId: 'cmd-snooze-timeout-fb6b-1',
+      type: 'snoozeInteractionAutoResolution',
+      state: 'failed',
+      ack: {
+        status: 'failed',
+        commandId: 'cmd-snooze-timeout-fb6b-1',
+        reasonCode: 'fault.command.executionFailed',
+        revisionAtDecision: 2,
+      },
+    }];
+    await render('session-fb6b-1', [item], failedCommands);
+
+    // 6. UI must echo official failure, end unconfirmed state, and countdown remains active
+    assert.equal(selector('zcode-auto-resolution-unconfirmed'), null, 'unconfirmed badge must be cleared');
+    const failedWarning = selector('zcode-snooze-warning-test-countdown-fb6b-1');
+    assert.ok(failedWarning, 'warning must remain rendered with failure details');
+    assert.ok(failedWarning.textContent.includes('fault.command.executionFailed'), 'failure must echo reasonCode');
+    assert.ok(failedWarning.textContent.includes('Auto-resolution snooze failed'), 'warning text must state failure');
+    assert.ok(selector('zcode-auto-resolution-countdown'), 'countdown remains active');
+    assert.equal(selector('zcode-auto-resolution-snoozed'), null, 'must not be marked snoozed');
+
+    // 7. Active retry eligibility restored: typing again triggers a new snooze
+    nextSnoozeResult = { commandId: 'cmd-snooze-retry-2', state: 'accepted-awaiting-terminal', ack: { status: 'accepted' } };
+    await React.act(async () => Simulate.change(selector('zcode-q-custom-input'), { target: { value: 'retry input' } }));
+    assert.equal(snoozeCalls, 2, 'user interaction triggers active retry snooze');
+  } finally {
+    await React.act(async () => root.unmount());
+    dom.window.close();
+  }
+});

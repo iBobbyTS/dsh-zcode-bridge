@@ -518,6 +518,12 @@ export function ZCodePendingInteractions({
     inFlightSnoozeRef.current.add(interactionId);
     sentSnoozeRef.current.add(interactionId);
     setSnoozedInteractions(prev => ({ ...prev, [interactionId]: true }));
+    setSnoozeWarnings(prev => {
+      if (!prev[interactionId]) return prev;
+      const next = { ...prev };
+      delete next[interactionId];
+      return next;
+    });
     const currentInteraction = interactions.find(item => item.interactionId === interactionId);
     snoozeBaseSeqRef.current.set(interactionId, state?.snapshot?.seq);
     snoozeBaseRevRef.current.set(interactionId, state?.snapshot?.revision);
@@ -556,9 +562,10 @@ export function ZCodePendingInteractions({
               sentSnoozeRef.current.delete(interactionId);
               snoozeIntentsRef.current.delete(interactionId);
               setSnoozedInteractions(prev => ({ ...prev, [interactionId]: false }));
+              const reason = record?.ack?.reasonCode ?? record?.error ?? record?.state ?? 'failed';
               setSnoozeWarnings(prev => ({
                 ...prev,
-                [interactionId]: `Warning: Auto-resolution snooze failed (${record?.error ?? record?.state})`,
+                [interactionId]: `Warning: Auto-resolution snooze failed (${reason})`,
               }));
             }
           })
@@ -688,13 +695,28 @@ export function ZCodePendingInteractions({
       if (cmdId && state?.commands) {
         const cmd = state.commands.find(c => c.commandId === cmdId);
         if (cmd && cmd.state !== 'outcome-unknown' && cmd.state !== 'sent-unconfirmed') {
-          if (cmd.ack?.status === 'rejected' || cmd.state === 'rejected') {
+          if (cmd.ack?.status === 'failed' || cmd.state === 'failed') {
+            sentSnoozeRef.current.delete(id);
+            snoozeIntentsRef.current.delete(id);
+            snoozeCommandsRef.current.delete(id);
+            setSnoozedInteractions(prev => ({ ...prev, [id]: false }));
+            const reason = cmd.ack?.reasonCode ?? cmd.error ?? cmd.state ?? 'failed';
+            setSnoozeWarnings(prev => ({
+              ...prev,
+              [id]: `Warning: Auto-resolution snooze failed (${reason})`,
+            }));
+          } else if (cmd.ack?.status === 'rejected' || cmd.state === 'rejected') {
+            sentSnoozeRef.current.delete(id);
+            snoozeIntentsRef.current.delete(id);
+            snoozeCommandsRef.current.delete(id);
+            setSnoozedInteractions(prev => ({ ...prev, [id]: false }));
             const reason = cmd.ack?.reasonCode ?? cmd.error ?? 'rejected';
             setSnoozeWarnings(prev => ({
               ...prev,
               [id]: `Warning: Auto-resolution snooze rejected (${reason})`,
             }));
           } else if (['accepted', 'accepted-awaiting-terminal', 'noop'].includes(cmd.ack?.status ?? cmd.state)) {
+            snoozeCommandsRef.current.delete(id);
             setSnoozeWarnings(prev => {
               if (!prev[id]) return prev;
               const next = { ...prev };
@@ -1081,7 +1103,7 @@ export function ZCodePendingInteractions({
                     {(snoozeWarnings[id].includes('unconfirmed') || snoozeWarnings[id].includes('未确认')) && (
                       <span data-testid="zcode-snooze-unconfirmed" style={{ display: 'none' }} />
                     )}
-                    {snoozeCommandsRef.current.get(id) && onQueryCommand && (
+                    {(snoozeWarnings[id].includes('unconfirmed') || snoozeWarnings[id].includes('未确认')) && snoozeCommandsRef.current.get(id) && onQueryCommand && (
                       <button
                         type="button"
                         data-testid={`zcode-snooze-reconcile-btn-${id}`}
