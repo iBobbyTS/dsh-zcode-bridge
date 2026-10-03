@@ -45,6 +45,7 @@ export class V4Conversation {
   get state(){return structuredClone({...this.#state,commands:[...this.#commands.values()],observerErrors:this.#observerErrors,profile:this.clientMode==='desktop-continuous'?'continuous':'replayable',admission:this.admission})}
   get admission(){return {allowed:!this.#closed&&this.runnable&&this.#state.status==='live'&&!!this.#state.snapshot,reason:this.#closed?'closed':!this.runnable?'runtime-restricted':this.#state.status!=='live'?'projection-unconfirmed':null}}
   get assemblyStats(){return this.#assembler.getStats()}
+  get listenerCount(){return this.#listeners.size}
   subscribe(listener){if(this.#closed)return ()=>{};this.#listeners.add(listener);return ()=>this.#listeners.delete(listener)}
   #publish(change={}){
     this.#state={...this.#state,...change};

@@ -605,4 +605,127 @@ describe('S03.B ZCode Conversation View & Controls', () => {
       await rm(workspacePath, { recursive: true, force: true });
     }
   });
+
+  it('CB4-1: switching session A -> B at the same render position displays B, routes stop/pending to B, and releases A observers', async () => {
+    // Regression test derived from reviewer reproduction script:
+    // /Users/ibobby/Projects/dsh-zcode-acp/.agent-work/reviews/CB4-S03B-session-switch-repro.mjs
+    const makeSession = async (label: string) => {
+      const f = createConversationFixture({
+        runnable: true,
+        address: { runtime: 'zcode', authority: 'fixture', workspace: '/fixture/workspace', sessionId: label },
+      });
+      const initial = structuredClone(successFixture.initial);
+      initial.topic = initial.frame.topic = 'conversation/' + label;
+      const snapshot = initial.frame.payload.snapshot;
+      snapshot.sessionId = label;
+      snapshot.rows = {
+        window: [{
+          rowId: 1, turnId: 'turn-' + label, entityId: 'ent-' + label,
+          kind: 'userInput', origin: 'realUser', text: 'Session ' + label, createdAt: 0, createdAtSeq: 0,
+        }],
+        totalCount: 1, firstRowId: 1,
+      };
+      snapshot.control.canStop = true;
+      snapshot.control.activeWorks = [{ kind: 'primaryTurn', foregroundExecutionId: 'exec-' + label, startedAt: 0 }];
+      snapshot.pendingInteractions = [{
+        interactionId: 'pending-' + label,
+        kind: 'permission',
+        anchorRowId: null,
+        createdAt: 0,
+        payload: {
+          kind: 'permission',
+          toolCallId: 'tool-call-' + label,
+          toolName: 'tool-' + label,
+          summary: 'Permission for ' + label,
+          detail: {},
+          options: [
+            { optionId: 'allowOnce', label: 'Allow Once', kind: 'allowOnce' },
+            { optionId: 'deny', label: 'Deny', kind: 'deny' },
+          ],
+        },
+      }];
+
+      await f.open(initial);
+      return f;
+    };
+
+    const fA = await makeSession('A');
+    const fB = await makeSession('B');
+    const sources = new RuntimeSessions({
+      sessions: { list: createSnapshotStore({ ids: [], byId: {} }), retain: vi.fn(), create: vi.fn(), refresh: vi.fn() } as any,
+      rpc: { call: vi.fn() } as any,
+      nativeAuthority: 'fixture',
+    });
+
+    try {
+      const aRef = sources.retain(fA.conversation.address, { source: 'mainView', conversation: fA.conversation } as any);
+      const bRef = sources.retain(fB.conversation.address, { source: 'mainView', conversation: fB.conversation } as any);
+      const binding = { key: undefined, props: {}, hooks: {}, keyedHooks: {} };
+      const area = (ref: any) => renderSessionArea(binding, { session: ref, children: null }) as React.ReactElement;
+
+      // 1. Render Session A via DSH seam
+      const { rerender } = render(area(aRef));
+      expect(screen.getByTestId('zcode-user-input-row').textContent).toBe('Session A');
+      expect(fA.conversation.listenerCount).toBe(1);
+      expect(fB.conversation.listenerCount).toBe(0);
+      expect(screen.getByTestId('zcode-interaction-pending-A')).not.toBeNull();
+
+      // 2. Switch same position to Session B via DSH seam
+      rerender(area(bRef));
+      expect(screen.getByTestId('zcode-user-input-row').textContent).toBe('Session B');
+
+      // 3. Assert A observers released, B subscribed
+      expect(fA.conversation.listenerCount).toBe(0);
+      expect(fB.conversation.listenerCount).toBe(1);
+
+      // 4. Assert pending interaction isolation
+      expect(screen.queryByTestId('zcode-interaction-pending-A')).toBeNull();
+      expect(screen.getByTestId('zcode-interaction-pending-B')).not.toBeNull();
+
+      // 5. Assert Stop action targets B, NOT A
+      const stopBtn = screen.getByTestId('zcode-stop-button') as HTMLButtonElement;
+      expect(stopBtn.disabled).toBe(false);
+      fireEvent.click(stopBtn);
+
+      const aStop = fA.sent.find(m => m.params?.type === 'stop');
+      const bStop = fB.sent.find(m => m.params?.type === 'stop');
+      expect(aStop).toBeUndefined();
+      expect(bStop).toBeDefined();
+      expect(bStop.params.sessionId).toBe('B');
+      expect(bStop.params.payload.expectedForegroundExecutionId).toBe('exec-B');
+
+      // 6. Assert pending interaction resolution targets B, NOT A
+      const allowBtn = screen.getByTestId('zcode-permission-btn-allowOnce');
+      fireEvent.click(allowBtn);
+      const aResolve = fA.sent.find(m => m.params?.type === 'resolveInteraction');
+      const bResolve = fB.sent.find(m => m.params?.type === 'resolveInteraction');
+      expect(aResolve).toBeUndefined();
+      expect(bResolve).toBeDefined();
+      expect(bResolve.params.sessionId).toBe('B');
+      expect(bResolve.params.payload.interactionId).toBe('pending-B');
+
+      cleanup();
+      expect(fA.conversation.listenerCount).toBe(0);
+      expect(fB.conversation.listenerCount).toBe(0);
+
+      // 7. Direct ZCodeConversationView prop switch without seam key
+      const direct = render(React.createElement(ZCodeConversationView, { conversation: fA.conversation }));
+      expect(screen.getByTestId('zcode-user-input-row').textContent).toBe('Session A');
+      expect(fA.conversation.listenerCount).toBe(1);
+      expect(fB.conversation.listenerCount).toBe(0);
+
+      direct.rerender(React.createElement(ZCodeConversationView, { conversation: fB.conversation }));
+      expect(screen.getByTestId('zcode-user-input-row').textContent).toBe('Session B');
+      expect(fA.conversation.listenerCount).toBe(0);
+      expect(fB.conversation.listenerCount).toBe(1);
+
+      cleanup();
+      expect(fA.conversation.listenerCount).toBe(0);
+      expect(fB.conversation.listenerCount).toBe(0);
+    } finally {
+      fA.dispose();
+      fB.dispose();
+      await sources.dispose();
+    }
+  });
 });

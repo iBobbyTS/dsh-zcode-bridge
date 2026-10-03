@@ -1,4 +1,4 @@
-import React, { useState, useSyncExternalStore } from 'react';
+import React, { useState, useEffect, useSyncExternalStore } from 'react';
 
 /**
  * Controller wrapping a V4Conversation instance for reactive React rendering and actions.
@@ -7,7 +7,8 @@ export class ConversationController {
   #conversation;
   #state;
   #listeners = new Set();
-  #unsub;
+  #unsub = null;
+  #disposed = false;
 
   constructor(conversation) {
     this.#conversation = conversation;
@@ -23,6 +24,7 @@ export class ConversationController {
     };
     if (conversation?.subscribe) {
       this.#unsub = conversation.subscribe(state => {
+        if (this.#disposed) return;
         this.#state = state;
         for (const listener of this.#listeners) {
           try { listener(); } catch {}
@@ -34,6 +36,7 @@ export class ConversationController {
   getSnapshot = () => this.#state;
 
   subscribe = (listener) => {
+    if (this.#disposed) return () => {};
     this.#listeners.add(listener);
     return () => this.#listeners.delete(listener);
   };
@@ -42,15 +45,22 @@ export class ConversationController {
     return this.#conversation;
   }
 
+  get disposed() {
+    return this.#disposed;
+  }
+
   async connect(options) {
+    if (this.#disposed) return;
     return this.#conversation?.connect?.(options);
   }
 
   async resync(options) {
+    if (this.#disposed) return;
     return this.#conversation?.resync?.(options);
   }
 
   async stop() {
+    if (this.#disposed) throw new Error('Controller is disposed');
     const activeWork = this.#state.snapshot?.control?.activeWorks?.[0];
     const foregroundExecutionId = activeWork?.foregroundExecutionId;
     if (!foregroundExecutionId) throw new Error('No active execution to stop');
@@ -61,6 +71,7 @@ export class ConversationController {
   }
 
   async resolveInteraction(interactionId, answer) {
+    if (this.#disposed) throw new Error('Controller is disposed');
     return this.#conversation?.submit?.({
       type: 'resolveInteraction',
       payload: { interactionId, answer },
@@ -68,7 +79,10 @@ export class ConversationController {
   }
 
   dispose() {
+    if (this.#disposed) return;
+    this.#disposed = true;
     this.#unsub?.();
+    this.#unsub = null;
     this.#listeners.clear();
   }
 }
@@ -945,14 +959,32 @@ export function ZCodeRowsList({ state }) {
  * Main ZCode Conversation view component.
  * Integrates status banner, alerts, stop bar, pending interactions, command ledger, and message rows.
  */
-export function ZCodeConversationView({ conversation, controller }) {
-  const [internalController] = useState(() => {
-    if (controller) return controller;
-    if (conversation) return new ConversationController(conversation);
-    return null;
+export function ZCodeConversationView({ conversation, controller, reference }) {
+  const [internal, setInternal] = useState(() => {
+    if (controller || !conversation) return { conversation: null, controller: null };
+    return { conversation, controller: new ConversationController(conversation) };
   });
 
-  const activeController = controller ?? internalController;
+  let activeInternalController = internal.controller;
+  if (!controller) {
+    if (internal.conversation !== conversation) {
+      internal.controller?.dispose();
+      activeInternalController = conversation ? new ConversationController(conversation) : null;
+      setInternal({ conversation, controller: activeInternalController });
+    }
+  } else if (internal.controller) {
+    internal.controller.dispose();
+    activeInternalController = null;
+    setInternal({ conversation: null, controller: null });
+  }
+
+  useEffect(() => {
+    return () => {
+      activeInternalController?.dispose();
+    };
+  }, [activeInternalController]);
+
+  const activeController = controller ?? activeInternalController;
 
   const state = activeController
     ? useSyncExternalStore(activeController.subscribe, activeController.getSnapshot, activeController.getSnapshot)
@@ -972,11 +1004,20 @@ export function ZCodeConversationView({ conversation, controller }) {
     return activeController?.resolveInteraction(interactionId, answer);
   };
 
+  const sessionIdentity = conversation?.address
+    ? `${conversation.address.runtime || 'zcode'}:${conversation.address.authority}:${conversation.address.workspace}:${conversation.address.sessionId}`
+    : reference?.address
+      ? `${reference.address.runtime || 'zcode'}:${reference.address.authority}:${reference.address.workspace}:${reference.address.sessionId}`
+      : (activeController?.conversation?.address
+        ? `${activeController.conversation.address.runtime || 'zcode'}:${activeController.conversation.address.authority}:${activeController.conversation.address.workspace}:${activeController.conversation.address.sessionId}`
+        : null);
+
   return (
     <div
       data-testid="zcode-conversation-view"
       data-status={state?.status ?? 'idle'}
       data-runtime="zcode"
+      data-session-id={activeController?.conversation?.address?.sessionId ?? conversation?.address?.sessionId ?? ''}
       style={{
         display: 'flex',
         flexDirection: 'column',
@@ -990,7 +1031,7 @@ export function ZCodeConversationView({ conversation, controller }) {
       <ZCodeStatusBanner state={state} onReconnect={handleReconnect} />
       <ZCodeAlerts state={state} onReconnect={handleReconnect} />
       <ZCodeControlBar state={state} onStop={handleStop} />
-      <ZCodePendingInteractions state={state} onResolve={handleResolve} />
+      <ZCodePendingInteractions key={sessionIdentity ?? 'default'} state={state} onResolve={handleResolve} />
       <ZCodeCommandLedger state={state} />
       <div style={{ flex: 1, overflowY: 'auto' }}>
         <ZCodeRowsList state={state} />
