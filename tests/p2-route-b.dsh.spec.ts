@@ -52,6 +52,45 @@ it('shared UI refreshes three decisions automatically while preserving the draft
  }finally{cleanup();vi.useRealTimers()}
 })
 
+it('unverifiable shared write gate asks once per session in the DSH view and never enables Send',async()=>{
+ vi.useFakeTimers()
+ const address={runtime:'zcode',authority:'official-host:1',workspace:'/project',sessionId:'unverifiable-one'}
+ const unverifiable={decision:'unverifiable',allowed:false,reason:'shared-terminal-task-liveness-unverifiable',requiresConfirmation:true,blindSpot:'cross-host-live-turn-undetectable'}
+ let decision:any={...unverifiable}
+ const sources={selection:createSnapshotStore({readOnly:true,address,row:{title:'Unverifiable'}}),rpc:{call:vi.fn(async()=>({ok:true,value:decision}))},disconnect:vi.fn()}
+ try{
+  render(React.createElement(ZCodeSessionPanel,{sources}))
+  await act(async()=>{await Promise.resolve()})
+  const draft=screen.getByLabelText('Shared session draft') as HTMLTextAreaElement
+  expect(draft.disabled).toBe(true)
+  const dialog=screen.getByRole('dialog',{name:'Confirm shared write'})
+  expect(dialog.textContent).toContain('长工具等待期检测盲区')
+  expect((screen.getByRole('button',{name:'Send'}) as HTMLButtonElement).disabled).toBe(true)
+  fireEvent.click(screen.getByRole('button',{name:'Confirm blind spot for this session'}))
+  expect(screen.queryByRole('dialog',{name:'Confirm shared write'})).toBeNull()
+  expect(draft.disabled).toBe(false)
+  expect((screen.getByRole('button',{name:'Send'}) as HTMLButtonElement).disabled).toBe(true)
+  decision={decision:'active',allowed:false,reason:'official-gui-active-turn'}
+  await act(async()=>{await vi.advanceTimersByTimeAsync(2000)})
+  expect(draft.disabled).toBe(true)
+  expect(screen.queryByRole('dialog',{name:'Confirm shared write'})).toBeNull()
+  decision={...unverifiable}
+  await act(async()=>{await vi.advanceTimersByTimeAsync(2000)})
+  expect(draft.disabled).toBe(false)
+  expect(screen.queryByRole('dialog',{name:'Confirm shared write'})).toBeNull()
+  cleanup();render(React.createElement(ZCodeSessionPanel,{sources}))
+  await act(async()=>{await Promise.resolve()})
+  expect(screen.queryByRole('dialog',{name:'Confirm shared write'})).toBeNull()
+  expect((screen.getByLabelText('Shared session draft') as HTMLTextAreaElement).disabled).toBe(false)
+  const other={...address,sessionId:'unverifiable-two'}
+  const otherSources={selection:createSnapshotStore({readOnly:true,address:other,row:{title:'Other'}}),rpc:{call:vi.fn(async()=>({ok:true,value:{...unverifiable}}))},disconnect:vi.fn()}
+  cleanup();render(React.createElement(ZCodeSessionPanel,{sources:otherSources}))
+  await act(async()=>{await Promise.resolve()})
+  expect(screen.getByRole('dialog',{name:'Confirm shared write'})).toBeTruthy()
+  expect((screen.getByLabelText('Shared session draft') as HTMLTextAreaElement).disabled).toBe(true)
+ }finally{cleanup();vi.useRealTimers()}
+})
+
 it('U1: 318 shared tasks paginate after sorting, partition workspace/pinned rows and keep display controls read-only',async()=>{
  const address={runtime:'zcode',authority:'official-host:1',workspace:'/one',sessionId:'0'}
  const rows=Array.from({length:318},(_,i)=>({address:{...address,workspace:i%2?'/one':'/two',sessionId:String(i)},title:'Task '+i,cwd:i%2?'/one':'/two',sharedTask:{lastActivityAt:i,pinned:i===1,titleSource:i===1?'custom':i===317?'generated':i===316?'default':'unknown'}}))
