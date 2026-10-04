@@ -147,13 +147,13 @@ app.whenReady().then(()=>{
       if(routeB){
         const auth=authProjection(cached,active,view);
         if(auth.auth!=='authenticated')throw fault('official-provider-not-executable');
-        publish({...auth,authVerified:true,execution:'read-only-s03',schedulerPolicy});
+        publish({...auth,authVerified:true,execution:'s04-minimal-dispatch',schedulerPolicy});
         const tasks=await readTasks();
         // Read-only CLI acquisition: no initializeWorkspace/resume/stream recovery/warmup.
         const sample=tasks.find(t=>!t.workspaceIdentity?.startsWith('ssh:')&&!t.workspaceIdentity?.startsWith('wsl:'));
         const sessions=await safeCall('zcode-agent','listSessions',[{workspacePath:config.paths.workspace,workspaceIdentity:sample?.workspaceIdentity??sample?.workspacePath??config.paths.workspace,sessionIds:sample?[sample.taskId]:[],limit:1,runtimePolicy:'start-if-needed'}]);
         const usage=usageProjection(await safeCall('zcode-agent','getAppUsageStats',[{range:'all',timeZone:'UTC'}]));
-        publish({phase:'ready',channelAvailable:true,...auth,login:'cached-official-account',services:['oauth','provider-settings','setting','zcode-task','zcode-agent'],execution:'read-only-s03',rpcCount:rpc.length,taskCount:tasks.length,sessionListCount:Array.isArray(sessions)?sessions.length:null,observationBaseline:{tasks,usage,rpc:[...rpc],at:Date.now()},schedulerPolicy});return;
+        publish({phase:'ready',channelAvailable:true,...auth,login:'cached-official-account',services:['oauth','provider-settings','setting','zcode-task','zcode-agent'],execution:'s04-minimal-dispatch',rpcCount:rpc.length,taskCount:tasks.length,sessionListCount:Array.isArray(sessions)?sessions.length:null,observationBaseline:{tasks,usage,rpc:[...rpc],at:Date.now()},schedulerPolicy});return;
       }
       publish({phase:'ready',channelAvailable:true,providers:authProjection(cached,active,view).providers,auth:cached?.status==='signed-out'?'signed-out':'unconfirmed',activeProviderPresent:active!==null,providerCount:Array.isArray(providers)?providers.length:null,executableProviders:(view?.providers??[]).filter(p=>p.executable).length,services:['oauth','provider-settings','setting'],topologyServices:['zcode-agent','zcode-session','zcode-task'],execution:'disabled-s03',rpcCount:5});
     }catch(e){publish({phase:'failed',failedRpc:lastRpc,reason:typeof e?.code==='string'?e.code:'status-query-failed',errorCategory:/disposed/i.test(e?.message??'')?'runtime-disposed':/no_active_workspace/.test(e?.message??'')?'usage-runtime-unavailable':'official-status-query-failed'});void stop(2)}

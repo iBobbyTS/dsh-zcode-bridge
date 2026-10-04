@@ -23,7 +23,7 @@ attempt 1/2 在 `zcode-task.createTask` 即失败、无任何会话行、无 pro
 - `runtime.mjs`：`runMinimalTurn()`（host-backed only，注入 bridge-owned address）与 `taskUsage(address)`（authority/workspace 校验）。
 - `index.mjs`：`/zcode-bridge` 端点 `ownTurn`（空 payload）与 `taskUsage`（仅 address）。
 - `directory-view.jsx`：侧栏 S04 控件（`Bridge-owned minimal turn (S04)`）经同一 `/zcode-bridge/ownTurn` 发起，展示新 task、写账本、归属闸门、会话 usage 回读。
-- **sandbox 修复（根因）**：`config.mjs` route-B Seatbelt 只读放行 `~/.zcode`、`~/.agents`、`~/.claude`（官方 runtime 启动会话时读取的 user-scope 数据根：subagent profiles/skills/commands/hooks）。写仍限于 runRoot+settings/DB 根；Keychain/securityd 拒绝不变。
+- **sandbox 修复（根因）**：`config.mjs` route-B Seatbelt 只读放行**初版**为 `~/.zcode`、`~/.agents`、`~/.claude` 三根 → `5ca3e4d` 复审**收窄为仅 `~/.zcode`**（`~/.agents`/`~/.claude` 无 EPERM 证据移除；未来逐根放行须带诊断证据）。`~/.zcode` 覆盖官方 runtime 启动会话时读取的 user-scope 数据（subagent profiles/skills/commands/hooks）与官方凭据/agents 文件。写仍限于 runRoot+settings/DB 根；Keychain/securityd 拒绝不变。收窄后 profile 未在 live 上实测 createTask（0 请求约束）；下次真实 createTask 兼作活体探针——若官方 runtime stat `~/.agents`/`~/.claude` 再报 EPERM，按证据逐根放行。
 
 ## 真实链与 usage 回读
 
