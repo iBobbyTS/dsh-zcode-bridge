@@ -3,11 +3,12 @@ import { randomUUID } from 'node:crypto';
 import { realpath } from 'node:fs/promises';
 import { inspectInstallation, runtimeEnv, BridgeError } from './installation.mjs';
 import { V4Conversation, INPUT_COMMANDS, MANAGEMENT_COMMANDS, HISTORY_COMMANDS } from './conversation.mjs';
+import { CatalogClient } from './catalog.mjs';
 import { ProtocolPeer } from './protocol.mjs';
 export const initialStatus=()=>({state:'unavailable',reason:'not-connected',auth:'unconfirmed',connected:false});
 /** Owns only children it launches; there is no attach or shared-process killer. */
 export class BridgeHost {
-  #conversations=new Set(); #handles=new Map(); #deleted=new Set(); #clientId='bridge-'+randomUUID(); #status=initialStatus(); #peer; #operation; #disposed=false; #stop; #disposePromise;
+  #conversations=new Set(); #handles=new Map(); #deleted=new Set(); #clientId='bridge-'+randomUUID(); #status=initialStatus(); #peer; #catalog; #operation; #disposed=false; #stop; #disposePromise;
   constructor({appPath,workspacePath,inspect=inspectInstallation,spawnProcess=spawn,catalogLimit=4096,onStatus=()=>{}}={}){if(!Number.isSafeInteger(catalogLimit)||catalogLimit<50||catalogLimit>65536)throw new BridgeError('catalog-limit-invalid');this.catalogLimit=catalogLimit;this.appPath=appPath;this.workspacePath=workspacePath;this.inspect=inspect;this.spawnProcess=spawnProcess;this.onStatus=onStatus}
   get status(){return structuredClone(this.#status)}
   /** Read official catalog facts only. An address query never activates a Session. */
@@ -82,6 +83,26 @@ export class BridgeHost {
     const result=await conversation.submit(command,{signal});
     await this.#acceptLifecycle(conversation,result);return result;
   }
+  /** Official MCP/plugin/skill directory read. Never a second catalog and never an MCP tool call. */
+  async catalogRead(kind,params={},{signal}={}){
+    return this.#catalogClient().read(kind,params,{signal});
+  }
+  /** Official management operation. Progress correlates by operationId; official result is authoritative. */
+  async catalogOperate(operation,params={},{signal,operationId}={}){
+    return this.#catalogClient().operate(operation,params,{signal,operationId});
+  }
+  /** Bounded view of admission and in-flight operations. No official catalog is cached here. */
+  catalogState(){
+    const catalog=this.#catalog;
+    const reason=this.#disposed?'disposed':!this.#status.connected?'not-connected':'catalog-unavailable';
+    return {admission:catalog?catalog.admission:{reads:{allowed:false,reason},writes:{allowed:false,reason}},operations:catalog?catalog.operations:[],workspace:this.#status.workspacePath??null,installationVerified:this.#status.installation?.verified===true,auth:this.#status.auth??'unconfirmed'};
+  }
+  #catalogClient(){
+    if(this.#disposed)throw new BridgeError('disposed');
+    const catalog=this.#catalog;
+    if(!catalog||!this.#status.connected||!this.#peer||this.#peer.closed)throw new BridgeError('catalog-unavailable');
+    return catalog;
+  }
   async #acceptLifecycle(conversation,result){
     // Accepted deletion is an official decision, including a later query of a
     // lost ACK. Fence all owners before cleanup; never resend the command.
@@ -99,6 +120,7 @@ export class BridgeHost {
   }
   async #connect(){
     let peer,stop,terminalReason;
+    this.#catalog?.dispose();this.#catalog=undefined;
     this.#deleted.clear();this.#handles.clear();this.#status=initialStatus();this.#publish({state:'restricted',reason:'connecting',connected:false,auth:'unconfirmed'});
     try{
       const installation=await this.inspect(this.appPath);
@@ -126,9 +148,11 @@ export class BridgeHost {
       // after fulfilling the response but before this continuation resumed.
       if(peer.closed){await stop();return this.status}
       this.#publish({state:'restricted',reason:installation.verified?'official-auth-source-missing':'runtime-unverified',connected:true,auth:'unavailable',authority:'official-cli-default-storage',sharedSessions:'unverified',pid:child.pid,capabilities,sessionCount:list.sessions.length,roundTrip:{method:'session/list',response:'validated',at:new Date().toISOString()},stderrBytes});
+      this.#catalog=new CatalogClient(peer,{workspace:{workspacePath,workspaceKey:workspacePath},managementAllowed:installation.verified===true});
       return this.status;
     }catch(e){
       const reason=terminalReason??(e instanceof BridgeError?e.code:'launch-failed');
+      this.#catalog?.dispose();this.#catalog=undefined;
       peer?.close(reason);await stop?.();
       this.#publish({state:'unavailable',reason:this.#disposed?'disposed':reason,connected:false});
       return this.status;
@@ -136,7 +160,7 @@ export class BridgeHost {
   }
   dispose(){
     if(this.#disposePromise)return this.#disposePromise;
-    this.#disposed=true;this.#peer?.close('disposed');
+    this.#disposed=true;this.#catalog?.dispose();this.#catalog=undefined;this.#peer?.close('disposed');
     this.#disposePromise=(async()=>{await this.#operation;await this.#stop?.();this.#publish({state:'unavailable',reason:'disposed',connected:false})})();return this.#disposePromise;
   }
 }

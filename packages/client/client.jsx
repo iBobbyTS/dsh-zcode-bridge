@@ -3,17 +3,26 @@ import { statusText } from './status.mjs';
 import { StatusController } from './controller.mjs';
 import {ZCodeDirectory,ZCodeSessionPanel,directoryLocales} from './directory-view.jsx';
 export {ZCodeDirectory,ZCodeSessionPanel} from './directory-view.jsx';
+import {ZCodeCatalogPanel,catalogLocales} from './catalog-view.jsx';
+import {CatalogStore} from './catalog.mjs';
+export {ZCodeCatalogPanel} from './catalog-view.jsx';
+export {CatalogStore} from './catalog.mjs';
 import { installRuntimeSessions } from './sources.mjs';
 export { ZCodeConversationView, ConversationController } from './conversation-view.jsx';
 export const inject=['slots','locale','connection'];
 const zh={title:'ZCode',description:'官方安装与连接状态'},en={title:'ZCode',description:'Official installation and connection status'};
 /** A bundle-owned configuration page in the existing Plugins slot. */
 export function apply(ctx){
+  const catalog=new CatalogStore(ctx.connection.rpc,{connectionGeneration:ctx.connection.generation});
+  ctx.effect(()=>()=>catalog.dispose(),'zcode-bridge: official catalog');
+  ctx.effect(()=>ctx.locale.register('zcodeCatalog',catalogLocales),'zcode-bridge: catalog locale');
   ctx.effect(()=>installRuntimeSessions(ctx),'zcode-bridge: native source injection');
   ctx.inject(['runtimeSessions','layout'],scope=>{
     scope.effect(()=>scope.locale.register('zcodeDirectory',directoryLocales),'zcode-bridge: directory locale');
-    scope.slots.inject('sidebar.workspaces.runtimeDirectory',()=>scope.slots.register({name:'sidebar.workspaces.runtimeDirectory',id:'zcode-directory',locale:'zcodeDirectory',inject:()=>({sources:scope.runtimeSessions,onOpen:()=>scope.layout.selectPanel('zcode-session')})},ZCodeDirectory));
+    scope.slots.inject('sidebar.workspaces.runtimeDirectory',()=>scope.slots.register({name:'sidebar.workspaces.runtimeDirectory',id:'zcode-directory',locale:'zcodeDirectory',inject:()=>({sources:scope.runtimeSessions,onOpen:()=>scope.layout.selectPanel('zcode-session'),onOpenCatalog:()=>scope.layout.selectPanel('zcode-catalog')})},ZCodeDirectory));
     scope.slots.inject('main',()=>scope.slots.register({name:'main',key:'zcode-session',id:'zcode-session',locale:'zcodeDirectory',inject:()=>({sources:scope.runtimeSessions})},ZCodeSessionPanel));
+    // The official catalog lives in its own main panel: no second catalog, no status-card duplication.
+    scope.slots.inject('main',()=>scope.slots.register({name:'main',key:'zcode-catalog',id:'zcode-catalog',locale:'zcodeCatalog',inject:()=>({sources:catalog,onBack:()=>scope.layout.selectPanel('zcode-session')})},ZCodeCatalogPanel));
     void scope.runtimeSessions.refresh();
   });
   ctx.effect(()=>ctx.locale.register('zcodeBridge',{zh,en}),'zcode-bridge: locale');

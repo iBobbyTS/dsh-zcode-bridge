@@ -1,6 +1,21 @@
 import { BridgeHost } from './runtime.mjs';
 export const inject=['connection'];
 export const CHANNEL='/zcode-bridge';
+const CATALOG_KEYS={read:['operation','kind','params'],operate:['operation','action','params','operationId'],state:['operation']};
+/** Bounded catalog endpoint. Caller payload cannot carry runtime, workspace, or secret material. */
+export async function handleCatalog(host,payload,signal){
+  if(!payload||typeof payload!=='object'||Array.isArray(payload))return {ok:false,error:{code:'invalid-payload',message:'Catalog payload must be an object',details:{}}};
+  const allowed=CATALOG_KEYS[payload.operation];
+  if(!allowed||Object.keys(payload).some(key=>!allowed.includes(key)))return {ok:false,error:{code:'invalid-payload',message:'Catalog operation is not allowed',details:{}}};
+  try{
+    if(signal?.aborted)throw Object.assign(new Error(),{code:'cancelled'});
+    if(payload.operation==='state')return {ok:true,value:host.catalogState()};
+    const params=payload.params??{};
+    if(!params||typeof params!=='object'||Array.isArray(params))throw Object.assign(new Error(),{code:'invalid-payload'});
+    if(payload.operation==='read')return {ok:true,value:await host.catalogRead(payload.kind,params,{signal})};
+    return {ok:true,value:await host.catalogOperate(payload.action,params,{signal,operationId:payload.operationId})};
+  }catch(error){return {ok:false,error:{code:error.code??'catalog-unavailable',message:'Official catalog operation rejected',details:error.protocolCode===undefined?{}:{protocolCode:error.protocolCode}}}}
+}
 const sourceEndpoint='sessions';
 /** Uses DSH's authenticated carrier and plugin lifecycle; no DSH loop is registered. */
 export function apply(ctx,config={}) {
@@ -36,6 +51,7 @@ export function apply(ctx,config={}) {
           return {ok:true,value:payload.operation==='open'?await host.openConversation(payload.address,{signal}):await host.conversationOperation(payload,signal)};
         }catch(error){return {ok:false,error:{code:error.code??'conversation-unavailable',message:'Official conversation operation rejected',details:error.protocolCode===undefined?{}:{protocolCode:error.protocolCode}}}}
       }
+      if(endpoint==='catalog')return handleCatalog(host,payload,signal);
       if(endpoint!=='status'&&endpoint!=='connect')return {ok:false,error:{code:'not-found',message:`Endpoint ${endpoint} not found`,details:{}}};
       if(payload!==null&&payload!==undefined&&!(typeof payload==='object'&&!Array.isArray(payload)&&Object.keys(payload).length===0))return {ok:false,error:{code:'invalid-payload',message:'This endpoint accepts no runtime commands',details:{}}};
       if(signal.aborted)return {ok:false,error:{code:'cancelled',message:'Cancelled',details:{}}};
