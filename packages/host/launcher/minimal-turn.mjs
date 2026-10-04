@@ -2,7 +2,9 @@
 // it creates exactly one new official session inside the bridge's own scratch workspace and sends
 // exactly one minimal prompt. It never targets a caller-supplied session, never resumes or closes a
 // session, and never retries. The claim is recorded before the first side effect so a crash or a
-// second call cannot produce a second turn.
+// second call within the same launcher run cannot produce a second turn. The marker is scoped to the
+// run root, so a launcher restarted with a fresh run root re-arms it; this is an observational
+// budget guard (per-attempt accounting plus the UI single-turn path), not a durable hard gate.
 export const MINIMAL_PROMPT='Reply with exactly: ok';
 // Mode yolo is the official non-interactive permission mode; the minimal prompt must not stall on a
 // permission interaction that no operator is watching.

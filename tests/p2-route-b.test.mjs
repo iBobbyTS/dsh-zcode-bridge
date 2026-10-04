@@ -29,9 +29,13 @@ test('authorized Route-B pins natural real HOME, DATA_BASE and default session D
  for(const key of ['HOME','ZCODE_DATA_BASE_DIR','ZCODE_SESSION_DB_PATH']){const bad=structuredClone(c);bad.env[key]='/elsewhere';assert.throws(()=>assertLandings(bad),/env-mismatch/);}
  const long=structuredClone(c);long.paths.temp=join(long.runRoot,'x'.repeat(100));assert.throws(()=>assertLandings(long),/temp-socket-path-too-long/);
  const sb=sandboxProfile(c,resolve('packages/host'),resolve('node_modules/zod'));assert.ok(!sb.includes('(deny network*)'));assert.ok(sb.includes('com.apple.securityd'));assert.ok(sb.includes('Library/Keychains'));assert.ok(!sb.includes('(subpath "'+homedir()+'") (require-not')||sb.includes('deny file-read*'));
- // S04: the official agent runtime needs read access to the user-scope official data roots; the
- // keychain and securityd denials above stay, and writes remain scoped (no wholesale ~/.zcode write).
- for(const root of ['.zcode','.agents','.claude'])assert.ok(sb.includes(JSON.stringify(join(homedir(),root))));
+ // S04: the official agent runtime needs read access to the whole user-scope ~/.zcode root (the
+ // Host's own credential/agents files plus subagent profiles/skills/commands/hooks). The keychain
+ // and securityd denials above stay, and writes remain scoped (no wholesale ~/.zcode write).
+ assert.ok(sb.includes(JSON.stringify(join(homedir(),'.zcode'))));
+ // ~/.agents and ~/.claude are deliberately denied: no EPERM evidence, and ~/.claude may hold
+ // plaintext credentials. Re-admit only per-root with a captured diagnostic.
+ for(const root of ['.agents','.claude'])assert.ok(!sb.includes(JSON.stringify(join(homedir(),root))));
  assert.ok(!sb.includes('(require-not (subpath '+JSON.stringify(join(homedir(),'.zcode'))+')'));
 });
 const now=1000000,task={taskId:'a',status:'running',updatedAt:now};

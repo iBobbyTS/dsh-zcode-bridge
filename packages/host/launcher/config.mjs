@@ -129,13 +129,17 @@ function assertRouteBLandings(config){
 function routeBSandbox(config,codeRoot,dependencyRoot,links){
   const q=p=>JSON.stringify(p);
   const officialRoots=[join(config.realHome,'.zcode/v2'),join(config.realHome,'.zcode/cli'),join(config.routeB.desktopHome??config.realHome,'.zcode/v2')];
-  // The official agent runtime reads user-scope data roots when it starts a session (subagent
-  // profiles under ~/.zcode/agents, skills, commands, hooks, and the legacy ~/.agents / ~/.claude
-  // sources). S04 found that denying them made session/create fail with
-  // "EPERM: operation not permitted, stat '~/.zcode/agents'" before any model request. These are
-  // read-only grants: writes stay scoped to the run root and the official settings/DB roots, and
-  // the Keychain and securityd denials are unchanged.
-  const officialDataRoots=[join(config.realHome,'.zcode'),join(config.realHome,'.agents'),join(config.realHome,'.claude')];
+  // The official agent runtime reads user-scope data roots when it starts a session. Evidence from
+  // route-B attempts 1/2 (pre-fix) showed createTask failing before any model request with
+  // "EPERM: operation not permitted, stat '~/.zcode/agents'"; the whole ~/.zcode root is therefore
+  // granted read-only, because the Host's own credential/agents files plus subagent profiles, skills,
+  // commands and hooks all live under it. ~/.agents and ~/.claude are deliberately NOT granted: there
+  // is no EPERM evidence for either, and ~/.claude can hold plaintext credentials on some machines.
+  // If a future official runtime reports EPERM for one of these roots, capture that diagnostic first
+  // and admit only that single root with the evidence. These are read-only grants: writes stay scoped
+  // to the run root and the official settings/DB roots, and the Keychain and securityd denials are
+  // unchanged.
+  const officialDataRoots=[join(config.realHome,'.zcode')];
   const readRoots=[config.runRoot,...officialRoots,...officialDataRoots,realpathSync(config.artifactRoot),dirname(dirname(dirname(config.electronPath))),realpathSync(codeRoot),realpathSync(dependencyRoot),...links];
   const publicEvidence=Object.values(config.routeBArtifacts).map(a=>a.path);
   const ancestors=new Set();for(const p of [...readRoots,...publicEvidence])for(let a=dirname(p);a!==dirname(a);a=dirname(a))ancestors.add(a);

@@ -64,7 +64,10 @@ control.on('line',line=>{
         minimalTurn??=createMinimalTurn({call:safeSend,usage:async()=>usageProjection(await safeCall('zcode-agent','getAppUsageStats',[{range:'all',timeZone:'UTC'}])),readTasks,workspacePath:config.paths.workspace,recordClaim:()=>{if(existsSync(minimalTurnMarker()))throw fault('minimal-turn-already-claimed');writeFileSync(minimalTurnMarker(),JSON.stringify({at:Date.now(),prompt:'Reply with exactly: ok'}),{mode:0o600})},hasClaimed:()=>existsSync(minimalTurnMarker())});
         const result=await minimalTurn.run();
         const value={...result,writeRpc:[...writeRpc]};
-        publish({minimalTurn:{taskId:value.taskId,workspacePath:value.workspacePath,claims:writeRpc.length}});
+        // Re-read the shared catalog after the turn so the published terminal state carries the
+        // post-turn taskCount and the write-ledger size under a non-misleading name. Read-only.
+        const tasksAfter=await readTasks();
+        publish({minimalTurn:{taskId:value.taskId,workspacePath:value.workspacePath,writeRpcCount:writeRpc.length},taskCount:tasksAfter.length});
         if(closing)return;
         process.stdout.write(JSON.stringify({type:'launcher-read',id:m.id,ok:true,value})+'\n');
         return;

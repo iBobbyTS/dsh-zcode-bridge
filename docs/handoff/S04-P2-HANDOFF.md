@@ -16,7 +16,7 @@ attempt 1/2 在 `zcode-task.createTask` 即失败、无任何会话行、无 pro
 
 ## 实现（发送路径解锁，有界）
 
-- `packages/host/launcher/minimal-turn.mjs`（新）：一次性 dispatch。claim 在任何副作用前落盘（`<runRoot>/s04-minimal-turn.json`），随后 `zcode-task.createTask`（新会话，workspace=launcher scratch cwd，mode `yolo`，`deferPersistenceUntilFirstPrompt`）+ `zcode-task.sendPrompt`（固定 prompt `Reply with exactly: ok`，`toolDenylist:[CronCreate,OffPeakCreate]`）。不接受任何 caller address/prompt/model/session id；无 resume/close/retry。
+- `packages/host/launcher/minimal-turn.mjs`（新）：一次性 dispatch（claim 标记按 runRoot，重启再武装）。claim 在任何副作用前落盘（`<runRoot>/s04-minimal-turn.json`），随后 `zcode-task.createTask`（新会话，workspace=launcher scratch cwd，mode `yolo`，`deferPersistenceUntilFirstPrompt`）+ `zcode-task.sendPrompt`（固定 prompt `Reply with exactly: ok`，`toolDenylist:[CronCreate,OffPeakCreate]`）。不接受任何 caller address/prompt/model/session id；无 resume/close/retry。
 - `observation.mjs`：新增 `ROUTE_B_SEND_CALLS`（`zcode-task.createTask/sendPrompt`）与 `ROUTE_B_ALLOWED_CALLS`；S03 只读白名单 `ROUTE_B_READ_CALLS` 不变。
 - `launcher/main.mjs`：新增 `sendMinimalTask` 操作（单发+写账本 `writeRpc` 与只读账本 `rpc` 分离）、`taskUsage` 只读操作（`zcode-agent.getTaskTokenUsage`）；`safeCall` 现在强制只读白名单，`safeSend` 强制写白名单；失败时把有界错误信息落 scratch `launcher-read-errors.jsonl`（不回传 DSH）。
 - `launcher/index.mjs`：放行 `sendMinimalTask`（carrier 超时 120s）与 `taskUsage`。
@@ -36,7 +36,7 @@ attempt 1/2 在 `zcode-task.createTask` 即失败、无任何会话行、无 pro
 
 - 目标新会话在 turn 运行期持有我方 lease（`authority.owns`），正常路径应为 `active/own-turn-busy/ours`。但最小 turn 在首次 4s 轮询前已终结、lease 随即释放，**运行期 own-turn-busy 未被采样**；turn 后取样为 `unverifiable/shared-terminal-task-liveness-unverifiable/none`（fail-closed，符合 P28 语义）。`preflight-final.json` 为准。
 - task 行 `running` 中间帧同样未被采样（turn <4s）；观测到终态 `completed`。任务行创建与终态转换成立，running→completed 的中间帧 **NOT_OBSERVED**。
-- 单发保护由判定级测试覆盖（第二次 `run` 在任何副作用前 `minimal-turn-already-claimed`）；未在 live 上二次触发（会停止 Main），未做第二条 prompt。
+- 单发保护由判定级测试覆盖（第二次 `run` 在任何副作用前 `minimal-turn-already-claimed`）；未在 live 上二次触发（会停止 Main），未做第二条 prompt。**如实说明：claim 标记按 `runRoot` 计（`<runRoot>/s04-minimal-turn.json`），launcher 换新 runRoot 重启即重新武装；预算守卫=观察式对账（`accounting.json` 逐次入账）与 UI 单发路径，非持久硬闸**。未实现跨 runRoot 持久化（会越出本 section 写边界）。
 
 ## 健康
 
