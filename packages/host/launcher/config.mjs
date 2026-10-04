@@ -129,7 +129,14 @@ function assertRouteBLandings(config){
 function routeBSandbox(config,codeRoot,dependencyRoot,links){
   const q=p=>JSON.stringify(p);
   const officialRoots=[join(config.realHome,'.zcode/v2'),join(config.realHome,'.zcode/cli'),join(config.routeB.desktopHome??config.realHome,'.zcode/v2')];
-  const readRoots=[config.runRoot,...officialRoots,realpathSync(config.artifactRoot),dirname(dirname(dirname(config.electronPath))),realpathSync(codeRoot),realpathSync(dependencyRoot),...links];
+  // The official agent runtime reads user-scope data roots when it starts a session (subagent
+  // profiles under ~/.zcode/agents, skills, commands, hooks, and the legacy ~/.agents / ~/.claude
+  // sources). S04 found that denying them made session/create fail with
+  // "EPERM: operation not permitted, stat '~/.zcode/agents'" before any model request. These are
+  // read-only grants: writes stay scoped to the run root and the official settings/DB roots, and
+  // the Keychain and securityd denials are unchanged.
+  const officialDataRoots=[join(config.realHome,'.zcode'),join(config.realHome,'.agents'),join(config.realHome,'.claude')];
+  const readRoots=[config.runRoot,...officialRoots,...officialDataRoots,realpathSync(config.artifactRoot),dirname(dirname(dirname(config.electronPath))),realpathSync(codeRoot),realpathSync(dependencyRoot),...links];
   const publicEvidence=Object.values(config.routeBArtifacts).map(a=>a.path);
   const ancestors=new Set();for(const p of [...readRoots,...publicEvidence])for(let a=dirname(p);a!==dirname(a);a=dirname(a))ancestors.add(a);
   return `(version 1)\n(allow default)\n(deny file-read* (require-all (subpath ${q(config.realHome)}) (require-not (subpath ${readRoots.map(q).join(' ')})) (require-not (literal ${[...ancestors,...publicEvidence].map(q).join(' ')}))))\n(deny file-write* (require-all (require-not (subpath ${[config.runRoot,...officialRoots].map(q).join(' ')})) (require-not (subpath "/dev"))))\n(deny file-read* file-write* (subpath ${q(join(config.realHome,'Library/Keychains'))} "/Library/Keychains"))\n(deny mach-lookup (global-name "com.apple.securityd" "com.apple.securityd.xpc"))\n`;
