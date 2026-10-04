@@ -1,5 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
+import { PassThrough } from 'node:stream';
 import { tmpdir } from 'node:os';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -266,6 +268,123 @@ test('CB17-1: a real malformed wire frame escalates the host fail-safe and block
     );
     assert.equal(store.rows.get(sessions[1].sessionId).title, 'Title 1', 'the blocked rename never rewrote the controlled store');
   } finally { await host.dispose(); await rm(workspacePath, { recursive: true, force: true }) }
+});
+
+/** Wrap a controlled-store child so the `v4/conversation/resync` ACK the host sees is rewritten.
+ *  Subscribe, frames, commands and every other response stay the real carrier; only the recovery
+ *  acknowledgment travels through `corruptAck`. */
+function storeWithCorruptResyncAck({ count = 2, corruptAck }) {
+  const store = controlledStore({ count });
+  const spawn = () => {
+    const inner = store.child();
+    const stdout = new PassThrough();
+    const child = new EventEmitter();
+    child.stdin = inner.stdin; child.stdout = stdout; child.stderr = inner.stderr; child.pid = inner.pid;
+    child.kill = (...args) => inner.kill(...args);
+    inner.stdout.on('data', chunk => {
+      for (const line of chunk.toString().split('\n')) {
+        if (!line) continue;
+        let message; try { message = JSON.parse(line) } catch { stdout.write(line + '\n'); continue }
+        if (message.id !== undefined && message.result) {
+          const request = store.requests.find(request => request.id === message.id);
+          if (request?.method === 'v4/conversation/resync') message.result = { ack: corruptAck(message.result.ack) };
+        }
+        stdout.write(JSON.stringify(message) + '\n');
+      }
+    });
+    inner.stdout.on('end', () => stdout.end());
+    inner.on('close', code => child.emit('close', code));
+    inner.on('error', error => child.emit('error', error));
+    return child;
+  };
+  return { store, spawn };
+}
+
+test('FB17-1: a mismatched recovery resync ACK is core and blocks another session write', async () => {
+  const workspacePath = await mkdtemp(join(tmpdir(), 's16-resync-identity-'));
+  const { store, spawn } = storeWithCorruptResyncAck({ count: 2, corruptAck: ack => ({ ...ack, subscriptionId: 'forged-subscription' }) });
+  const host = new BridgeHost({ workspacePath, inspect: async () => s16Installation, spawnProcess: spawn });
+  const until = async (predicate, timeoutMs = 2000) => {
+    const start = Date.now();
+    for (;;) {
+      if (predicate()) return;
+      if (Date.now() - start > timeoutMs) throw new Error('condition not reached');
+      await new Promise(resolve => setTimeout(resolve, 5));
+    }
+  };
+  try {
+    await host.connect();
+    const sessions = (await host.listSessions({})).sessions.map(session => session.address);
+    await host.openConversation(sessions[0]);
+    const second = await host.openConversation(sessions[1]);
+    assert.equal(host.status.failSafe.level, 'none');
+    const slotA = [...store.slots.values()].find(slot => slot.sessionId === sessions[0].sessionId);
+    assert.ok(slotA, 'the first conversation owns a live subscription slot');
+    // An undecodable frame requests a bounded recovery; the ACK names a different subscription id.
+    store.malformedFrame(slotA);
+    await until(() => host.status.failSafe.level === 'core');
+    assert.equal(host.status.failSafe.incompatible, true);
+    assert.equal(host.status.failSafe.stopsNewSideEffects, true);
+    assert.equal(host.status.failSafe.blocksNewSideEffects, true);
+    await assert.rejects(
+      host.conversationOperation({ handle: second.handle, operation: 'command', command: { type: 'renameSession', payload: { title: 'must-not-apply' } } }),
+      { code: 'runtime-incompatible' },
+    );
+    assert.equal(store.rows.get(sessions[1].sessionId).title, 'Title 1', 'the blocked rename never rewrote the controlled store');
+  } finally { await host.dispose(); await rm(workspacePath, { recursive: true, force: true }) }
+});
+
+test('FB17-1: a recovery resync ACK missing subscriptionId/logEpoch is core and blocks another session write', async () => {
+  for (const [label, corruptAck] of [
+    ['empty subscriptionId', ack => ({ ...ack, subscriptionId: '' })],
+    ['empty logEpoch', ack => ({ ...ack, logEpoch: '' })],
+  ]) {
+    const workspacePath = await mkdtemp(join(tmpdir(), 's16-resync-ack-'));
+    const { store, spawn } = storeWithCorruptResyncAck({ count: 2, corruptAck });
+    const host = new BridgeHost({ workspacePath, inspect: async () => s16Installation, spawnProcess: spawn });
+    const until = async (predicate, timeoutMs = 2000) => {
+      const start = Date.now();
+      for (;;) {
+        if (predicate()) return;
+        if (Date.now() - start > timeoutMs) throw new Error(`condition not reached (${label})`);
+        await new Promise(resolve => setTimeout(resolve, 5));
+      }
+    };
+    try {
+      await host.connect();
+      const sessions = (await host.listSessions({})).sessions.map(session => session.address);
+      await host.openConversation(sessions[0]);
+      const second = await host.openConversation(sessions[1]);
+      assert.equal(host.status.failSafe.level, 'none');
+      const slotA = [...store.slots.values()].find(slot => slot.sessionId === sessions[0].sessionId);
+      assert.ok(slotA, `the first conversation owns a live subscription slot (${label})`);
+      store.malformedFrame(slotA);
+      await until(() => host.status.failSafe.level === 'core');
+      assert.equal(host.status.failSafe.incompatible, true, `${label} asserts incompatibility`);
+      assert.equal(host.status.failSafe.blocksNewSideEffects, true, `${label} blocks new side effects`);
+      await assert.rejects(
+        host.conversationOperation({ handle: second.handle, operation: 'command', command: { type: 'renameSession', payload: { title: 'must-not-apply' } } }),
+        { code: 'runtime-incompatible' },
+        `${label} must refuse the rename`,
+      );
+      assert.equal(store.rows.get(sessions[1].sessionId).title, 'Title 1', `${label}: the blocked rename never rewrote the controlled store`);
+    } finally { await host.dispose(); await rm(workspacePath, { recursive: true, force: true }) }
+  }
+});
+
+test('FB17-1: unknown recovery fallbacks and local preconditions stay neutral (no over-escalation)', () => {
+  for (const code of ['resync-invalid', 'subscription-unconfirmed', 'conversation-closed']) {
+    const classified = classifyFailure(code);
+    assert.equal(classified.level, 'neutral', `${code} must stay neutral, not fabricate incompatibility`);
+    assert.equal(classified.incompatible, false, `${code} must not assert incompatibility`);
+    assert.equal(classified.stopsNewSideEffects, false, `${code} must not stop new side effects`);
+  }
+  const state = new FailSafeState();
+  state.observe('resync-invalid');
+  assert.equal(state.level, 'none', 'an unknown recovery fallback must not escalate');
+  assert.equal(state.blocksNewSideEffects, false);
+  state.observe('subscription-unconfirmed');
+  assert.equal(state.level, 'none', 'a local precondition must not escalate');
 });
 
 test('an unknown version is neutral: no compatibility claim and no new-side-effect stop', async () => {

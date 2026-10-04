@@ -46,6 +46,12 @@ const CORE_CODES = Object.freeze({
   'sessions-invalid': 'core session authority projection is incompatible',
   'conversation-result-invalid': 'core conversation envelope is incompatible',
   'conversation-handle-invalid': 'core conversation ownership was lost',
+  // V4Conversation recovery resync ACK faults (conversation.mjs#resync onResult): the acknowledgment
+  // identity is validated before the flight continues, so a corrupted ACK is terminal peer
+  // incompatibility and graded core. The `resync-invalid` fallback (unknown recovery failure) and the
+  // local preconditions (`subscription-unconfirmed`/`conversation-closed`) stay neutral on purpose.
+  'resync-identity-mismatch': 'core conversation recovery identity does not match the subscription',
+  'resync-ack-invalid': 'core conversation recovery acknowledgment is invalid',
   // V4 conversation wire/projection faults (terminal through the bounded recovery path).
   'proto.invalidWire': 'core V4 wire envelope could not be decoded',
   'proto.unroutableFrame': 'core V4 frame carried no routable conversation envelope',
