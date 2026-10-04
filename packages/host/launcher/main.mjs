@@ -1,9 +1,10 @@
 // Bridge-owned Electron Main; official Host/CLI and their account resolver remain unchanged.
 import { app, utilityProcess, MessageChannelMain, BrowserWindow, webContents } from 'electron';
-import { readFileSync, appendFileSync } from 'node:fs';
+import { readFileSync, appendFileSync, existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { ROUTE_B_READ_CALLS, authProjection, usageProjection } from './observation.mjs';
-import { SharedWriteGate } from './write-gate.mjs';
+import { ROUTE_B_READ_CALLS, ROUTE_B_SEND_CALLS, authProjection, usageProjection } from './observation.mjs';
+import { SharedWriteGate, usageActivity } from './write-gate.mjs';
+import { createMinimalTurn } from './minimal-turn.mjs';
 import { projectTask, projectTaskCatalog } from './task-catalog.mjs';
 import { createInterface } from 'node:readline';
 import { ELECTRON_VERSION, assertLandings, fault } from './config.mjs';
@@ -22,7 +23,14 @@ app.commandLine.appendSwitch('no-sandbox');app.commandLine.appendSwitch('disable
 let child,channel,closing=false,windowEvents=0,revision=0,disposeEvent;
 const routeB=config.mode==='route-b', rpc=[];
 let lastRpc=null;
-const safeCall=async(svc,method,args=[])=>{lastRpc=svc+'.'+method;rpc.push(lastRpc);return channel.call(svc,method,args)};
+const READ_CALLS=new Set(ROUTE_B_READ_CALLS);
+const safeCall=async(svc,method,args=[])=>{const name=svc+'.'+method;if(!READ_CALLS.has(name))throw fault('route-b-read-denied');lastRpc=name;rpc.push(name);return channel.call(svc,method,args)};
+// S04 write ledger. Separate from the read-only `rpc` observation so the S03 zero-request
+// whitelist evidence stays meaningful; every entry is checked against the fixed send allowlist.
+const SEND_CALLS=new Set(ROUTE_B_SEND_CALLS),writeRpc=[];
+const safeSend=async(svc,method,args=[])=>{const name=svc+'.'+method;if(!SEND_CALLS.has(name))throw fault('route-b-write-denied');writeRpc.push(name);return channel.call(svc,method,args,{timeoutMs:110000})};
+const minimalTurnMarker=()=>join(config.runRoot,'s04-minimal-turn.json');
+let minimalTurn;
 const schedulerPolicy={spawned:false,wakeCallback:false,settlementCallback:false,dispatchMessages:false};
 const authority=new HostAuthority(),gate=new ProviderRequestGate();
 const headless=()=>({windowEvents,windows:BrowserWindow.getAllWindows().length,webContents:webContents.getAllWebContents().length});
@@ -46,10 +54,21 @@ control.on('line',line=>{
   if(line==='stop'){void stop();return;}
   if(!routeB||closing)return;
   let m;try{m=JSON.parse(line)}catch{return;}
-  if(!Number.isSafeInteger(m.id)||!['catalog','preflight','observation'].includes(m.operation)||Object.keys(m).some(k=>!['id','operation','address'].includes(k)))return;
+  if(!Number.isSafeInteger(m.id)||!['catalog','preflight','observation','taskUsage','sendMinimalTask'].includes(m.operation)||Object.keys(m).some(k=>!['id','operation','address'].includes(k)))return;
   reading=reading.then(async()=>{
     if(closing)return;
     try{
+      // S04: single bridge-owned model turn. Creates its own session and sends one prompt; it never
+      // reads a caller address and never resumes/closes anything.
+      if(m.operation==='sendMinimalTask'){
+        minimalTurn??=createMinimalTurn({call:safeSend,usage:async()=>usageProjection(await safeCall('zcode-agent','getAppUsageStats',[{range:'all',timeZone:'UTC'}])),readTasks,workspacePath:config.paths.workspace,recordClaim:()=>{if(existsSync(minimalTurnMarker()))throw fault('minimal-turn-already-claimed');writeFileSync(minimalTurnMarker(),JSON.stringify({at:Date.now(),prompt:'Reply with exactly: ok'}),{mode:0o600})},hasClaimed:()=>existsSync(minimalTurnMarker())});
+        const result=await minimalTurn.run();
+        const value={...result,writeRpc:[...writeRpc]};
+        publish({minimalTurn:{taskId:value.taskId,workspacePath:value.workspacePath,claims:writeRpc.length}});
+        if(closing)return;
+        process.stdout.write(JSON.stringify({type:'launcher-read',id:m.id,ok:true,value})+'\n');
+        return;
+      }
       const tasks=await readTasks();let value;
       if(m.operation==='catalog')value={tasks,observedAt:Date.now()};
       if(m.operation==='preflight'){
@@ -62,7 +81,13 @@ control.on('line',line=>{
         });
         value=await gate.preflight(m.address);
       }
-      if(m.operation==='observation')value={tasks,usage:usageProjection(await safeCall('zcode-agent','getAppUsageStats',[{range:'all',timeZone:'UTC'}])),rpc:[...rpc],at:Date.now(),schedulerPolicy};
+      if(m.operation==='observation')value={tasks,usage:usageProjection(await safeCall('zcode-agent','getAppUsageStats',[{range:'all',timeZone:'UTC'}])),rpc:[...rpc],writeRpc:[...writeRpc],at:Date.now(),schedulerPolicy};
+      // Per-session official usage readback (the S04 model-request accounting surface).
+      if(m.operation==='taskUsage'){
+        if(!m.address||typeof m.address.sessionId!=='string'||!m.address.sessionId||typeof m.address.workspace!=='string'||!m.address.workspace)throw fault('route-b-address-required');
+        const raw=await safeCall('zcode-agent','getTaskTokenUsage',[{sessionId:m.address.sessionId,workspacePath:m.address.workspace,...(m.address.workspaceIdentity?{workspaceIdentity:m.address.workspaceIdentity}:{})}]);
+        value={address:m.address,usage:usageActivity(raw,m.address.sessionId),at:Date.now()};
+      }
       if(closing)return;
       process.stdout.write(JSON.stringify({type:'launcher-read',id:m.id,ok:true,value})+'\n');
     }catch(e){process.stdout.write(JSON.stringify({type:'launcher-read',id:m.id,ok:false,code:typeof e.code==='string'?e.code:'route-b-read-failed'})+'\n');publish({phase:'failed',reason:'route-b-read-failed'});void stop(2);}
@@ -95,7 +120,7 @@ app.whenReady().then(()=>{
   child.on('exit',code=>{if(!closing){publish({phase:'failed',channelAvailable:false,reason:'host-exited',hostExitCode:code});void stop(2)}});
   authority.onDatabase=(_id,database)=>publish({database});
   authority.register({hostId:config.hostId,child,workspaceKeys:[],deliveryKind:config.deliveryKind});
-  channel=new HostChannel(port1,{...(routeB?{allowCalls:new Set(ROUTE_B_READ_CALLS)}:{}),onClose:reason=>{if(!closing){publish({phase:'failed',channelAvailable:false,reason});void stop(2)}},onReady:async()=>{
+  channel=new HostChannel(port1,{...(routeB?{allowCalls:new Set([...ROUTE_B_READ_CALLS,...ROUTE_B_SEND_CALLS])}:{}),onClose:reason=>{if(!closing){publish({phase:'failed',channelAvailable:false,reason});void stop(2)}},onReady:async()=>{
     clearTimeout(deadline);
     // Availability of these state services is verified by their real RPC responses; runtime/
     // session/command names are static topology only and never advertised as runnable.

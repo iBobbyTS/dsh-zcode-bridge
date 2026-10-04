@@ -1,4 +1,8 @@
 export const ROUTE_B_READ_CALLS=Object.freeze(['oauth.restoreCachedSessionState','oauth.getActiveProvider','oauth.getProviders','provider-settings.getView','setting.get','zcode-task.listTasks','zcode-task.listPinnedTasks','zcode-task.getTaskMeta','zcode-agent.listSessions','zcode-agent.getAppUsageStats','zcode-agent.getTaskTokenUsage']);
+// S04 unlocks exactly one write dispatch (a new bridge-owned session plus one minimal prompt). These
+// calls are tracked in their own ledger and are never part of the read-only observation comparison.
+export const ROUTE_B_SEND_CALLS=Object.freeze(['zcode-task.createTask','zcode-task.sendPrompt']);
+export const ROUTE_B_ALLOWED_CALLS=Object.freeze([...ROUTE_B_READ_CALLS,...ROUTE_B_SEND_CALLS]);
 export function usageProjection(value){
   if(value?.source!=='agent-db'||!Array.isArray(value.models))throw Error('usage-observation-invalid');
   const keys=['totalTokens','inputTokens','outputTokens','totalSessions','totalTurns','toolCallCount'];

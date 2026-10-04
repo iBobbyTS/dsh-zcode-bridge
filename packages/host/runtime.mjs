@@ -70,6 +70,21 @@ export class BridgeHost {
     await this.#hostCatalog(address,signal);
     return this.launcher.read('preflight',{address,signal});
   }
+  /** Per-session official usage readback for the S04 accounting; read-only and address-checked. */
+  async taskUsage(address,{signal}={}){
+    if(this.authorityMode!=='host-backed')throw new BridgeError('source-unavailable');
+    const state=this.status;
+    if(!state.connected||!address||address.runtime!=='zcode'||address.authority!==state.sessionAuthority||typeof address.workspace!=='string'||!address.workspace||typeof address.sessionId!=='string'||!address.sessionId)throw new BridgeError('source-address-mismatch');
+    return this.launcher.read('taskUsage',{address,signal});
+  }
+  /** S04: one bridge-owned model turn. Main owns the single-shot claim and the prompt; the caller
+   *  supplies no address, prompt, model or session id, so no foreign session can be targeted. */
+  async runMinimalTurn({signal}={}){
+    if(this.authorityMode!=='host-backed'||!this.status.connected)throw new BridgeError('source-unavailable');
+    const result=await this.launcher.read('sendMinimalTask',{signal});
+    const state=this.status;
+    return {...result,address:{runtime:'zcode',authority:state.sessionAuthority,workspace:result.workspacePath,sessionId:result.taskId}};
+  }
   /** Scoped API for S03.B. Read projection is permitted; restricted runtime never admits actions. */
   createConversation(address,{onChange=()=>{}}={}){
     const status=this.status;

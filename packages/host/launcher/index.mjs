@@ -47,13 +47,14 @@ export class HostLauncher {
     }catch(e){this.#publish({phase:'failed',reason:e.code??'launcher-configuration-failed',channelAvailable:false,services:[],landings:{passed:false}});return this.state}
   }
   read(operation,{address,signal}={}){
-    if(!['catalog','preflight','observation'].includes(operation)||this.#state.phase!=='ready'||this.#state.landings?.mode!=='route-b'||!this.#child||this.#disposed)return Promise.reject(fault('route-b-read-unavailable'));
+    if(!['catalog','preflight','observation','taskUsage','sendMinimalTask'].includes(operation)||this.#state.phase!=='ready'||this.#state.landings?.mode!=='route-b'||!this.#child||this.#disposed)return Promise.reject(fault('route-b-read-unavailable'));
     if(signal?.aborted)return Promise.reject(fault('cancelled'));
     if(this.#reads.size>=32)return Promise.reject(fault('route-b-read-limit'));
     const id=++this.#readSeq;
     return new Promise((resolve,reject)=>{
-      // preflight performs a bounded activity window inside Main; extend its carrier budget only.
-      const timeoutMs=25000+(operation==='preflight'?(this.options.activityWindowMs??5000):0);
+      // preflight performs a bounded activity window inside Main; the single-turn dispatch waits on
+      // one official session creation, so both carriers get a bounded extension.
+      const timeoutMs=(operation==='preflight'?25000+(this.options.activityWindowMs??5000):operation==='sendMinimalTask'?120000:25000);
       const timer=setTimeout(()=>{this.#reads.delete(id);reject(fault('route-b-read-timeout'));void this.stop();},timeoutMs);
       this.#reads.set(id,{resolve,reject,timer});
       this.#child.stdin.write(JSON.stringify({id,operation,...(address?{address}:{})})+'\n',e=>{if(e){clearTimeout(timer);this.#reads.delete(id);reject(fault('route-b-read-transport'));}});
