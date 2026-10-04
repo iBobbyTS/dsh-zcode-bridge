@@ -1,0 +1,310 @@
+{
+  "provenance": {
+    "kind": "injected-from-official-capture",
+    "source": "tests/fixtures/s03a/success.json",
+    "paidModelCalls": 0,
+    "changes": [
+      "two-turn rows, identity/actions, revision, file diffs/checkpoints and compact admission are injected; not real model output or official file mutation"
+    ]
+  },
+  "ack": {
+    "ack": {
+      "subscriptionId": "fixture-subscription",
+      "mode": "snapshot",
+      "logEpoch": "musegv3e-mrqoweve",
+      "openTiming": {
+        "version": 1,
+        "initialFrameEncodeMs": 0,
+        "sessionRuntimeState": "warm",
+        "snapshotRowCount": 0
+      }
+    }
+  },
+  "initial": {
+    "wireVersion": 3,
+    "kind": "complete",
+    "deliveryKind": "initial",
+    "logicalFrameId": "fixture-subscription-lf-1",
+    "logicalFrameOrdinal": 1,
+    "topic": "conversation/fixture-session",
+    "subscriptionId": "fixture-subscription",
+    "frame": {
+      "topic": "conversation/fixture-session",
+      "subscriptionId": "fixture-subscription",
+      "sentAt": 1791032434539,
+      "fromSeq": 0,
+      "toSeq": 8,
+      "payload": {
+        "kind": "snapshot",
+        "snapshot": {
+          "protocolVersion": 1,
+          "sessionId": "fixture-session",
+          "logEpoch": "musegv3e-mrqoweve",
+          "seq": 8,
+          "revision": 8,
+          "control": {
+            "phase": "completedSuccess",
+            "sessionEnded": false,
+            "canStop": false,
+            "stopState": "idle",
+            "stopTargetKind": "unknown",
+            "activeWorks": [],
+            "lastError": null,
+            "apiRetry": null
+          },
+          "availability": {
+            "fork": {
+              "allowed": true
+            },
+            "compact": {
+              "allowed": true
+            },
+            "switchModelConfig": {
+              "allowed": true
+            },
+            "setFollowupMode": {
+              "allowed": true
+            },
+            "queueEdit": {
+              "allowed": true
+            },
+            "sendQueuedNow": {
+              "allowed": false,
+              "reasonCode": "sendQueuedNowRequiresRunning"
+            },
+            "pauseGoal": {
+              "allowed": false,
+              "reasonCode": "noGoalToPause"
+            },
+            "resumeGoal": {
+              "allowed": false,
+              "reasonCode": "noGoalToResume"
+            }
+          },
+          "inputRouting": {
+            "mode": "choice"
+          },
+          "meta": {
+            "title": "",
+            "titleSource": "default"
+          },
+          "config": {
+            "provider": "deepseek",
+            "model": "deepseek-flash",
+            "thought": "max",
+            "thoughtLevels": [
+              "disabled",
+              "low",
+              "high",
+              "max"
+            ],
+            "followupMode": "queue",
+            "mode": "build",
+            "modelSelection": {
+              "providerId": "deepseek",
+              "modelId": "deepseek-flash",
+              "options": {
+                "reasoningLevel": "max"
+              }
+            },
+            "planEnabled": false
+          },
+          "modelTransition": null,
+          "usage": {
+            "contextWindow": null,
+            "cumulative": {
+              "inputTokens": 0,
+              "outputTokens": 0,
+              "cacheReadTokens": 0,
+              "cacheWriteTokens": 0
+            }
+          },
+          "queue": {
+            "items": [],
+            "autoDrain": false
+          },
+          "pendingInteractions": [],
+          "pendingCommands": [],
+          "backgroundWorks": [],
+          "subagents": {
+            "revision": 0,
+            "childSessionIds": [],
+            "running": [],
+            "endedTotal": 0
+          },
+          "goal": null,
+          "plan": null,
+          "workspaceHookAdmission": null,
+          "rows": {
+            "window": [
+              {
+                "turnId": "turn-1",
+                "createdAt": 1,
+                "createdAtSeq": 1,
+                "productTurnId": "product-1",
+                "kind": "turnHeader",
+                "rowId": 1,
+                "entityId": "header-1",
+                "origin": "userInput",
+                "state": "completedSuccess",
+                "startedAt": 1,
+                "fileChanges": {
+                  "files": 1,
+                  "additions": 1,
+                  "deletions": 1,
+                  "state": "active"
+                },
+                "actions": {
+                  "canRewindFiles": true
+                },
+                "sourceCommandId": "original-1"
+              },
+              {
+                "turnId": "turn-1",
+                "createdAt": 1,
+                "createdAtSeq": 1,
+                "productTurnId": "product-1",
+                "kind": "userInput",
+                "rowId": 2,
+                "entityId": "input-1",
+                "origin": "realUser",
+                "text": "Write version 1",
+                "sourceCommandId": "original-1"
+              },
+              {
+                "turnId": "turn-1",
+                "createdAt": 1,
+                "createdAtSeq": 1,
+                "productTurnId": "product-1",
+                "kind": "assistantText",
+                "rowId": 3,
+                "entityId": "reply-1",
+                "text": "Wrote version 1",
+                "state": "complete",
+                "actions": {
+                  "canFork": true
+                }
+              },
+              {
+                "turnId": "turn-2",
+                "createdAt": 2,
+                "createdAtSeq": 2,
+                "productTurnId": "product-2",
+                "kind": "turnHeader",
+                "rowId": 4,
+                "entityId": "header-2",
+                "origin": "userInput",
+                "state": "completedSuccess",
+                "startedAt": 2,
+                "fileChanges": {
+                  "files": 1,
+                  "additions": 1,
+                  "deletions": 1,
+                  "state": "active"
+                },
+                "actions": {
+                  "canRewindFiles": true
+                },
+                "sourceCommandId": "original-2"
+              },
+              {
+                "turnId": "turn-2",
+                "createdAt": 2,
+                "createdAtSeq": 2,
+                "productTurnId": "product-2",
+                "kind": "userInput",
+                "rowId": 5,
+                "entityId": "input-2",
+                "origin": "realUser",
+                "text": "Write version 2",
+                "sourceCommandId": "original-2",
+                "actions": {
+                  "canEdit": true,
+                  "editDisposition": "rewind"
+                }
+              },
+              {
+                "turnId": "turn-2",
+                "createdAt": 2,
+                "createdAtSeq": 2,
+                "productTurnId": "product-2",
+                "kind": "assistantText",
+                "rowId": 6,
+                "entityId": "reply-2",
+                "text": "Wrote version 2",
+                "state": "complete",
+                "actions": {
+                  "canFork": true,
+                  "canRetry": true
+                }
+              }
+            ],
+            "totalCount": 6,
+            "firstRowId": 1
+          }
+        }
+      }
+    }
+  },
+  "fileChanges": {
+    "files": 1,
+    "additions": 1,
+    "deletions": 1,
+    "state": "active",
+    "items": [
+      {
+        "path": "sample.txt",
+        "additions": 1,
+        "deletions": 1,
+        "writeCount": 1,
+        "toolNames": [
+          "Write"
+        ],
+        "patches": [
+          {
+            "oldStart": 1,
+            "oldLines": 1,
+            "newStart": 1,
+            "newLines": 1,
+            "lines": [
+              "-version 1",
+              "+version 2"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "preview": {
+    "canApply": true,
+    "safeFiles": [
+      {
+        "action": "restore",
+        "path": "sample.txt",
+        "operationCount": 1,
+        "toolNames": [
+          "Write"
+        ]
+      }
+    ],
+    "unsafeFiles": [],
+    "ignoredFiles": []
+  },
+  "unsafe": {
+    "canApply": false,
+    "safeFiles": [],
+    "unsafeFiles": [
+      {
+        "path": "sample.txt",
+        "operationCount": 1,
+        "toolNames": [
+          "Write"
+        ],
+        "reason": "external_modified",
+        "currentHash": "new",
+        "expectedHash": "old"
+      }
+    ],
+    "ignoredFiles": []
+  }
+}
