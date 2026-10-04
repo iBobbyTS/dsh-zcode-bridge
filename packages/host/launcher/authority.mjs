@@ -31,6 +31,7 @@ export class HostAuthority {
     for(const id of h.attachments)this.detach(hostId,id);
     this.#bus.unregisterHost(hostId);h.child.off('message',h.onMessage);h.child.off('exit',h.onExit);this.#hosts.delete(hostId);
   }
+  owns(hostId,task){return !!task&&[...this.#bus.leases.values()].some(l=>l.ownerHostId===hostId&&l.taskId===task.taskId&&l.workspacePath===task.workspacePath&&(l.workspaceIdentity??l.workspacePath)===(task.workspaceIdentity??task.workspacePath));}
   login(){throw fault('login-disabled-s03')}
   registerOAuthState(){return this.login()}
   handleOAuthDeepLink(){return this.login()}

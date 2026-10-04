@@ -66,6 +66,10 @@ export function apply(ctx,config={}) {
         try{return {ok:true,value:await host.listSessions({address:payload.address,signal})}}
         catch(error){return {ok:false,error:{code:error.code??'source-unavailable',message:'Official Session source rejected the query',details:error.protocolCode===undefined?{}:{protocolCode:error.protocolCode}}}}
       }
+      if(endpoint==='writePreflight'){
+        if(!payload||Object.keys(payload).some(k=>k!=='address')||!payload.address)return {ok:false,error:{code:'invalid-payload',message:'Session address required',details:{}}};
+        try{return {ok:true,value:await host.sharedWritePreflight(payload.address,{signal})}}catch(e){return {ok:false,error:{code:e.code??'write-preflight-unavailable',message:'Shared task signal unavailable; writing denied',details:{}}}}
+      }
       if(endpoint==='conversation'){
         try{
           if(!payload||typeof payload!=='object'||Array.isArray(payload))throw Object.assign(new Error(),{code:'invalid-payload'});

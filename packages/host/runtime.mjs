@@ -28,6 +28,7 @@ export class BridgeHost {
   /** #listSessions body; the public wrapper records any failure code (a core sessions-invalid
    *  projection must stop new side effects, not only close the peer). */
   async #listSessions({address,signal}={}){
+    if(this.authorityMode==='host-backed')return this.#hostCatalog(address,signal);
     const peer=this.#peer,status=this.status;
     if(this.#disposed||!status.connected||!peer||peer.closed)throw new BridgeError('source-unavailable');
     if(address!==undefined&&(!address||address.runtime!=='zcode'||address.authority!==status.sessionAuthority||address.workspace!==status.workspacePath||typeof address.sessionId!=='string'||!address.sessionId))throw new BridgeError('source-address-mismatch');
@@ -54,6 +55,20 @@ export class BridgeHost {
     if(address&&sessions.length===0){const catalog=await this.#listSessions({signal});return {...catalog,sessions:catalog.sessions.filter(row=>row.address.sessionId===address.sessionId)}}
     const visible=sessions.filter(row=>!this.#deleted.has(row.address.sessionId));
     return {sessions:visible,catalog:{complete:!truncated,truncated,limit,deleted:[...this.#deleted],sharedGui:'unverified',authorityKind:'owned-headless',lifetime:'process'},management:{rename:status.installation?.verified===true,delete:status.installation?.verified===true,archive:false,pin:false,reason:'archive-pin-carrier-unverified',renameCas:false,deleteSemantics:'official-runtime-removal'},scope:{authority:status.sessionAuthority,workspace:status.workspacePath},availability:{state:status.state,reason:status.reason,capabilities:{create:false,open:false,nativeAgent:false}}};
+  }
+  async #hostCatalog(address,signal){
+    const state=this.status;
+    if(this.#disposed||!state.connected)throw new BridgeError('source-unavailable');
+    if(address&&(address.runtime!=='zcode'||address.authority!==state.sessionAuthority||typeof address.workspace!=='string'||typeof address.sessionId!=='string'))throw new BridgeError('source-address-mismatch');
+    const {tasks,observedAt}=await this.launcher.read('catalog',{signal});
+    const visible=address?tasks.filter(t=>t.taskId===address.sessionId&&t.workspacePath===address.workspace):tasks;
+    const sessions=visible.map(t=>({address:{runtime:'zcode',authority:state.sessionAuthority,workspace:t.workspacePath,sessionId:t.taskId},title:t.title,cwd:t.workspacePath,running:undefined,sharedTask:{status:t.status,lastActivityAt:t.updatedAt,cronAutomationId:t.cronAutomationId,offPeakTaskId:t.offPeakTaskId,observedAt}}));
+    return {sessions,catalog:{complete:true,truncated:false,limit:tasks.length,deleted:[],sharedGui:'shared-task-store',authorityKind:'official-host-channel',lifetime:'official',readOnly:true,multiWorkspace:true},management:{rename:false,delete:false,archive:false,pin:false,reason:'read-only-s03'},scope:{authority:state.sessionAuthority,workspace:'official-task-catalog'},availability:{state:'restricted',reason:'route-b-read-only-zero-model-requests',capabilities:{create:false,open:false,nativeAgent:false}}};
+  }
+  async sharedWritePreflight(address,{signal}={}){
+    if(this.authorityMode!=='host-backed'||!this.status.connected)throw new BridgeError('source-unavailable');
+    await this.#hostCatalog(address,signal);
+    return this.launcher.read('preflight',{address,signal});
   }
   /** Scoped API for S03.B. Read projection is permitted; restricted runtime never admits actions. */
   createConversation(address,{onChange=()=>{}}={}){
@@ -191,7 +206,7 @@ export class BridgeHost {
   async #connect(){
     if(this.authorityMode==='host-backed'){
       if(!this.launcher){this.#publish({state:'unavailable',reason:'launcher-unconfigured',connected:false});return this.status}
-      const project=state=>{if(!this.#disposed)this.#publish({state:state.phase==='ready'?'restricted':'unavailable',reason:state.phase==='ready'?'host-execution-disabled-s03':state.reason??'launcher-'+state.phase,connected:false,auth:state.auth??'unconfirmed',authority:'official-host-channel',launcher:state,authorityMode:'host-backed'})};
+      const project=state=>{if(!this.#disposed)this.#publish({state:state.phase==='ready'?(state.auth==='authenticated'?'authenticated':'restricted'):'unavailable',reason:state.routeB?.allowed===false?'route-b-authorization-denied-scratch-fallback':state.phase==='ready'?(state.auth==='authenticated'?'route-b-authenticated-read-only':'host-execution-disabled-s03'):state.reason??'launcher-'+state.phase,connected:state.phase==='ready'&&state.auth==='authenticated',sessionAuthority:'official-host:'+state.mainPid,workspacePath:'official-task-catalog',auth:state.auth??'unconfirmed',authority:'official-host-channel',launcher:state,authorityMode:'host-backed'})};
       this.launcherUnsubscribe??=this.launcher.subscribe(project);project(await this.launcher.start());return this.status;
     }
     let peer,stop,terminalReason;
