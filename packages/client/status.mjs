@@ -18,6 +18,7 @@ const reasons={
  'transport-error':'Official runtime transport failed', 'launch-failed':'Official runtime launch failed',
  'unsupported-platform':'This bridge currently supports macOS',
  'runtime-rejected':'Official runtime rejected the request',
+ 'runtime-incompatible':'Core protocol incompatibility: new side effects are stopped; reconnect to retry',
  'capabilities-invalid':'Official capability response is incompatible','sessions-invalid':'Official session response is incompatible',
 };
 export function statusText(state){return reasons[state.reason]??'Unavailable: connection state is unconfirmed'}

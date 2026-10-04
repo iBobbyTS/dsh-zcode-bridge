@@ -21,6 +21,8 @@ import {ZCodeRemotePanel,remoteLocales} from './remote-view.jsx';
 export {RemoteStore} from './remote.mjs';
 export {ZCodeRemotePanel} from './remote-view.jsx';
 export { ZCodeConversationView, ConversationController } from './conversation-view.jsx';
+import { CompatibilityStore } from './compatibility.mjs';
+export { CompatibilityStore } from './compatibility.mjs';
 export const inject=['slots','locale','connection'];
 const zh={title:'ZCode',description:'官方安装与连接状态'},en={title:'ZCode',description:'Official installation and connection status'};
 /** A bundle-owned configuration page in the existing Plugins slot. */
@@ -55,14 +57,38 @@ export function apply(ctx){
   ctx.effect(()=>ctx.locale.register('zcodeBridge',{zh,en}),'zcode-bridge: locale');
   ctx.effect(()=>ctx.slots.inject('plugins.bundle.config',()=>ctx.slots.register({name:'plugins.bundle.config',id:'zcode-bridge-status',key:'@dsh-zcode/bridge',locale:'zcodeBridge',inject:()=>({rpc:ctx.connection.rpc,connectionState:ctx.connection.state})},StatusCard)),'zcode-bridge: page');
 }
+/** R19 version banner and R20 fail-safe notices. Dismissal is a separate local preference and
+ *  never clears the host fail-safe. */
+export function ZCodeVersionBanner({compatibility,store}){
+  useSyncExternalStore(store.subscribe,store.getSnapshot,store.getSnapshot);
+  const decision=store.decide(compatibility);
+  const identity=compatibility?.state??'unknown',actual=compatibility?.actual??{};
+  return <>
+    {identity==='newer-unverified'&&decision.visible&&<div role="alert" data-testid="zcode-version-banner" style={{border:'1px solid var(--dsw-alias-border-warning, #b58900)',padding:8,marginBottom:8}}>
+      <p>Compatibility is not guaranteed: official ZCode {actual.version} is newer than the highest verified version {compatibility.highestVerified}.</p>
+      <button type="button" data-testid="zcode-dismiss-once" onClick={()=>store.dismiss('once',actual.version)}>Dismiss once</button>{' '}
+      <button type="button" data-testid="zcode-dismiss-this-version" onClick={()=>store.dismiss('this-version',actual.version)}>Dismiss for this version</button>{' '}
+      <button type="button" data-testid="zcode-dismiss-new-next-version" onClick={()=>store.dismiss('new-next-version',actual.version)}>Dismiss for this and the next version</button>
+    </div>}
+    {identity==='identity-mismatch'&&<p data-testid="zcode-version-identity">Official ZCode {actual.version} has an unverified build or digest; previous support evidence does not apply.</p>}
+    {identity==='unknown'&&<p data-testid="zcode-version-neutral">Official ZCode version is undetermined; no compatibility claim is made.</p>}
+    {identity==='other-unverified'&&<p data-testid="zcode-version-neutral">Official ZCode {actual.version} is outside the verified set; compatibility is not asserted.</p>}
+    {decision.restartRequired&&<p role="alert" data-testid="zcode-restart-required">An installed bridge update is not active; restart the host and client plugins to use the new version.</p>}
+  </>;
+}
 export function StatusCard({rpc,connectionState,view}){
   const controller=useMemo(()=>new StatusController(rpc,connectionState),[rpc,connectionState]);
   const {status:state,busy}=useSyncExternalStore(controller.subscribe,controller.getSnapshot,controller.getSnapshot);
+  const compatibilityStore=useMemo(()=>new CompatibilityStore(),[]);
   useEffect(()=>{controller.start();return ()=>controller.dispose()},[controller]);
+  useEffect(()=>()=>compatibilityStore.dispose(),[compatibilityStore]);
   if(view==='summary')return 'Official ZCode runtime connection';
   const install=state.installation;
   return <section aria-label="ZCode connection" style={{padding:16,color:'var(--dsw-alias-text-primary)',fontSize:14}}>
     <h3>ZCode</h3><p role="status">{statusText(state)}</p>
+    <ZCodeVersionBanner compatibility={state.compatibility} store={compatibilityStore}/>
+    {state.failSafe?.incompatible&&<p role="alert" data-testid="zcode-failsafe-core">Core protocol incompatibility: new side effects are stopped; reconnect to retry.</p>}
+    {state.failSafe?.level==='non-core'&&<p data-testid="zcode-failsafe-isolated">Optional capabilities isolated: {state.failSafe.isolated.map(item=>item.capability).join(', ')}. Other paths keep working.</p>}
     <p>Account: {state.auth==='unavailable'?'Official authentication source unavailable':'Unconfirmed'}</p>
     {install&&<dl style={{overflowWrap:'anywhere'}}>
       <dt>Official installation</dt><dd>{install.appPath}</dd>
