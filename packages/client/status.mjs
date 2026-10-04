@@ -1,5 +1,14 @@
 export const initialClientStatus=()=>({state:'unavailable',reason:'host-unreachable',auth:'unconfirmed',connected:false});
 const reasons={
+ 'route-b-authorization-denied-scratch-fallback':'Route B authorization denied; isolated scratch fallback',
+ 'route-b-temp-socket-path-too-long':'Route B stopped before launch: scratch Unix socket path is too long',
+ 'route-b-retry-disabled':'Route B stopped; automatic retry is disabled',
+ 'status-query-failed':'Official read-only service initialization failed; launcher stopped',
+ 'route-b-authenticated-read-only':'Official account authenticated · shared sessions are read-only',
+ 'route-b-read-only-zero-model-requests':'Shared sessions are read-only · model requests disabled',
+ 'official-account-signed-out-stop':'Official account signed out; Route B stopped without retry',
+ 'official-account-reauthentication-required':'Official account requires reauthentication; Route B stopped',
+ 'official-credential-recovery-observed':'Official credential recovery detected; Route B stopped',
  'not-connected':'Not connected',connecting:'Connecting to official runtime…',
  'installation-missing':'Official ZCode installation was not found',
  'installation-ambiguous':'Multiple installations found; configure the intended App path',

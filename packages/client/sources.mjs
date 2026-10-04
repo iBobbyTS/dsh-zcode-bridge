@@ -52,6 +52,14 @@ export class RuntimeSessions {
     if(this.#closed)throw sourceError('disposed');const version=++this.#openVersion,fixed=parseRuntimeSessionAddress(address);
     if(fixed.runtime!=='zcode'||this.#deleted.has(runtimeSessionKey(fixed)))throw sourceError('session-deleted');
     await this.refreshAddress(fixed);
+    if(this.#catalog.readOnly){
+      if(this.#closed||version!==this.#openVersion)throw sourceError('disposed');
+      const row=this.#zcodeRows.find(r=>r.key===runtimeSessionKey(fixed));if(!row)throw sourceError('session-not-found');
+      const previous=this.#selected;
+      if(previous){previous.reference.release();this.#opened.get(previous.conversation)?.();void previous.conversation?.cancel().catch(()=>{});this.#opened.delete(previous.conversation);}
+      const reference=this.retain(fixed,{});this.#selected=Object.freeze({address:fixed,reference,readOnly:true,row});
+      notifySubscribers(this.#selectionListeners,'[zcode-bridge] read-only selection');return reference;
+    }
     const conversation=this.#conversationResolver?.(fixed)??new RemoteConversation(this.rpc,fixed);
     const remove=conversation.subscribe(state=>{if(state.error==='session-deleted')this.#remove(fixed)});
     this.#opened.set(conversation,remove);
@@ -63,7 +71,7 @@ export class RuntimeSessions {
       notifySubscribers(this.#selectionListeners,'[zcode-bridge] selection');return reference;
     }catch(error){remove();this.#opened.delete(conversation);await conversation.cancel();throw error}
   }
-  async disconnect(){this.#openVersion++;const selected=this.#selected;this.#selected=null;if(selected){selected.reference.release();this.#opened.get(selected.conversation)?.();this.#opened.delete(selected.conversation);await selected.conversation.cancel()}notifySubscribers(this.#selectionListeners,'[zcode-bridge] selection')}
+  async disconnect(){this.#openVersion++;const selected=this.#selected;this.#selected=null;if(selected){selected.reference.release();this.#opened.get(selected.conversation)?.();this.#opened.delete(selected.conversation);await selected.conversation?.cancel()}notifySubscribers(this.#selectionListeners,'[zcode-bridge] selection')}
   async manage(address,type,payload,commandId){
     const key=runtimeSessionKey(address),selected=this.#selected;
     if(!selected||runtimeSessionKey(selected.address)!==key)throw sourceError('open-session-first');
@@ -117,15 +125,16 @@ export class RuntimeSessions {
       if(!response.ok)throw sourceError(response.error.code);
       const value=response.value;
       if(!value||!Array.isArray(value.sessions)||!value.scope||typeof value.scope.authority!=='string'||!value.scope.authority||typeof value.scope.workspace!=='string'||!value.scope.workspace||!value.availability||!['restricted','unavailable'].includes(value.availability.state)||typeof value.availability.reason!=='string'||value.availability.capabilities?.create!==false||value.availability.capabilities?.open!==false||value.availability.capabilities?.nativeAgent!==false)throw sourceError('sessions-invalid');
-      if(address&&(address.authority!==value.scope.authority||address.workspace!==value.scope.workspace))throw sourceError('source-address-mismatch');
+      const shared=value.catalog?.readOnly===true&&value.catalog?.multiWorkspace===true&&value.catalog?.sharedGui==='shared-task-store';
+      if(address&&(address.authority!==value.scope.authority||(!shared&&address.workspace!==value.scope.workspace)))throw sourceError('source-address-mismatch');
       const rows=value.sessions.map(row=>{
         const fixed=parseRuntimeSessionAddress(row.address);
-        if(fixed.runtime!=='zcode'||fixed.authority!==value.scope.authority||fixed.workspace!==value.scope.workspace||typeof row.title!=='string'||(row.cwd!==undefined&&row.cwd!==fixed.workspace)||row.running!==undefined)throw sourceError('sessions-invalid');
+        if(fixed.runtime!=='zcode'||fixed.authority!==value.scope.authority||(!shared&&fixed.workspace!==value.scope.workspace)||typeof row.title!=='string'||(row.cwd!==undefined&&row.cwd!==fixed.workspace)||row.running!==undefined)throw sourceError('sessions-invalid');
         if(address&&runtimeSessionKey(fixed)!==runtimeSessionKey(address))throw sourceError('source-address-mismatch');
-        return Object.freeze({address:fixed,key:runtimeSessionKey(fixed),title:row.title,cwd:fixed.workspace,running:undefined});
+        return Object.freeze({address:fixed,key:runtimeSessionKey(fixed),title:row.title,cwd:fixed.workspace,running:undefined,...(shared?{sharedTask:row.sharedTask}:{})});
       });
       if(new Set(rows.map(row=>row.key)).size!==rows.length)throw sourceError('sessions-invalid');
-      if(value.catalog&&(typeof value.catalog.complete!=='boolean'||typeof value.catalog.truncated!=='boolean'||value.catalog.complete===value.catalog.truncated||value.catalog.sharedGui!=='unverified'||!Array.isArray(value.catalog.deleted)||value.catalog.deleted.some(id=>typeof id!=='string'||!id)))throw sourceError('sessions-invalid');
+      if(value.catalog&&(typeof value.catalog.complete!=='boolean'||typeof value.catalog.truncated!=='boolean'||value.catalog.complete===value.catalog.truncated||!['unverified','shared-task-store'].includes(value.catalog.sharedGui)||!Array.isArray(value.catalog.deleted)||value.catalog.deleted.some(id=>typeof id!=='string'||!id)))throw sourceError('sessions-invalid');
       const sameScope=this.#scope?.authority===value.scope.authority&&this.#scope?.workspace===value.scope.workspace;
       if(!address)this.#catalog=Object.freeze(value.catalog??{complete:false,truncated:true,sharedGui:'unverified'});
       else if(!sameScope)this.#catalog=Object.freeze({complete:false,truncated:false,sharedGui:'unverified'});
@@ -154,7 +163,7 @@ export class RuntimeSessions {
   }
   retain(address,options){
     if(this.#closed)throw sourceError('disposed');
-    options.signal?.throwIfAborted();
+    options?.signal?.throwIfAborted();
     const fixed=parseRuntimeSessionAddress(address);
     if(fixed.runtime==='native'){
       const retained=this.#native.retain(fixed,options);let live=true;
@@ -174,7 +183,7 @@ export class RuntimeSessions {
     }:undefined;
     const reference=Object.freeze({runtime:'zcode',address:fixed,
       summary:{getSnapshot:()=>live?this.#zcodeRows.find(row=>row.key===key):undefined,subscribe:listener=>subscribe(this.list,listener)},
-      availability:{getSnapshot:()=>!live?released:this.#scope&&(fixed.authority!==this.#scope.authority||fixed.workspace!==this.#scope.workspace)?mismatch:this.#availability,subscribe:listener=>subscribe(this.zcodeAvailability,listener)},
+      availability:{getSnapshot:()=>!live?released:this.#scope&&(fixed.authority!==this.#scope.authority||(!this.#catalog.multiWorkspace&&fixed.workspace!==this.#scope.workspace))?mismatch:this.#availability,subscribe:listener=>subscribe(this.zcodeAvailability,listener)},
       release:()=>{if(!live)return;live=false;for(const remove of subscriptions)remove();subscriptions.clear();this.#references.delete(reference)},
       ...(renderSessionArea?{renderSessionArea}:{}),
     });

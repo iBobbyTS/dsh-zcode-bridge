@@ -86,10 +86,11 @@ export function StatusCard({rpc,connectionState,view}){
   const install=state.installation;
   return <section aria-label="ZCode connection" style={{padding:16,color:'var(--dsw-alias-text-primary)',fontSize:14}}>
     <h3>ZCode</h3><p role="status">{statusText(state)}</p>
+    {state.launcher?.routeB?.allowed===false&&<p role="alert">{state.launcher.routeB.reason} · isolated scratch fallback</p>}
     <ZCodeVersionBanner compatibility={state.compatibility} store={compatibilityStore}/>
     {state.failSafe?.incompatible&&<p role="alert" data-testid="zcode-failsafe-core">Core protocol incompatibility: new side effects are stopped; reconnect to retry.</p>}
     {state.failSafe?.level==='non-core'&&<p data-testid="zcode-failsafe-isolated">Optional capabilities isolated: {state.failSafe.isolated.map(item=>item.capability).join(', ')}. Other paths keep working.</p>}
-    <p>Account: {state.auth==='unavailable'?'Official authentication source unavailable':'Unconfirmed'}</p>
+    <p>Account: {state.auth==='authenticated'?'Authenticated by official Host':state.auth==='unavailable'?'Official authentication source unavailable':state.auth==='signed-out'?'Signed out':'Unconfirmed'}</p>
     {install&&<dl style={{overflowWrap:'anywhere'}}>
       <dt>Official installation</dt><dd>{install.appPath}</dd>
       <dt>Version / build</dt><dd>{install.version} / {install.build}</dd>
@@ -98,8 +99,8 @@ export function StatusCard({rpc,connectionState,view}){
       <dt>Runtime SHA-256</dt><dd>{install.sha256}</dd>
     </dl>}
     {state.roundTrip&&<p>Official {state.roundTrip.method} response validated · {state.sessionCount} sessions in test workspace · {state.roundTrip.at}</p>}
-    <p>Shared official GUI sessions: unverified (CLI default storage).</p>
-    <p>Model execution is unavailable until a supported official authentication path is verified.</p>
+    <p>{state.auth==='authenticated'?'Shared official task store · read-only':'Shared official GUI sessions: unverified (CLI default storage).'}</p>
+    <p>{state.auth==='authenticated'?'Model requests are disabled for the S03 observation window.':'Model execution is unavailable until a supported official authentication path is verified.'}</p>
     <button type="button" disabled={busy||state.connected} onClick={()=>void controller.connect()}>{busy?'Connecting…':state.connected?'Protocol connected':'Connect official runtime'}</button>
   </section>;
 }

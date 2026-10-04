@@ -12,7 +12,7 @@ export function ZCodeDirectory({sources,onOpen,onOpenCatalog,onOpenInsights,onOp
   const act=async action=>{setBusy(true);setError(null);try{await action()}catch(e){setError(e.code??e.message)}finally{setBusy(false)}};
   return <section aria-label={t('directory')} style={{padding:8,overflowWrap:'anywhere'}}>
     <h4><span role="img" aria-label="ZCode">Z</span> {t('directory')}</h4>
-    <p>{t('shared')}</p><p>{t('scope')}</p>
+    <p>{state.catalog.readOnly?'Official shared task store · read-only':t('shared')}</p><p>{state.catalog.readOnly?'Official Host metadata across workspaces':t('scope')}</p>
     <input aria-label={t('search')} value={state.query} onChange={e=>sources.setDirectory({query:e.target.value})}/>
     <button disabled={busy} onClick={()=>void act(()=>sources.refresh())}>{t('refresh')}</button>
     {onOpenCatalog&&<button type="button" onClick={()=>onOpenCatalog()}>{t('catalogEntry')}</button>}
@@ -64,10 +64,35 @@ function Management({sources,selected,t}){
 export function ZCodeSessionPanel({sources,t=fallback}){
   const selected=useSyncExternalStore(sources.selection.subscribe,sources.selection.getSnapshot,sources.selection.getSnapshot);
   if(!selected)return <p>{t('empty')}</p>;
+  if(selected.readOnly)return <SharedTaskPanel key={JSON.stringify(selected.address)} selected={selected} sources={sources}/>;
   return <div key={JSON.stringify(selected.address)} style={{height:'100%',overflow:'auto'}}><p>{t('shared')} · {t('scope')}</p>
     <Management sources={sources} selected={selected} t={t}/>
     <SessionUsage conversation={selected.conversation}/>
     <button onClick={()=>void sources.disconnect()}>{t('disconnect')}</button>
     <ZCodeConversationView conversation={selected.conversation}/>
   </div>;
+}
+
+function SharedTaskPanel({selected,sources}){
+  const [gate,setGate]=useState({decision:'unknown',allowed:false,reason:'shared-task-signal-unavailable-or-stale'}),[draft,setDraft]=useState('');
+  useEffect(()=>{
+    let live=true,timer,abort;
+    const refresh=async()=>{
+      abort=new AbortController();
+      try{const response=await sources.rpc.call('/zcode-bridge','writePreflight',{address:selected.address},abort.signal);if(live)setGate(response.ok?response.value:{decision:'unknown',allowed:false,reason:response.error.code});}
+      catch{if(live)setGate({decision:'unknown',allowed:false,reason:'shared-task-signal-unavailable-or-stale'});}
+      if(live)timer=setTimeout(refresh,2000);
+    };
+    void refresh();return ()=>{live=false;clearTimeout(timer);abort?.abort();};
+  },[selected.address,sources]);
+  return <section aria-label="ZCode read-only session" style={{padding:16}}>
+    <h3>{selected.row.title}</h3><p>{selected.address.workspace}</p>
+    <p>Official shared session metadata · read-only open · history activation and model requests disabled.</p>
+    <p role="status" data-testid="zcode-shared-write-gate">{gate.decision} · {gate.reason}</p>
+    {gate.warning&&<p role="alert">This session is bound to an automation and may run in the background.</p>}
+    <label>Draft<textarea aria-label="Shared session draft" value={draft} disabled={!gate.allowed} onChange={e=>setDraft(e.target.value)}/></label>
+    <button disabled title="S03: zero model requests">Send</button>
+    <p>{gate.allowed?'Task is confirmed idle. S03 model execution remains disabled.':'Writing is blocked. The view remains open and the draft is retained.'}</p>
+    <button onClick={()=>void sources.disconnect()}>Disconnect view</button>
+  </section>;
 }
