@@ -80,6 +80,19 @@ CA3-P2-01 是「活跃禁写格从未被真实 running 会话激励」。本轮�
 
 ## Checks 与交付
 
+### P27 活性信号修复轮（2026-10-04，impl_large；最新结论）
+
+**usage 与 session.updatedAt 能在 open turn 内间歇移动；30 秒 usage 双采样候选仍对真实主会话 false-idle，P27 未闭合。候选已隔离，生产闸门与白名单恢复 `9c52540` 原状；停止扩大修复并升级 main。** 这不是 CODE CLEAN 或 acceptance。
+
+- 链：CA3-P2-01 无真实激励 → active-stimulus 证实共享 completed 导致假空闲 → P27 admission/修复裁定 → 本轮正/负信号探测 → 有界 usage 窗候选 → 原失败合同复验 **FAIL** → 隔离候选并保留升级证据。最新证据：[live-signal-fix/README.md](../probes/checks/s03-p2-resume/live-signal-fix/README.md)、[result.json](../probes/checks/s03-p2-resume/live-signal-fix/result.json)。
+- 官方 `sessionUsage` 服务名是 `zcode-agent.getTaskTokenUsage`（下游 `v4/conversation/usage`）。第一组 5 次/63.076 秒主会话 974 requests、15,120,754 tokens 全静止；随后 3 次/约 31 秒 975→975→976。源码在**单次模型请求** completed/error/cancelled 时提交 usage，不是连续流活性，也不是只在整个 turn 终态刷新。不能把 usage 静止当占用结束。
+- 精确 `listSessions(sessionIds=[id])` 的主会话 session.updatedAt 为 1791146320559→1791146320559→1791146617143，status 始终 idle；未返回 revision/logEpoch。`getTaskMeta` 8 次始终 completed/1791143554641。`readSession(existing-only)` 8 次均 sessionUnavailable (-32004)：观察 Host 不持有 GUI Host 的 live record。
+- conversation 冷订阅：完成官方 hello/clientHello 后，两次有效尝试仍 `-32603 / fault.subscribe.resumeFailed / EPERM`，一次补 workspace 只读 grant 也未解决。revision/logEpoch **不可得/NOT_OBSERVED**，不能记为静止；没有进一步扩大写权限、读取真实 DB 或操作 GUI。确切 EPERM 路径/操作未定位。
+- 候选实现完整保留在 [candidate.patch](../probes/checks/s03-p2-resume/live-signal-fix/candidate.patch)：可配置 2–30 秒 usage 双采样，移动→active/禁写；DB running/同 Host 归属优先；信号错误→unknown；静止后重新读 task；只增 getTaskTokenUsage 只读白名单和所需 preflight timeout。7 个新增判定级测试通过，Node 候选 **287/287 PASS**。**实际最大 30 秒窗**主会话仍 `idle/shared-task-and-usage-window-idle/allowed=true/changed=[]`（FAIL），completed 对照 idle/allowed=true（PASS）；见 [candidate-live/preflights.json](../probes/checks/s03-p2-resume/live-signal-fix/candidate-live/preflights.json)。真实候选走 bridge Main control preflight→官方 RPC，没有声称 DSH HTTP LIVE 通过。
+- 失败候选已从生产源撤回，补丁可在隔离 checkout 应用复现，`git apply --check` PASS；不把此算法当作 P15/P16 的修复。下一有界任务须取得官方跨 Host active-turn/lease 真值、修复共享活动状态传播，或由 main 显式裁决静止时的产品语义。不能报告“所有官方信号仅终态写”，但也不能报告闸门闭合。
+- 检查：最终生产源与基线一致，bridge Node **280/280 PASS**；DSH 集成 **177/177 PASS（19 files）**；build/diff-check PASS；候选额外测试 **287/287 PASS**。0 我方 prompt/模型执行 RPC、0 凭据读取、0 直开真实 SQLite、0 bridge 写真实 ~/.zcode、0 session close、0 DSH 产品编辑、0 push。官方 GUI 仅 ps，全部前后清单一致；自有进程组 remaining=[]；共享 usage 增长不冒充我方请求计量。
+- 探针早期不合法 messageLimit、事件入参、遗漏握手/错误协议版本的失败均保存并在 README 如实解释，不计作有效冷订阅观测。未派发子 agent；既有用户持久 web viewer 未动。分块 Conventional Commits 见本轮 Git log（探针/隔离候选证据、handoff 升级说明）。
+
 - bridge Node **277/277 PASS**；新 targeted **59/59**（既有 launcher43+新16）。DSH 集成 **176/176 PASS，19 files**。native **1373/1373 PASS，60 files**（DSH 未编辑）；build PASS；touched lint/diff-check PASS。log 在本证据目录。
 - auth/core 首次 LIVE/真实 idle gate/三重窗/GUI并存 PASS；真实 active gate、GUI实际呈现与用户目录对照、修正后 viewer/final head LIVE **NOT_RUN/待 main**；真实模型写、session close、CAS/full-S06/跨侧 stop、真实撤销/损坏、Keychain item 操作均禁止/未执行。
 - 分块 Conventional Commits：`601c44f` host/gate/tests；`22d03a2` client projection/UI tests；harness/docs/evidence（其 hash 见 Git log）。没有 push、独立评审、acceptance 或任务权威修改。审计证据由 main 打包；本实现者没有另造审计 ZIP。
