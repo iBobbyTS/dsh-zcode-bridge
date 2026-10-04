@@ -99,8 +99,14 @@ export function ZCodeSessionPanel({sources,t=fallback}){
   </div>;
 }
 
+// One acknowledgement per session per DSH web view. A page reload is a new DSH session and must
+// ask again; the host gate stays fail-closed and never derives idleness from this local state.
+const sharedWriteConfirmations=new Set();
 function SharedTaskPanel({selected,sources}){
+  const key=JSON.stringify(selected.address);
   const [gate,setGate]=useState({decision:'unknown',allowed:false,reason:'shared-task-signal-unavailable-or-stale'}),[draft,setDraft]=useState('');
+  const [acknowledged,setAcknowledged]=useState(()=>sharedWriteConfirmations.has(key)),[promptOpen,setPromptOpen]=useState(()=>!sharedWriteConfirmations.has(key));
+  useEffect(()=>{const known=sharedWriteConfirmations.has(key);setAcknowledged(known);setPromptOpen(!known);},[key]);
   useEffect(()=>{
     let live=true,timer,abort;
     const refresh=async()=>{
@@ -111,14 +117,27 @@ function SharedTaskPanel({selected,sources}){
     };
     void refresh();return ()=>{live=false;clearTimeout(timer);abort?.abort();};
   },[selected.address,sources]);
+  const blindSpot=gate.decision==='unverifiable';
+  const needsConfirmation=blindSpot&&!acknowledged;
+  // Confirmation only promotes the blind-spot state; a live/unknown signal still blocks.
+  const writable=gate.allowed||(blindSpot&&acknowledged);
+  const confirm=()=>{sharedWriteConfirmations.add(key);setAcknowledged(true);setPromptOpen(false);};
   return <section aria-label="ZCode read-only session" style={{padding:16}}>
     <h3>{selected.row.title}</h3><p>{selected.address.workspace}</p>
     <p>Official shared session metadata · read-only open · history activation and model requests disabled.</p>
     <p role="status" data-testid="zcode-shared-write-gate">{gate.decision} · {gate.reason}</p>
+    {gate.blindSpot&&<p role="note" data-testid="zcode-shared-write-blindspot">对侧实时运行无法完全判定（长工具等待期检测盲区）</p>}
     {gate.warning&&<p role="alert">This session is bound to an automation and may run in the background.</p>}
-    <label>Draft<textarea aria-label="Shared session draft" value={draft} disabled={!gate.allowed} onChange={e=>setDraft(e.target.value)}/></label>
+    {needsConfirmation&&promptOpen&&<div role="dialog" aria-label="Confirm shared write">
+      <p>对侧实时运行无法完全判定（长工具等待期检测盲区）。确认后，本 DSH 会话内对该会话的后续写入按 idle 处理；这不证明官方侧已空闲，也不改变官方会话状态。</p>
+      <p>Cross-Host live execution cannot be fully determined (long tool-wait detection blind spot). Confirming once enables drafting for this session in this DSH view; it does not prove the official side is idle.</p>
+      <button type="button" onClick={confirm}>Confirm blind spot for this session</button>
+      <button type="button" onClick={()=>setPromptOpen(false)}>Keep blocked</button>
+    </div>}
+    {needsConfirmation&&!promptOpen&&<button type="button" onClick={()=>setPromptOpen(true)}>Confirm blind spot for this session</button>}
+    <label>Draft<textarea aria-label="Shared session draft" value={draft} disabled={!writable} onChange={e=>setDraft(e.target.value)}/></label>
     <button disabled title="S03: zero model requests">Send</button>
-    <p>{gate.allowed?'Task is confirmed idle. S03 model execution remains disabled.':'Writing is blocked. The view remains open and the draft is retained.'}</p>
+    <p>{writable?'Task is treated as idle in this DSH view after confirmation. S03 model execution remains disabled.':needsConfirmation?'Cross-Host liveness is unverifiable. Confirm the blind spot once to enable drafting; S03 model execution remains disabled.':'Writing is blocked. The view remains open and the draft is retained.'}</p>
     <button onClick={()=>void sources.disconnect()}>Disconnect view</button>
   </section>;
 }
