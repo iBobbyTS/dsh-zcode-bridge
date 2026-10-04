@@ -1,0 +1,25 @@
+{
+  "provenance": {
+    "kind": "injected-from-official-schema",
+    "injected": [
+      "unknown status kind",
+      "unknown catalog kind/action errors"
+    ]
+  },
+  "mcpList": {
+    "statuses": {
+      "future-mcp": {
+        "status": "future_state",
+        "transport": "stdio",
+        "toolCount": 0,
+        "updatedAt": "2026-01-01T00:00:00.000Z"
+      }
+    }
+  },
+  "readError": {
+    "code": "catalog-read-unknown"
+  },
+  "operationError": {
+    "code": "catalog-operation-unknown"
+  }
+}

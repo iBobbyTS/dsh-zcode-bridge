@@ -1,0 +1,62 @@
+{
+  "provenance": {
+    "kind": "injected-from-official-schema",
+    "injected": [
+      "mcp statuses",
+      "marketplace refusal diagnostics"
+    ],
+    "note": "no live MCP was configured during capture"
+  },
+  "mcpList": {
+    "statuses": {
+      "account-gated": {
+        "status": "failed",
+        "transport": "stdio",
+        "toolCount": 0,
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "failureKind": "not_authenticated",
+        "error": "official runtime reports no authentication"
+      },
+      "plan-gated": {
+        "status": "failed",
+        "transport": "http",
+        "toolCount": 0,
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "failureKind": "coding_plan_required"
+      },
+      "oauth-pending": {
+        "status": "connecting",
+        "transport": "http",
+        "toolCount": 0,
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "authorization": {
+          "type": "oauth_authorization_code",
+          "authorizationUrl": "https://example.invalid/oauth",
+          "startedAt": "2026-01-01T00:00:00.000Z"
+        }
+      }
+    }
+  },
+  "denial": {
+    "installedPlugins": [],
+    "dependencyClosure": [],
+    "diagnostics": [
+      {
+        "code": "plugin_marketplace_unavailable",
+        "message": "Official marketplace requires an authenticated account",
+        "severity": "error",
+        "pluginId": "demo@zcode-plugins-official"
+      }
+    ]
+  },
+  "admission": {
+    "reads": {
+      "allowed": true,
+      "reason": null
+    },
+    "writes": {
+      "allowed": false,
+      "reason": "management-unverified"
+    }
+  }
+}
