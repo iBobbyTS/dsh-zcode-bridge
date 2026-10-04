@@ -7,11 +7,12 @@ import { inspectInstallation, runtimeEnv, BridgeError } from './installation.mjs
 import { V4Conversation, INPUT_COMMANDS, MANAGEMENT_COMMANDS, HISTORY_COMMANDS, WORK_COMMANDS } from './conversation.mjs';
 import { CatalogClient } from './catalog.mjs';
 import { InsightsClient } from './insights.mjs';
+import { AutomationClient, OFF_PEAK_ENTITLEMENT_REASON } from './automation.mjs';
 import { ProtocolPeer } from './protocol.mjs';
 export const initialStatus=()=>({state:'unavailable',reason:'not-connected',auth:'unconfirmed',connected:false});
 /** Owns only children it launches; there is no attach or shared-process killer. */
 export class BridgeHost {
-  #conversations=new Set(); #handles=new Map(); #deleted=new Set(); #clientId='bridge-'+randomUUID(); #status=initialStatus(); #peer; #catalog; #insights; #hostTools; #operation; #disposed=false; #stop; #disposePromise;
+  #conversations=new Set(); #handles=new Map(); #deleted=new Set(); #clientId='bridge-'+randomUUID(); #status=initialStatus(); #peer; #catalog; #insights; #automation; #hostTools; #operation; #disposed=false; #stop; #disposePromise;
   constructor({appPath,workspacePath,inspect=inspectInstallation,spawnProcess=spawn,catalogLimit=4096,onStatus=()=>{}}={}){if(!Number.isSafeInteger(catalogLimit)||catalogLimit<50||catalogLimit>65536)throw new BridgeError('catalog-limit-invalid');this.catalogLimit=catalogLimit;this.appPath=appPath;this.workspacePath=workspacePath;this.inspect=inspect;this.spawnProcess=spawnProcess;this.onStatus=onStatus}
   get status(){return structuredClone(this.#status)}
   /** Read official catalog facts only. An address query never activates a Session. */
@@ -130,6 +131,15 @@ export class BridgeHost {
     if(!insights||!this.#status.connected||!this.#peer||this.#peer.closed)throw new BridgeError('insights-unavailable');
     return insights;
   }
+  /** Automation/Off-Peak honesty projection. Management is a Host-consumed reverse carrier with no
+   *  app-server request surface; nothing here is a second task store. */
+  automationState(){
+    const automation=this.#automation;
+    if(automation)return automation.state();
+    const reason=this.#disposed?'disposed':!this.#status.connected?'not-connected':'automation-unavailable';
+    const auth=this.#status.auth??'unconfirmed';
+    return {management:{available:false,reason,carriers:[]},offPeak:{available:false,reason,entitlement:{state:'unknown',reason:OFF_PEAK_ENTITLEMENT_REASON},carriers:[]},runFeedback:{available:false,reason,execution:{state:'gated',reason:'model-execution-gated'}},account:{state:'unknown',reason:'official-account-carrier-not-exposed',auth},reverse:{allowed:false,reason,records:[]},admission:{allowed:false,reason}};
+  }
   async #acceptLifecycle(conversation,result){
     // Accepted deletion is an official decision, including a later query of a
     // lost ACK. Fence all owners before cleanup; never resend the command.
@@ -147,7 +157,7 @@ export class BridgeHost {
   }
   async #connect(){
     let peer,stop,terminalReason;
-    this.#hostTools?.dispose();this.#hostTools=undefined;this.#catalog?.dispose();this.#catalog=undefined;this.#insights?.dispose();this.#insights=undefined;
+    this.#hostTools?.dispose();this.#hostTools=undefined;this.#catalog?.dispose();this.#catalog=undefined;this.#insights?.dispose();this.#insights=undefined;this.#automation?.dispose();this.#automation=undefined;
     this.#deleted.clear();this.#handles.clear();this.#status=initialStatus();this.#publish({state:'restricted',reason:'connecting',connected:false,auth:'unconfirmed'});
     try{
       const installation=await this.inspect(this.appPath);
@@ -177,11 +187,12 @@ export class BridgeHost {
       this.#publish({state:'restricted',reason:installation.verified?'official-auth-source-missing':'runtime-unverified',connected:true,auth:'unavailable',authority:'official-cli-default-storage',sharedSessions:'unverified',pid:child.pid,capabilities,sessionCount:list.sessions.length,roundTrip:{method:'session/list',response:'validated',at:new Date().toISOString()},stderrBytes});
       this.#catalog=new CatalogClient(peer,{workspace:{workspacePath,workspaceKey:workspacePath},managementAllowed:installation.verified===true});
       this.#insights=new InsightsClient(peer,{auth:'unavailable'});
+      this.#automation=new AutomationClient(peer,{auth:'unavailable'});
       this.#hostTools=new HostTools(peer,{workspace,catalog:this.#catalog});
       return this.status;
     }catch(e){
       const reason=terminalReason??(e instanceof BridgeError?e.code:'launch-failed');
-      this.#hostTools?.dispose();this.#hostTools=undefined;this.#catalog?.dispose();this.#catalog=undefined;this.#insights?.dispose();this.#insights=undefined;
+      this.#hostTools?.dispose();this.#hostTools=undefined;this.#catalog?.dispose();this.#catalog=undefined;this.#insights?.dispose();this.#insights=undefined;this.#automation?.dispose();this.#automation=undefined;
       peer?.close(reason);await stop?.();
       this.#publish({state:'unavailable',reason:this.#disposed?'disposed':reason,connected:false});
       return this.status;
@@ -189,7 +200,7 @@ export class BridgeHost {
   }
   dispose(){
     if(this.#disposePromise)return this.#disposePromise;
-    this.#disposed=true;this.#hostTools?.dispose();this.#hostTools=undefined;this.#catalog?.dispose();this.#catalog=undefined;this.#insights?.dispose();this.#insights=undefined;this.#peer?.close('disposed');
+    this.#disposed=true;this.#hostTools?.dispose();this.#hostTools=undefined;this.#catalog?.dispose();this.#catalog=undefined;this.#insights?.dispose();this.#insights=undefined;this.#automation?.dispose();this.#automation=undefined;this.#peer?.close('disposed');
     this.#disposePromise=(async()=>{await this.#operation;await this.#stop?.();this.#publish({state:'unavailable',reason:'disposed',connected:false})})();return this.#disposePromise;
   }
 }

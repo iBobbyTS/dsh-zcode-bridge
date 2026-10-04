@@ -31,6 +31,18 @@ export async function handleInsights(host,payload,signal){
     return {ok:true,value:await host.insightsRead(payload.kind,params,{signal})};
   }catch(error){return {ok:false,error:{code:error.code??'insights-unavailable',message:'Official insights operation rejected',details:error.protocolCode===undefined?{}:{protocolCode:error.protocolCode}}}}
 }
+const AUTOMATION_KEYS={state:['operation']};
+/** Bounded automation/off-peak honesty endpoint. There is no management/read request surface: the
+ *  official carriers are Host-consumed reverse methods, so only the honest state is exposed. */
+export async function handleAutomation(host,payload,signal){
+  if(!payload||typeof payload!=='object'||Array.isArray(payload))return {ok:false,error:{code:'invalid-payload',message:'Automation payload must be an object',details:{}}};
+  const allowed=AUTOMATION_KEYS[payload.operation];
+  if(!allowed||Object.keys(payload).some(key=>!allowed.includes(key)))return {ok:false,error:{code:'invalid-payload',message:'Automation operation is not allowed',details:{}}};
+  try{
+    if(signal?.aborted)throw Object.assign(new Error(),{code:'cancelled'});
+    return {ok:true,value:host.automationState()};
+  }catch(error){return {ok:false,error:{code:error.code??'automation-unavailable',message:'Official automation projection rejected',details:{}}}}
+}
 const sourceEndpoint='sessions';
 /** Uses DSH's authenticated carrier and plugin lifecycle; no DSH loop is registered. */
 export function apply(ctx,config={}) {
@@ -74,6 +86,7 @@ export function apply(ctx,config={}) {
       }
       if(endpoint==='catalog')return handleCatalog(host,payload,signal);
       if(endpoint==='insights')return handleInsights(host,payload,signal);
+      if(endpoint==='automation')return handleAutomation(host,payload,signal);
       if(endpoint!=='status'&&endpoint!=='connect')return {ok:false,error:{code:'not-found',message:`Endpoint ${endpoint} not found`,details:{}}};
       if(payload!==null&&payload!==undefined&&!(typeof payload==='object'&&!Array.isArray(payload)&&Object.keys(payload).length===0))return {ok:false,error:{code:'invalid-payload',message:'This endpoint accepts no runtime commands',details:{}}};
       if(signal.aborted)return {ok:false,error:{code:'cancelled',message:'Cancelled',details:{}}};
