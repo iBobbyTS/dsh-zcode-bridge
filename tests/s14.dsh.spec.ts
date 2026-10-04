@@ -147,3 +147,37 @@ it('S14 session usage is read on demand and renders the scoped official aggregat
   await act(async () => {});
   expect(document.querySelector('[data-session-usage="error"]')!.textContent).toContain('runtime-rejected');
 });
+
+it('S14 a late reply from a replaced owner never overwrites the current owner view', async () => {
+  const pending: Array<{ resolve: (value: any) => void; reject: (error: any) => void }> = [];
+  const owner = { sessionUsage: () => new Promise((resolve, reject) => pending.push({ resolve, reject })) };
+  const reopened = { sessionUsage: () => new Promise((resolve, reject) => pending.push({ resolve, reject })) };
+  const { rerender } = render(React.createElement(SessionUsage, { conversation: owner as any }));
+  // The first owner issues a genuine official read that stays in flight.
+  fireEvent.click(screen.getByText('Session usage'));
+  await act(async () => {});
+  expect(document.querySelector('[data-session-usage="pending"]')).toBeTruthy();
+  // Same address is reopened: a new owner replaces the old one and the view resets.
+  rerender(React.createElement(SessionUsage, { conversation: reopened as any }));
+  await act(async () => {});
+  expect(document.querySelector('[data-session-usage="idle"]')).toBeTruthy();
+  fireEvent.click(screen.getByText('Session usage'));
+  await act(async () => {});
+  await act(async () => { pending[1].resolve(usage.emptySessionUsage); });
+  expect(document.querySelector('[data-session-usage="loaded"]')!.textContent).toContain('0 tokens');
+  // The replaced owner's late success must be discarded, not applied to the current view.
+  await act(async () => { pending[0].resolve(usage.nonEmptySessionUsage); });
+  const afterSuccess = document.querySelector('[data-session-usage="loaded"]') as HTMLElement;
+  expect(afterSuccess.textContent).toContain('0 tokens');
+  expect(afterSuccess.textContent).not.toContain('4,200');
+  // A replaced owner's late failure must be discarded too.
+  rerender(React.createElement(SessionUsage, { conversation: owner as any }));
+  await act(async () => {});
+  fireEvent.click(screen.getByText('Session usage'));
+  await act(async () => {});
+  rerender(React.createElement(SessionUsage, { conversation: reopened as any }));
+  await act(async () => {});
+  await act(async () => { pending[2].reject(Object.assign(new Error('late'), { code: 'late-owner-failure' })); });
+  expect(document.querySelector('[data-session-usage="idle"]')).toBeTruthy();
+  expect(screen.queryByText(/late-owner-failure/)).toBeNull();
+});

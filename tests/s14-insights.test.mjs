@@ -165,6 +165,30 @@ test('S14 sessionUsage is scoped to the bound address and validates the official
   } finally { peer.close(); }
 });
 
+test('S14 a sessionUsage reply that lands after its owner was replaced is not delivered', async () => {
+  const input = new PassThrough(), output = new PassThrough(), sent = [];
+  output.on('data', b => sent.push(JSON.parse(b)));
+  const peer = new ProtocolPeer(input, output, { timeoutMs: 100 });
+  const conversation = new V4Conversation(peer, {
+    address: { runtime: 'zcode', authority: 'test-authority', workspace: '/fixture/workspace', sessionId: 'fixture-session' },
+    workspace: { workspacePath: '/fixture/workspace', workspaceKey: '/fixture/workspace' },
+    clientId: 'fixture-client', connectionId: 'fixture-connection', runnable: false, frameTimeoutMs: 500,
+  });
+  const receive = message => input.write(JSON.stringify(message) + '\n');
+  try {
+    const connecting = conversation.connect();
+    input.write(JSON.stringify({ id: sent.at(-1).id, result: success.ack }) + '\n' + JSON.stringify({ method: 'v4/conversation/frame', params: success.initial }) + '\n');
+    await connecting; await tick();
+    const pending = conversation.sessionUsage();
+    const request = sent.at(-1);
+    assert.equal(request.method, 'v4/conversation/usage');
+    // The owner is replaced (release/reopen) while the official read is still in flight.
+    void conversation.cancel();
+    receive({ id: request.id, result: usage.nonEmptySessionUsage });
+    await assert.rejects(pending, { code: 'session-usage-owner-replaced' });
+  } finally { peer.close(); }
+});
+
 test('S14 InsightsStore mirrors official usage/diagnostics per section and never fabricates rows', async () => {
   const rpc = { call: async (_channel, _endpoint, payload) => {
     if (payload.operation === 'state') return { ok: true, value: { account: account.account, gated: account.gated, resourceSample: null, admission: { allowed: true, reason: null } } };

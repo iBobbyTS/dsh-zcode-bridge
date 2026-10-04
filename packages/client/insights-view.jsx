@@ -1,4 +1,4 @@
-import React,{useEffect,useState,useSyncExternalStore} from 'react';
+import React,{useEffect,useRef,useState,useSyncExternalStore} from 'react';
 import {USAGE_RANGES} from './insights.mjs';
 
 export const insightsLocales={en:{
@@ -69,12 +69,17 @@ export function ZCodeInsightsPanel({sources,onBack,t=fallback}){
  *  session never issues an extra official query. */
 export function SessionUsage({conversation,t=fallback}){
   const [state,setState]=useState({status:'idle',result:null,error:null});
-  useEffect(()=>{setState({status:'idle',result:null,error:null})},[conversation]);
+  const owner=useRef(conversation),request=useRef(0);
+  useEffect(()=>{owner.current=conversation;request.current++;setState({status:'idle',result:null,error:null})},[conversation]);
   const load=()=>{
+    const requestedOwner=conversation,requestId=++request.current;
     setState({status:'pending',result:null,error:null});
+    // A late reply from a previous owner (reopened address) or a superseded retry is discarded: only the
+    // owner/request captured at load time may settle state, so an old owner never overwrites the view.
+    const settle=next=>{if(owner.current!==requestedOwner||request.current!==requestId)return;setState(next)};
     conversation.sessionUsage().then(
-      result=>setState({status:'loaded',result,error:null}),
-      error=>setState({status:'error',result:null,error:{code:error?.code??'session-usage-unavailable',message:error?.message}}),
+      result=>settle({status:'loaded',result,error:null}),
+      error=>settle({status:'error',result:null,error:{code:error?.code??'session-usage-unavailable',message:error?.message}}),
     );
   };
   if(state.status==='idle')return <button type="button" data-session-usage="idle" onClick={load}>{t('sessionUsage')}</button>;

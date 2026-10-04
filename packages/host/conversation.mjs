@@ -379,9 +379,13 @@ export class V4Conversation {
   async sessionUsage({signal}={}){
     const admission=this.workAdmission;
     if(!admission.allowed)throw new BridgeError(admission.reason);
+    const generation=this.#generation;
     const parsed=zcodeTaskTokenUsageParamsSchema.safeParse({sessionId:this.address.sessionId});
     if(!parsed.success)throw new BridgeError('session-usage-params-invalid');
     const result=zcodeTaskTokenUsageResultSchema.safeParse(await this.peer.request('v4/conversation/usage',parsed.data,{signal}));
+    // Owner re-checked after the await: a reply that lands after this owner was cancelled/replaced is
+    // never delivered to the new owner (same guard shape as workflowRead's owner-replaced fence).
+    if(this.#closed||generation!==this.#generation||!this.workAdmission.allowed)throw new BridgeError('session-usage-owner-replaced');
     if(!result.success)throw new BridgeError('session-usage-result-invalid');
     return result.data;
   }
