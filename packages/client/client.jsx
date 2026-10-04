@@ -16,11 +16,18 @@ import {AutomationStore} from './automation.mjs';
 export {ZCodeAutomationPanel} from './automation-view.jsx';
 export {AutomationStore} from './automation.mjs';
 import { installRuntimeSessions } from './sources.mjs';
+import {RemoteStore} from './remote.mjs';
+import {ZCodeRemotePanel,remoteLocales} from './remote-view.jsx';
+export {RemoteStore} from './remote.mjs';
+export {ZCodeRemotePanel} from './remote-view.jsx';
 export { ZCodeConversationView, ConversationController } from './conversation-view.jsx';
 export const inject=['slots','locale','connection'];
 const zh={title:'ZCode',description:'官方安装与连接状态'},en={title:'ZCode',description:'Official installation and connection status'};
 /** A bundle-owned configuration page in the existing Plugins slot. */
 export function apply(ctx){
+  const remote=new RemoteStore(ctx.connection.rpc,{connectionGeneration:ctx.connection.generation});
+  ctx.effect(()=>()=>remote.dispose(),'zcode-bridge: remote projection');
+  ctx.effect(()=>ctx.locale.register('zcodeRemote',remoteLocales),'zcode-bridge: remote locale');
   const catalog=new CatalogStore(ctx.connection.rpc,{connectionGeneration:ctx.connection.generation});
   ctx.effect(()=>()=>catalog.dispose(),'zcode-bridge: official catalog');
   ctx.effect(()=>ctx.locale.register('zcodeCatalog',catalogLocales),'zcode-bridge: catalog locale');
@@ -33,8 +40,10 @@ export function apply(ctx){
   ctx.effect(()=>installRuntimeSessions(ctx),'zcode-bridge: native source injection');
   ctx.inject(['runtimeSessions','layout'],scope=>{
     scope.effect(()=>scope.locale.register('zcodeDirectory',directoryLocales),'zcode-bridge: directory locale');
-    scope.slots.inject('sidebar.workspaces.runtimeDirectory',()=>scope.slots.register({name:'sidebar.workspaces.runtimeDirectory',id:'zcode-directory',locale:'zcodeDirectory',inject:()=>({sources:scope.runtimeSessions,onOpen:()=>scope.layout.selectPanel('zcode-session'),onOpenCatalog:()=>scope.layout.selectPanel('zcode-catalog'),onOpenInsights:()=>scope.layout.selectPanel('zcode-insights'),onOpenAutomation:()=>scope.layout.selectPanel('zcode-automation')})},ZCodeDirectory));
+    scope.slots.inject('sidebar.workspaces.runtimeDirectory',()=>scope.slots.register({name:'sidebar.workspaces.runtimeDirectory',id:'zcode-directory',locale:'zcodeDirectory',inject:()=>({sources:scope.runtimeSessions,onOpen:()=>scope.layout.selectPanel('zcode-session'),onOpenCatalog:()=>scope.layout.selectPanel('zcode-catalog'),onOpenInsights:()=>scope.layout.selectPanel('zcode-insights'),onOpenAutomation:()=>scope.layout.selectPanel('zcode-automation'),onOpenRemote:()=>scope.layout.selectPanel('zcode-remote')})},ZCodeDirectory));
     scope.slots.inject('main',()=>scope.slots.register({name:'main',key:'zcode-session',id:'zcode-session',locale:'zcodeDirectory',inject:()=>({sources:scope.runtimeSessions})},ZCodeSessionPanel));
+    // Remote status reuses the existing main/sidebar seam and never creates a remote executor.
+    scope.slots.inject('main',()=>scope.slots.register({name:'main',key:'zcode-remote',id:'zcode-remote',locale:'zcodeRemote',inject:()=>({sources:remote,onBack:()=>scope.layout.selectPanel('zcode-session')})},ZCodeRemotePanel));
     // The official catalog lives in its own main panel: no second catalog, no status-card duplication.
     scope.slots.inject('main',()=>scope.slots.register({name:'main',key:'zcode-catalog',id:'zcode-catalog',locale:'zcodeCatalog',inject:()=>({sources:catalog,onBack:()=>scope.layout.selectPanel('zcode-session')})},ZCodeCatalogPanel));
     // Account/usage/diagnostics panel; account state is UNKNOWN when no official carrier exists.
