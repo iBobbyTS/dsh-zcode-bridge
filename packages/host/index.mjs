@@ -16,6 +16,21 @@ export async function handleCatalog(host,payload,signal){
     return {ok:true,value:await host.catalogOperate(payload.action,params,{signal,operationId:payload.operationId})};
   }catch(error){return {ok:false,error:{code:error.code??'catalog-unavailable',message:'Official catalog operation rejected',details:error.protocolCode===undefined?{}:{protocolCode:error.protocolCode}}}}
 }
+const INSIGHTS_KEYS={read:['operation','kind','params'],state:['operation']};
+/** Bounded account/usage/diagnostics endpoint. Caller payload cannot carry workspace or secret material. */
+export async function handleInsights(host,payload,signal){
+  if(!payload||typeof payload!=='object'||Array.isArray(payload))return {ok:false,error:{code:'invalid-payload',message:'Insights payload must be an object',details:{}}};
+  const allowed=INSIGHTS_KEYS[payload.operation];
+  if(!allowed||Object.keys(payload).some(key=>!allowed.includes(key)))return {ok:false,error:{code:'invalid-payload',message:'Insights operation is not allowed',details:{}}};
+  try{
+    if(signal?.aborted)throw Object.assign(new Error(),{code:'cancelled'});
+    if(payload.operation==='state')return {ok:true,value:host.insightsState()};
+    if(typeof payload.kind!=='string'||!payload.kind)throw Object.assign(new Error(),{code:'invalid-payload'});
+    const params=payload.params??{};
+    if(!params||typeof params!=='object'||Array.isArray(params))throw Object.assign(new Error(),{code:'invalid-payload'});
+    return {ok:true,value:await host.insightsRead(payload.kind,params,{signal})};
+  }catch(error){return {ok:false,error:{code:error.code??'insights-unavailable',message:'Official insights operation rejected',details:error.protocolCode===undefined?{}:{protocolCode:error.protocolCode}}}}
+}
 const sourceEndpoint='sessions';
 /** Uses DSH's authenticated carrier and plugin lifecycle; no DSH loop is registered. */
 export function apply(ctx,config={}) {
@@ -38,6 +53,7 @@ export function apply(ctx,config={}) {
             historyQuery:['operation','handle','kind','target','baseRevision','baseLogEpoch'],
             workflowManage:['operation','handle','kind','params'],
             workflowRead:['operation','handle','kind','params'],
+            sessionUsage:['operation','handle'],
             hostRegistration:['operation','handle'],
             subagents:['operation','handle','endedCursor','endedLimit'],
             backgroundOutput:['operation','handle','workId'],
@@ -57,6 +73,7 @@ export function apply(ctx,config={}) {
         }catch(error){return {ok:false,error:{code:error.code??'conversation-unavailable',message:'Official conversation operation rejected',details:error.protocolCode===undefined?{}:{protocolCode:error.protocolCode}}}}
       }
       if(endpoint==='catalog')return handleCatalog(host,payload,signal);
+      if(endpoint==='insights')return handleInsights(host,payload,signal);
       if(endpoint!=='status'&&endpoint!=='connect')return {ok:false,error:{code:'not-found',message:`Endpoint ${endpoint} not found`,details:{}}};
       if(payload!==null&&payload!==undefined&&!(typeof payload==='object'&&!Array.isArray(payload)&&Object.keys(payload).length===0))return {ok:false,error:{code:'invalid-payload',message:'This endpoint accepts no runtime commands',details:{}}};
       if(signal.aborted)return {ok:false,error:{code:'cancelled',message:'Cancelled',details:{}}};

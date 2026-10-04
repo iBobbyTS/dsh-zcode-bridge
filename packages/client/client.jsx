@@ -7,6 +7,10 @@ import {ZCodeCatalogPanel,catalogLocales} from './catalog-view.jsx';
 import {CatalogStore} from './catalog.mjs';
 export {ZCodeCatalogPanel} from './catalog-view.jsx';
 export {CatalogStore} from './catalog.mjs';
+import {ZCodeInsightsPanel,insightsLocales} from './insights-view.jsx';
+import {InsightsStore} from './insights.mjs';
+export {ZCodeInsightsPanel,SessionUsage} from './insights-view.jsx';
+export {InsightsStore} from './insights.mjs';
 import { installRuntimeSessions } from './sources.mjs';
 export { ZCodeConversationView, ConversationController } from './conversation-view.jsx';
 export const inject=['slots','locale','connection'];
@@ -16,13 +20,18 @@ export function apply(ctx){
   const catalog=new CatalogStore(ctx.connection.rpc,{connectionGeneration:ctx.connection.generation});
   ctx.effect(()=>()=>catalog.dispose(),'zcode-bridge: official catalog');
   ctx.effect(()=>ctx.locale.register('zcodeCatalog',catalogLocales),'zcode-bridge: catalog locale');
+  const insights=new InsightsStore(ctx.connection.rpc,{connectionGeneration:ctx.connection.generation});
+  ctx.effect(()=>()=>insights.dispose(),'zcode-bridge: official account/usage/diagnostics');
+  ctx.effect(()=>ctx.locale.register('zcodeInsights',insightsLocales),'zcode-bridge: insights locale');
   ctx.effect(()=>installRuntimeSessions(ctx),'zcode-bridge: native source injection');
   ctx.inject(['runtimeSessions','layout'],scope=>{
     scope.effect(()=>scope.locale.register('zcodeDirectory',directoryLocales),'zcode-bridge: directory locale');
-    scope.slots.inject('sidebar.workspaces.runtimeDirectory',()=>scope.slots.register({name:'sidebar.workspaces.runtimeDirectory',id:'zcode-directory',locale:'zcodeDirectory',inject:()=>({sources:scope.runtimeSessions,onOpen:()=>scope.layout.selectPanel('zcode-session'),onOpenCatalog:()=>scope.layout.selectPanel('zcode-catalog')})},ZCodeDirectory));
+    scope.slots.inject('sidebar.workspaces.runtimeDirectory',()=>scope.slots.register({name:'sidebar.workspaces.runtimeDirectory',id:'zcode-directory',locale:'zcodeDirectory',inject:()=>({sources:scope.runtimeSessions,onOpen:()=>scope.layout.selectPanel('zcode-session'),onOpenCatalog:()=>scope.layout.selectPanel('zcode-catalog'),onOpenInsights:()=>scope.layout.selectPanel('zcode-insights')})},ZCodeDirectory));
     scope.slots.inject('main',()=>scope.slots.register({name:'main',key:'zcode-session',id:'zcode-session',locale:'zcodeDirectory',inject:()=>({sources:scope.runtimeSessions})},ZCodeSessionPanel));
     // The official catalog lives in its own main panel: no second catalog, no status-card duplication.
     scope.slots.inject('main',()=>scope.slots.register({name:'main',key:'zcode-catalog',id:'zcode-catalog',locale:'zcodeCatalog',inject:()=>({sources:catalog,onBack:()=>scope.layout.selectPanel('zcode-session')})},ZCodeCatalogPanel));
+    // Account/usage/diagnostics panel; account state is UNKNOWN when no official carrier exists.
+    scope.slots.inject('main',()=>scope.slots.register({name:'main',key:'zcode-insights',id:'zcode-insights',locale:'zcodeInsights',inject:()=>({sources:insights,onBack:()=>scope.layout.selectPanel('zcode-session')})},ZCodeInsightsPanel));
     void scope.runtimeSessions.refresh();
   });
   ctx.effect(()=>ctx.locale.register('zcodeBridge',{zh,en}),'zcode-bridge: locale');

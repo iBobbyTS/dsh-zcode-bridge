@@ -26,6 +26,7 @@ import {
   zcodeWorkspaceReadPresentationParamsSchema, zcodeWorkspacePresentationSchema,
   zcodeSessionSubagentsParamsSchema, zcodeSessionSubagentsResultSchema,
   v4BackgroundBashOutputParamsSchema, backgroundBashOutputResultSchema,
+  zcodeTaskTokenUsageParamsSchema, zcodeTaskTokenUsageResultSchema,
 } from './vendor/zcode/v4.mjs';
 const nonempty=x=>typeof x==='string'&&x.trim().length>0;
 const int=x=>Number.isSafeInteger(x)&&x>=0;
@@ -368,6 +369,18 @@ export class V4Conversation {
     if(!parsed.success)throw new BridgeError('subagents-params-invalid');
     const result=zcodeSessionSubagentsResultSchema.safeParse(await this.peer.request('session/subagents',parsed.data,{signal}));
     if(!result.success)throw new BridgeError('subagents-result-invalid');
+    return result.data;
+  }
+  /** Official session token usage (legacy session/usage, same usage store as v4/conversation/usage).
+   *  Scoped identity: the sessionId is always this conversation's bound address, never a caller value.
+   *  Pure aggregate read; no model admission is consumed and no local counter is kept. */
+  async sessionUsage({signal}={}){
+    const admission=this.workAdmission;
+    if(!admission.allowed)throw new BridgeError(admission.reason);
+    const parsed=zcodeTaskTokenUsageParamsSchema.safeParse({sessionId:this.address.sessionId});
+    if(!parsed.success)throw new BridgeError('session-usage-params-invalid');
+    const result=zcodeTaskTokenUsageResultSchema.safeParse(await this.peer.request('session/usage',parsed.data,{signal}));
+    if(!result.success)throw new BridgeError('session-usage-result-invalid');
     return result.data;
   }
   /** Official bounded background bash output read (v4/conversation/backgroundBashOutput).

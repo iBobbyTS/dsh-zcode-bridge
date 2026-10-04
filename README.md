@@ -83,3 +83,12 @@ See [S11 handoff](docs/handoff/S11-HANDOFF.md) for the source/probe decision tab
 real SDK self-check, injected fixtures and limitations. Reproduce with
 `node scripts/capture-s11.mjs /Applications/ZCode.app` and
 `node scripts/make-s11-fixtures.mjs`.
+
+S14 exposes official account honesty, workspace/session usage and process diagnostics,
+plus the gated auxiliary-generation surfaces. There is no official account/subscription
+carrier: account state is reported UNKNOWN and sign-in is not offered, never guessed.
+Usage/diagnostics read the real official app-server (`usage/stats`, `session/usage`,
+`process/childProcesses`); model-executing generate/cancel/connectivity carriers are
+presented gated and never invoked. See [S14 handoff](docs/handoff/S14-HANDOFF.md).
+Reproduce with `node scripts/capture-s14.mjs /Applications/ZCode.app` and
+`node scripts/make-s14-fixtures.mjs`.
