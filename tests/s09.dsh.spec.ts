@@ -14,9 +14,10 @@ const unknown = read('unknown.json');
 const progress = read('progress.json');
 const readAdmission = { reads: { allowed: true, reason: null }, writes: { allowed: true, reason: null } };
 
-type Options = { admission?: any; auth?: string; mcp?: any; installResult?: any; held?: boolean; readErrorKind?: string };
+type Options = { admission?: any; auth?: string; mcp?: any; installResult?: any; held?: boolean; readErrorKind?: string; cancelRefused?: boolean };
 function harness(options: Options = {}) {
   const calls: any[] = [];
+  const liveOperationIds = new Set<string>();
   let release: (() => void) | undefined;
   const resolveOperate = (payload: any) => {
     if (payload.action === 'setEnabled') return operations.setDisabled;
@@ -36,8 +37,17 @@ function harness(options: Options = {}) {
       return { ok: true, value: map[payload.kind] };
     }
     if (payload.operation === 'operate') {
-      if (payload.action === 'cancelOperation') return { ok: true, value: { operationId: payload.params.operationId, cancelled: true } };
-      if (options.held) return new Promise(res => { release = () => res({ ok: true, value: resolveOperate(payload) }) });
+      if (payload.action === 'cancelOperation') {
+        // The official runtime only registers a controller for an in-flight operationId that
+        // reached its params; an unknown id yields cancelled:false.
+        const id = payload.params.operationId;
+        const cancelled = !options.cancelRefused && liveOperationIds.has(id);
+        if (cancelled) liveOperationIds.delete(id);
+        return { ok: true, value: { operationId: id, cancelled } };
+      }
+      if (payload.operationId) liveOperationIds.add(payload.operationId);
+      if (options.held) return new Promise(res => { release = () => { if (payload.operationId) liveOperationIds.delete(payload.operationId); res({ ok: true, value: resolveOperate(payload) }) } });
+      if (payload.operationId) liveOperationIds.delete(payload.operationId);
       return { ok: true, value: resolveOperate(payload) };
     }
     return { ok: false, error: { code: 'unexpected' } };
@@ -64,6 +74,15 @@ it('S09 renders the official MCP, marketplace, plugin and skill projections', as
     expect(document.querySelector('[data-installed-plugin="s09-demo@s09-local"]')).toBeTruthy();
     expect(document.querySelector('[data-reference-plugin="browser-use@zcode-plugins-official"]')).toBeDefined();
     expect(document.querySelector('[data-skill-id]')!.textContent).toContain('control-browser');
+  } finally { store.dispose(); }
+});
+
+it('S09 an available plugin that is already installed is labeled installed, not enabled', async () => {
+  const { store } = await mount();
+  try {
+    const row = document.querySelector('[data-available-plugin="s09-demo@s09-local"]') as HTMLElement;
+    expect(row.textContent).toContain('Installed');
+    expect(row.textContent).not.toContain('Enabled');
   } finally { store.dispose(); }
 });
 
@@ -151,6 +170,24 @@ it('S09 cancelling a pending operation routes plugins/cancelOperation for the ma
     const cancel = h.calls.find(c => c.operation === 'operate' && c.action === 'cancelOperation');
     expect(cancel.params).toEqual({ operationId });
     expect(screen.getByText(/Cancelled/)).toBeDefined();
+  } finally { h.store.dispose(); }
+});
+
+it('S09 a refused official cancel (cancelled:false) keeps the operation pending and cancellable', async () => {
+  const h = await mount({ held: true, cancelRefused: true });
+  try {
+    fireEvent.click(within(document.querySelector('[data-available-plugin]') as HTMLElement).getByText('Install'));
+    await act(async () => {});
+    expect(screen.getByText(/Awaiting official result/)).toBeDefined();
+    fireEvent.click(screen.getByText('Cancel'));
+    await act(async () => {});
+    const cancel = h.calls.find(c => c.operation === 'operate' && c.action === 'cancelOperation');
+    expect(cancel).toBeTruthy();
+    // cancelled:false is authoritative: the operation is still running, so the mirror stays pending
+    // instead of claiming completion, and the cancel affordance remains available.
+    expect(screen.getByText(/Awaiting official result/)).toBeDefined();
+    expect(screen.queryByText(/Cancelled/)).toBeNull();
+    expect(screen.getByText('Cancel')).toBeDefined();
   } finally { h.store.dispose(); }
 });
 

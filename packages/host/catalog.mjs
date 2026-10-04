@@ -126,19 +126,29 @@ export class CatalogClient {
       const active = this.#operations.get(id);
       if (active && !TERMINAL_OPERATION.has(active.state)) throw new BridgeError('catalog-operation-active');
     }
+    // The official server only registers the operation's AbortController (and therefore routes
+    // plugins/cancelOperation and plugins/operationProgress by id) when request.params.operationId
+    // is present. Carriers whose params schema accepts operationId are marked true and get the
+    // caller's id merged into the official params; nothing is invented for the other carriers.
+    const officialParams = carrier[4] === true && id !== undefined && parsed.data.operationId === undefined
+      ? { ...parsed.data, operationId: id }
+      : parsed.data;
     const record = { operation, operationId: id ?? null, state: 'pending', startedAt: new Date().toISOString(), progress: [], result: undefined, error: undefined };
     if (record.operationId) this.#remember(record);
     this.#publish();
     const abort = () => { void this.#cancel(record) };
     signal?.addEventListener('abort', abort, { once: true });
     try {
-      const raw = await this.#peer.request(carrier[0], parsed.data, { signal });
+      const raw = await this.#peer.request(carrier[0], officialParams, { signal });
       if (this.#closed) throw Object.assign(new BridgeError('catalog-closed'), { sent: true });
       const validated = carrier[2].safeParse(raw);
       if (!validated.success) throw new BridgeError('catalog-result-invalid');
       record.state = 'completed'; record.result = structuredClone(validated.data); record.finishedAt = new Date().toISOString();
       this.#publish(); return validated.data;
     } catch (error) {
+      // A resolution that arrives after dispose must not overwrite the bounded retained record
+      // (dispose already marked it cancelled with catalog-closed for diagnostics). Drop it.
+      if (this.#closed) throw error;
       if (error?.code === 'cancelled') { record.state = 'cancelled'; record.error = { code: 'cancelled' } }
       else { record.state = 'failed'; record.error = { code: error?.code ?? 'catalog-operation-failed', protocolCode: error?.protocolCode } }
       record.finishedAt = new Date().toISOString(); this.#publish(); throw error;

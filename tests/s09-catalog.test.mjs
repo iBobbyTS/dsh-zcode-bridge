@@ -73,12 +73,25 @@ test('S09 CatalogClient operation records the official result and rejects a dupl
   try {
     const pending = client.operate('install', { pluginName: 's09-demo', marketplace: 's09-local', scope: 'workspace' }, { operationId: 'op-install' });
     assert.equal(client.pendingOperations.length, 1);
+    // The official runtime only registers the operation signal when request.params.operationId is
+    // present, so the caller's UI id must reach the official install params unchanged.
+    assert.equal(peer.requests.find(r => r.method === 'plugins/install').params.operationId, 'op-install');
     await assert.rejects(client.operate('install', { pluginName: 's09-demo', marketplace: 's09-local' }, { operationId: 'op-install' }), { code: 'catalog-operation-active' });
     held.resolve(operations.install);
     assert.deepEqual(await pending, operations.install);
     const record = client.operations.find(r => r.operationId === 'op-install');
     assert.equal(record.state, 'completed');
     assert.deepEqual(record.result.installedPlugins[0].id, operations.install.installedPlugins[0].id);
+  } finally { client.dispose(); }
+});
+
+test('S09 CatalogClient only merges operationId into carriers whose official params schema accepts it', async () => {
+  const peer = peerStub({ 'plugins/marketplace/remove': () => Promise.resolve({ marketplaces: [] }) });
+  const client = new CatalogClient(peer, { workspace, managementAllowed: true });
+  try {
+    // marketplaceRemove's schema has no operationId: the caller id must not be fabricated onto the official wire.
+    await client.operate('marketplaceRemove', { marketplace: 's09-local' }, { operationId: 'op-remove' });
+    assert.deepEqual(peer.requests.find(r => r.method === 'plugins/marketplace/remove').params, { workspace, marketplace: 's09-local' });
   } finally { client.dispose(); }
 });
 
@@ -125,6 +138,10 @@ test('S09 CatalogClient dispose cancels pending operations and fails new reads c
   await assert.rejects(client.read('pluginsList'), { code: 'closed' });
   held.resolve(operations.install);
   await pending.catch(() => {});
+  // The late resolution after dispose is dropped; it must not flip the retained fact to failed.
+  const retained = client.operations.find(r => r.operationId === 'op-dispose');
+  assert.equal(retained.state, 'cancelled');
+  assert.equal(retained.error.code, 'catalog-closed');
 });
 
 function rpcStub(handler) { return { call: async (_channel, _endpoint, payload, signal) => handler(payload, signal) } }
@@ -190,6 +207,69 @@ test('S09 CatalogStore marks official RPC failures failed and cancel routes thro
     assert.equal(store.getSnapshot().operations.find(r => r.operationId === 'op-fail').state, 'failed');
     assert.deepEqual(await store.cancel('op-fail'), { operationId: 'op-fail', cancelled: true });
     assert.equal(store.getSnapshot().operations.find(r => r.operationId === 'op-fail').state, 'cancelled');
+  } finally { store.dispose(); }
+});
+
+test('S09 CatalogStore keeps a pending operation pending when the official cancel reports cancelled:false', async () => {
+  const held = deferred();
+  const rpc = rpcStub(payload => {
+    if (payload.operation === 'operate' && payload.action === 'install') return held.promise;
+    if (payload.operation === 'operate' && payload.action === 'cancelOperation') return { ok: true, value: { operationId: payload.params.operationId, cancelled: false } };
+    if (payload.operation === 'state') return { ok: true, value: stateValue };
+    if (payload.operation === 'read') return { ok: true, value: {} };
+    return { ok: false, error: { code: 'unexpected' } };
+  });
+  const store = new CatalogStore(rpc);
+  try {
+    const pending = store.operate('install', { pluginName: 'a', marketplace: 'm' }, 'op-refused');
+    assert.equal(store.getSnapshot().operations.find(r => r.operationId === 'op-refused').state, 'pending');
+    // cancelled:false is authoritative: the official runtime has no controller for this id and the
+    // operation is still running. The mirror must not fake completion.
+    assert.deepEqual(await store.cancel('op-refused'), { operationId: 'op-refused', cancelled: false });
+    assert.equal(store.getSnapshot().operations.find(r => r.operationId === 'op-refused').state, 'pending');
+    assert.equal(store.getSnapshot().operations.find(r => r.operationId === 'op-refused').error, null);
+    held.resolve({ ok: true, value: operations.install });
+    await pending;
+    assert.equal(store.getSnapshot().operations.find(r => r.operationId === 'op-refused').state, 'completed');
+  } finally { store.dispose(); }
+});
+
+test('S09 CatalogStore refresh does not eager-read the unrendered pluginsList carrier', async () => {
+  const kinds = [];
+  const rpc = rpcStub(payload => {
+    if (payload.operation === 'read') { kinds.push(payload.kind); return { ok: true, value: {} } }
+    if (payload.operation === 'state') return { ok: true, value: stateValue };
+    return { ok: false, error: { code: 'unexpected' } };
+  });
+  const store = new CatalogStore(rpc);
+  try {
+    await store.refresh();
+    assert.equal(kinds.includes('pluginsList'), false);
+    assert.equal(kinds.includes('mcpList'), true);
+  } finally { store.dispose(); }
+});
+
+test('S09 CatalogStore connection reset wins over an in-flight refresh', async () => {
+  let fire; const generation = { subscribe(listener) { fire = listener; return () => {} } };
+  const held = deferred();
+  const rpc = rpcStub(payload => {
+    if (payload.operation === 'read') return held.promise;
+    if (payload.operation === 'state') return { ok: true, value: stateValue };
+    return { ok: false, error: { code: 'unexpected' } };
+  });
+  const store = new CatalogStore(rpc, { connectionGeneration: generation });
+  try {
+    const refreshing = store.refresh();
+    fire();
+    assert.equal(store.getSnapshot().loaded, false);
+    assert.equal(store.getSnapshot().admission.reads.reason, 'host-unreachable');
+    held.resolve({ ok: true, value: {} });
+    await refreshing.catch(() => {});
+    // The stale refresh must not resurrect sections or a host-reachable admission after reset.
+    assert.equal(store.getSnapshot().loaded, false);
+    assert.equal(store.getSnapshot().sections.mcp, null);
+    assert.equal(store.getSnapshot().admission.reads.reason, 'host-unreachable');
+    assert.equal(store.getSnapshot().busy, false);
   } finally { store.dispose(); }
 });
 

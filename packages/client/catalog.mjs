@@ -5,10 +5,12 @@ const emptyAdmission=reason=>({reads:{allowed:false,reason},writes:{allowed:fals
 const err=code=>Object.assign(new Error(code),{code});
 const errorOf=error=>({code:error?.code??'catalog-unavailable',message:error?.message??String(error),protocolCode:error?.details?.protocolCode});
 
-function initial(){return Object.freeze({loaded:false,busy:false,error:null,admission:emptyAdmission('not-connected'),auth:'unconfirmed',installationVerified:false,workspace:null,sections:{mcp:null,plugins:null,overview:null,reference:null,skills:null},describe:null,validate:null,operations:[],hostOperations:[]})}
+function initial(){return Object.freeze({loaded:false,busy:false,error:null,admission:emptyAdmission('not-connected'),auth:'unconfirmed',installationVerified:false,workspace:null,sections:{mcp:null,overview:null,reference:null,skills:null},describe:null,validate:null,operations:[],hostOperations:[]})}
 
-/** Directory read kinds exposed to the UI. No catalog is persisted; every refresh reads official. */
-export const CATALOG_READ_KINDS=Object.freeze({mcp:'mcpList',plugins:'pluginsList',overview:'pluginsOverview',reference:'pluginReference',skills:'skillReference'});
+/** Directory read kinds the panel renders. No catalog is persisted; every refresh reads official.
+ *  `pluginsList` is not eager-read here because the panel has no render point for it; the host
+ *  carrier remains exposed for a future bounded consumer that actually displays source:missing. */
+export const CATALOG_READ_KINDS=Object.freeze({mcp:'mcpList',overview:'pluginsOverview',reference:'pluginReference',skills:'skillReference'});
 
 /**
  * Read-only official outcome projection for one management call. Diagnostics with severity "error"
@@ -23,7 +25,7 @@ export function operationOutcome(result){
 
 /** Display-only mirror of official directory facts. It is never authoritative on its own. */
 export class CatalogStore {
-  #rpc;#listeners=new Set();#snapshot=initial();#closed=false;#refreshPromise;#reads=new Set();
+  #rpc;#listeners=new Set();#snapshot=initial();#closed=false;#generation=0;#refreshPromise;#reads=new Set();
   constructor(rpc,{connectionGeneration}={}){
     if(!rpc||typeof rpc.call!=='function')throw err('catalog-rpc-required');
     this.#rpc=rpc;
@@ -32,7 +34,7 @@ export class CatalogStore {
   getSnapshot=()=>this.#snapshot;
   subscribe=listener=>{if(this.#closed)return ()=>{};this.#listeners.add(listener);return ()=>this.#listeners.delete(listener)};
   #publish(next){this.#snapshot=Object.freeze({...this.#snapshot,...next});notifySubscribers(this.#listeners,'[zcode-bridge] catalog')}
-  #reset(){this.#refreshPromise=undefined;for(const controller of this.#reads)controller.abort();this.#reads.clear();this.#publish({...initial(),admission:emptyAdmission('host-unreachable')})}
+  #reset(){this.#generation++;this.#refreshPromise=undefined;for(const controller of this.#reads)controller.abort();this.#reads.clear();this.#publish({...initial(),admission:emptyAdmission('host-unreachable')})}
   async #call(payload,signal){
     if(this.#closed)throw err('disposed');
     const response=await this.#rpc.call('/zcode-bridge','catalog',payload,signal);
@@ -52,6 +54,7 @@ export class CatalogStore {
   async refresh(){
     if(this.#closed)return Promise.reject(err('disposed'));
     if(this.#refreshPromise)return this.#refreshPromise;
+    const generation=this.#generation;
     const operation=(async()=>{
       this.#publish({busy:true,error:null});
       const sections={...this.#snapshot.sections};
@@ -59,9 +62,12 @@ export class CatalogStore {
       for(const [section,kind] of Object.entries(CATALOG_READ_KINDS)){
         try{const value=await this.#read(kind);sections[section]=Object.freeze({value,loadedAt:new Date().toISOString(),error:null})}
         catch(error){sections[section]=Object.freeze({value:null,loadedAt:null,error:errorOf(error)});failures.push(errorOf(error))}
+        if(this.#closed||generation!==this.#generation)return;
       }
       let state=null;
       try{state=await this.state()}catch(error){failures.push(errorOf(error))}
+      // A connection reset owns the snapshot after it fires; a stale refresh must not overwrite it.
+      if(this.#closed||generation!==this.#generation)return;
       this.#publish({busy:false,loaded:true,sections,error:failures.length?failures[0]:null,...(state?{admission:state.admission,auth:state.auth,installationVerified:state.installationVerified===true,workspace:state.workspace,hostOperations:state.operations??[]}:{})});
     })();
     this.#refreshPromise=operation;
@@ -94,7 +100,10 @@ export class CatalogStore {
   async cancel(operationId){
     if(typeof operationId!=='string'||!operationId)throw err('catalog-params-invalid');
     const value=await this.#call({operation:'operate',action:'cancelOperation',params:{operationId}});
-    this.#settle(operationId,{state:value.cancelled===true?'cancelled':'completed',error:value.cancelled===true?{code:'cancelled'}:null});
+    // The official result is authoritative: cancelled:false means the official runtime has no
+    // registered controller for this id, so the operation is still running. Keep it pending and
+    // keep the cancel affordance instead of pretending it completed.
+    if(value.cancelled===true)this.#settle(operationId,{state:'cancelled',error:{code:'cancelled'}});
     return value;
   }
   #settle(operationId,patch){this.#publish({operations:this.#snapshot.operations.map(record=>record.operationId===operationId?Object.freeze({...record,...patch}):record)})}
