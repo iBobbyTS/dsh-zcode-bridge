@@ -34,18 +34,23 @@ const now=1000000,task={taskId:'a',status:'running',updatedAt:now};
 for(const [name,input,decision,reason,allowed] of [
  ['other active',{task,observedAt:now},'active','official-gui-active-turn',false],
  ['our memory wins unavailable DB',{owned:true},'active','own-turn-busy',false],
- ['terminal idle',{task:{...task,status:'completed',updatedAt:1},observedAt:now},'idle','shared-task-confirmed-idle',true],
- ['error terminal',{task:{...task,status:'error'},observedAt:now},'idle','shared-task-confirmed-idle',true],
+ ['terminal unverifiable',{task:{...task,status:'completed',updatedAt:1},observedAt:now},'unverifiable','shared-terminal-task-liveness-unverifiable',false],
+ ['error terminal unverifiable',{task:{...task,status:'error'},observedAt:now},'unverifiable','shared-terminal-task-liveness-unverifiable',false],
+ ['terminal confirmed by operator',{task:{...task,status:'completed',updatedAt:1},observedAt:now,confirmed:true},'idle','shared-terminal-task-operator-confirmed',true],
  ['missing task',{},'unknown','shared-task-signal-unavailable-or-stale',false],
  ['old observation',{task,observedAt:now-6000},'unknown','shared-task-signal-unavailable-or-stale',false],
  ['old running',{task:{...task,updatedAt:1},observedAt:now},'unknown','shared-running-signal-stale',false],
  ['unconfirmed status',{task:{...task,status:undefined},observedAt:now},'unknown','shared-task-status-unconfirmed',false],
  ['future timestamp',{task:{...task,updatedAt:now+1},observedAt:now},'unknown','shared-task-signal-unavailable-or-stale',false],
 ])test('event write gate: '+name,()=>{const r=decideSharedWrite({...input,now});assert.deepEqual([r.decision,r.reason,r.allowed],[decision,reason,allowed]);assert.equal(r.readOnlyOpen,true);assert.equal(r.kickOtherOwner,false);});
-test('fresh query on each event, idle recovery, automation warning, no write dispatch',async()=>{
+test('fresh query on each event, terminal unverifiable, automation warning, no write dispatch',async()=>{
  let calls=0,status='running';const g=new SharedWriteGate({readTask:async()=>{calls++;return {...task,status,cronAutomationId:'cron'};},clock:()=>now});
- assert.equal((await g.preflight({})).allowed,false);status='completed';const r=await g.preflight({});assert.equal(r.allowed,true);assert.equal(r.warning,'automation-bound-session-may-run-in-background');assert.equal(calls,2);
+ assert.equal((await g.preflight({})).allowed,false);status='completed';const r=await g.preflight({});assert.deepEqual([r.decision,r.allowed,r.requiresConfirmation],['unverifiable',false,true]);assert.equal(r.warning,'automation-bound-session-may-run-in-background');assert.equal(calls,2);
  const unknown=await new SharedWriteGate({readTask:async()=>{throw Error();}}).preflight({});assert.equal(unknown.allowed,false);
+});
+test('operator confirmation is the only path from a terminal task to idle',async()=>{
+ const confirmed=new SharedWriteGate({readTask:async()=>({...task,status:'completed',updatedAt:1}),isConfirmed:()=>true,clock:()=>now,readActivity:async()=>{throw Error('must not sample')}});
+ const r=await confirmed.preflight({});assert.deepEqual([r.decision,r.allowed,r.reason],['idle',true,'shared-terminal-task-operator-confirmed']);
 });
 const usage={totalTokens:2,inputTokens:1,outputTokens:1,totalSessions:1,totalTurns:1,toolCallCount:0,requestCount:1};
 const sample=()=>({tasks:[task],usage:{...usage},rpc:['zcode-task.listTasks']});
