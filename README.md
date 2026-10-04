@@ -72,3 +72,14 @@ compaction, following the current projection admission. Model operations remain
 auth-gated; no successful live history/file-rewind oracle is claimed from empty
 drafts. See [S08 handoff](docs/handoff/S08-HANDOFF.md). Safe real probing and fixture
 replay: `node scripts/capture-s08.mjs`, `node scripts/make-s08-fixtures.mjs`.
+
+S11 adds the official browser reverse callback responder and a Browser / Computer
+Use observation panel in the existing session area. Missing browser executors
+return empty discovery or `backend_unavailable`; Computer Use helper connections
+remain unverified. Enabled plugins never imply executable host capabilities.
+The panel shows scoped replies, errors, uncertain timeouts, permissions and
+projected screenshots without launching Desktop or a substitute executor.
+See [S11 handoff](docs/handoff/S11-HANDOFF.md) for the source/probe decision table,
+real SDK self-check, injected fixtures and limitations. Reproduce with
+`node scripts/capture-s11.mjs /Applications/ZCode.app` and
+`node scripts/make-s11-fixtures.mjs`.
