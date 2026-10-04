@@ -204,6 +204,70 @@ test('CA17-2: a conversation error published as a bare string code is observed b
   await rm(workspacePath, { recursive: true, force: true });
 });
 
+test('CB17-1: real V4 terminal decode/projection faults are core while recoverable assembly faults stay neutral', () => {
+  const core = [
+    'proto.invalidWire', 'proto.unroutableFrame', 'proto.invalidSeq', 'proto.snapshotIdentityMismatch',
+    'proto.revisionRegressed', 'proto.missingAppliedBase', 'proto.sequenceGap', 'proto.initialDeliveryMismatch',
+    'proto.frameAssemblyInvalidPayload', 'proto.frameAssemblyMetadataMismatch', 'proto.frameAssemblyOrdinalConflict',
+    'proto.frameAssemblyFragmentConflict', 'proto.frameAssemblyLengthMismatch', 'proto.frameAssemblyChecksumMismatch',
+    'proto.frameAssemblyInvalidUtf8', 'proto.frameAssemblyInvalidJson', 'proto.frameAssemblyInvalidBase64',
+    'proto.frameAssemblyTooLarge', 'proto.frameEnvelopeTooLarge', 'proto.frameFragmentCountExceeded',
+  ];
+  for (const code of core) {
+    const classified = classifyFailure(code);
+    assert.equal(classified.level, 'core', `${code} is a core terminal fault`);
+    assert.equal(classified.incompatible, true, `${code} asserts incompatibility`);
+    assert.equal(classified.stopsNewSideEffects, true, `${code} stops new side effects`);
+  }
+  // Benign supersede, local staging/resource limits, liveness timeout and unknown prefix peers are
+  // not corruption, so they must not fabricate an incompatibility claim.
+  for (const code of ['proto.frameAssemblySuperseded', 'proto.frameAssemblyConcurrentLimit', 'proto.frameAssemblyBudgetExceeded', 'proto.frameAssemblyTimedOut', 'proto.futureUnknownCode']) {
+    const classified = classifyFailure(code);
+    assert.equal(classified.level, 'neutral', `${code} must stay neutral`);
+    assert.equal(classified.incompatible, false, `${code} must not assert incompatibility`);
+    assert.equal(classified.stopsNewSideEffects, false, `${code} must not stop new side effects`);
+  }
+});
+
+test('CB17-1: a real malformed wire frame escalates the host fail-safe and blocks another session write', async () => {
+  const workspacePath = await mkdtemp(join(tmpdir(), 's16-invalid-wire-'));
+  const store = controlledStore({ count: 2 });
+  const host = new BridgeHost({ workspacePath, inspect: async () => s16Installation, spawnProcess: () => store.child() });
+  const until = async (predicate, timeoutMs = 2000) => {
+    const start = Date.now();
+    for (;;) {
+      if (predicate()) return;
+      if (Date.now() - start > timeoutMs) throw new Error('condition not reached');
+      await new Promise(resolve => setTimeout(resolve, 5));
+    }
+  };
+  try {
+    await host.connect();
+    const sessions = (await host.listSessions({})).sessions.map(session => session.address);
+    await host.openConversation(sessions[0]);
+    const second = await host.openConversation(sessions[1]);
+    assert.equal(host.status.failSafe.level, 'none');
+    const slotA = [...store.slots.values()].find(slot => slot.sessionId === sessions[0].sessionId);
+    assert.ok(slotA, 'the first conversation owns a live subscription slot');
+    // An undecodable frame (wireVersion 99) on the live subscription requests a bounded recovery.
+    store.malformedFrame(slotA);
+    await until(() => store.requests.some(request => request.method === 'v4/conversation/resync'));
+    // The recovery delivery is undecodable too, so the fault is terminal: proto.invalidWire reaches
+    // the host fail-safe, which must grade it core instead of letting writes continue.
+    store.malformedFrame(slotA, { deliveryKind: 'recovery' });
+    await until(() => host.status.failSafe.level === 'core');
+    assert.equal(host.status.failSafe.incompatible, true);
+    assert.equal(host.status.failSafe.stopsNewSideEffects, true);
+    assert.equal(host.status.failSafe.blocksNewSideEffects, true);
+    // The second conversation's handle is still owned; its rename is a new side effect and is refused.
+    await assert.rejects(
+      host.conversationOperation({ handle: second.handle, operation: 'command', command: { type: 'renameSession', payload: { title: 'must-not-apply' } } }),
+      { code: 'runtime-incompatible' },
+    );
+    assert.equal(store.rows.get(sessions[1].sessionId).title, 'Title 1', 'the blocked rename never rewrote the controlled store');
+  } finally { await host.dispose(); await rm(workspacePath, { recursive: true, force: true }) }
+});
+
 test('an unknown version is neutral: no compatibility claim and no new-side-effect stop', async () => {
   const workspacePath = await mkdtemp(join(tmpdir(), 's16-unknown-'));
   const runtime = s16Runtime({ workspacePath });

@@ -27,7 +27,18 @@ export const SAFE_OPERATIONS = Object.freeze(new Set([
   'conversationAttachmentRead', 'attachmentAbort', 'hostRegistration',
 ]));
 
-/** Core decode/authority codes. Their invariant is reason-bearing, so they are listed explicitly. */
+/** Core decode/authority codes. Their invariant is reason-bearing, so they are listed explicitly.
+ *
+ *  The `proto.*` entries are the terminal faults the V4 conversation decoder actually publishes
+ *  (V4Conversation#fault/#fail in packages/host/conversation.mjs plus the TopicWireFrameAssembler
+ *  reasonCodes in packages/host/vendor/zcode/v4.mjs). Only terminal wire/frame-assembly/projection
+ *  corruption is graded core; a fault that is always recoverable, is a local staging/resource
+ *  condition, or merely supersedes an assembly stays neutral on purpose:
+ *    - proto.frameAssemblySuperseded      a strictly newer ordinal replaced an in-flight assembly
+ *    - proto.frameAssemblyConcurrentLimit local concurrent-assembly capacity, not peer corruption
+ *    - proto.frameAssemblyBudgetExceeded  local staged-byte budget, not peer corruption
+ *    - proto.frameAssemblyTimedOut        assembly liveness timeout, not a decode verdict
+ *  None of those assert peer incompatibility, so escalating them would fabricate one (R20). */
 const CORE_CODES = Object.freeze({
   'protocol-invalid': 'core protocol frame could not be decoded',
   'protocol-truncated': 'core protocol frame was truncated',
@@ -35,6 +46,28 @@ const CORE_CODES = Object.freeze({
   'sessions-invalid': 'core session authority projection is incompatible',
   'conversation-result-invalid': 'core conversation envelope is incompatible',
   'conversation-handle-invalid': 'core conversation ownership was lost',
+  // V4 conversation wire/projection faults (terminal through the bounded recovery path).
+  'proto.invalidWire': 'core V4 wire envelope could not be decoded',
+  'proto.unroutableFrame': 'core V4 frame carried no routable conversation envelope',
+  'proto.invalidSeq': 'core V4 frame sequence metadata is invalid',
+  'proto.snapshotIdentityMismatch': 'core V4 snapshot identity does not match the subscribed conversation',
+  'proto.revisionRegressed': 'core V4 projection revision regressed',
+  'proto.missingAppliedBase': 'core V4 delta arrived without a held baseline',
+  'proto.sequenceGap': 'core V4 frame sequence continuity was lost',
+  'proto.initialDeliveryMismatch': 'core V4 initial delivery contract was violated',
+  // Frame-assembly corruption/decoding faults from the vendored assembler.
+  'proto.frameAssemblyInvalidPayload': 'core V4 frame payload could not be decoded',
+  'proto.frameAssemblyMetadataMismatch': 'core V4 assembly metadata does not match its envelope',
+  'proto.frameAssemblyOrdinalConflict': 'core V4 frame ordinal was reused with a different identity',
+  'proto.frameAssemblyFragmentConflict': 'core V4 frame fragment bytes conflict',
+  'proto.frameAssemblyLengthMismatch': 'core V4 assembly length does not match',
+  'proto.frameAssemblyChecksumMismatch': 'core V4 assembly checksum does not match',
+  'proto.frameAssemblyInvalidUtf8': 'core V4 frame payload is not valid UTF-8',
+  'proto.frameAssemblyInvalidJson': 'core V4 frame payload is not valid JSON',
+  'proto.frameAssemblyInvalidBase64': 'core V4 frame fragment is not valid base64',
+  'proto.frameAssemblyTooLarge': 'core V4 logical frame exceeds the accepted assembly bound',
+  'proto.frameEnvelopeTooLarge': 'core V4 wire envelope exceeds the accepted physical bound',
+  'proto.frameFragmentCountExceeded': 'core V4 fragment count exceeds the accepted bound',
 });
 
 /** Optional capability codes. A denial here is isolated to the named capability. */

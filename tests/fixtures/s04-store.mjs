@@ -17,6 +17,13 @@ export function controlledStore({count=1,seed,holdFrames=false,renameFailure=fal
     const send=()=>slot.child.stdout.write(JSON.stringify({method:'v4/conversation/frame',params:wire})+'\n');
     if(holdFrames&&kind==='online')held.push(send);else send();return wire;
   };
+  // A genuine decoder fault: the envelope schema pins wireVersion to the V4 literal, so an
+  // unsupported version cannot be decoded and V4Conversation#fault reports proto.invalidWire.
+  const malformedFrame=(slot,{deliveryKind='online',wireVersion=99}={})=>{
+    const wire=structuredClone(official.initial);wire.wireVersion=wireVersion;wire.deliveryKind=deliveryKind;
+    wire.topic=wire.frame.topic='conversation/'+slot.sessionId;wire.subscriptionId=wire.frame.subscriptionId=slot.id;
+    slot.child.stdout.write(JSON.stringify({method:'v4/conversation/frame',params:wire})+'\n');return wire;
+  };
   function child(){
     const child=new EventEmitter();child.stdin=new PassThrough();child.stdout=new PassThrough();child.stderr=new PassThrough();child.pid=8000+next;
     child.stdin.on('data',data=>{for(const line of data.toString().trim().split('\n')){
@@ -32,7 +39,8 @@ export function controlledStore({count=1,seed,holdFrames=false,renameFailure=fal
         const sessionId=p.topic.slice('conversation/'.length);if(!rows.has(sessionId)){child.stdout.write(JSON.stringify({id:request.id,error:{code:-32004,message:'Session not found'}})+'\n');continue}
         const slot={id:'s04-sub-'+ ++next,child,sessionId,ordinal:0};slots.set(p.connectionId,slot);result={ack:{...official.ack.ack,subscriptionId:slot.id}};
         child.stdout.write(JSON.stringify({id:request.id,result})+'\n');frame(slot,'initial');continue;
-      }else if(request.method==='v4/conversation/unsubscribe'){slots.delete(p.connectionId);result={}}
+      }else if(request.method==='v4/conversation/resync'){const slot=slots.get(p.connectionId);if(!slot){child.stdout.write(JSON.stringify({id:request.id,error:{code:-32004,message:'Subscription not found'}})+'\n');continue}result={ack:{subscriptionId:slot.id,mode:'snapshot',logEpoch:official.ack.ack.logEpoch}}}
+      else if(request.method==='v4/conversation/unsubscribe'){slots.delete(p.connectionId);result={}}
       else if(request.method==='v4/commands/query'){result={results:p.commands.map(key=>({key,result:acks.get(key.commandId)??'unknown'}))}}
       else if(request.method==='v4/command'){
         const row=rows.get(p.sessionId);result={commandId:p.commandId,status:'accepted',revisionAtDecision:row?.revision??0};
@@ -49,5 +57,5 @@ export function controlledStore({count=1,seed,holdFrames=false,renameFailure=fal
     }});
     child.stdin.once('finish',()=>{child.stdout.end();child.stderr.end();child.emit('close',0)});child.kill=()=>{throw Error('fixture must finish by EOF')};return child;
   }
-  return {rows,requests,slots,child,flush:()=>{for(const send of held.splice(0))send()},frame};
+  return {rows,requests,slots,child,flush:()=>{for(const send of held.splice(0))send()},frame,malformedFrame};
 }
