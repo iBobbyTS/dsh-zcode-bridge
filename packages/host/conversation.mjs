@@ -371,7 +371,9 @@ export class V4Conversation {
     if(!result.success)throw new BridgeError('subagents-result-invalid');
     return result.data;
   }
-  /** Official session token usage (legacy session/usage, same usage store as v4/conversation/usage).
+  /** Official session token usage (v4/conversation/usage; the @deprecated legacy session/usage name
+   *  is retired by the official host, official index.ts:3656-3658). Same usage store and handler as
+   *  the legacy name (server.ts v4 usage query case).
    *  Scoped identity: the sessionId is always this conversation's bound address, never a caller value.
    *  Pure aggregate read; no model admission is consumed and no local counter is kept. */
   async sessionUsage({signal}={}){
@@ -379,7 +381,7 @@ export class V4Conversation {
     if(!admission.allowed)throw new BridgeError(admission.reason);
     const parsed=zcodeTaskTokenUsageParamsSchema.safeParse({sessionId:this.address.sessionId});
     if(!parsed.success)throw new BridgeError('session-usage-params-invalid');
-    const result=zcodeTaskTokenUsageResultSchema.safeParse(await this.peer.request('session/usage',parsed.data,{signal}));
+    const result=zcodeTaskTokenUsageResultSchema.safeParse(await this.peer.request('v4/conversation/usage',parsed.data,{signal}));
     if(!result.success)throw new BridgeError('session-usage-result-invalid');
     return result.data;
   }

@@ -12,12 +12,12 @@ const account = read('account.json');
 const unknown = read('unknown.json');
 const admitted = { allowed: true, reason: null };
 
-type Options = { usageResult?: any; usageError?: boolean; diagnosticsResult?: any; account?: any; gated?: any; resourceSample?: any };
+type Options = { usageResult?: any; usageError?: boolean; diagnosticsResult?: any; account?: any; gated?: any; resourceSample?: any; admission?: any };
 function harness(options: Options = {}) {
   const calls: any[] = [];
   const rpc = { call: async (_channel: string, _endpoint: string, payload: any) => {
     calls.push(payload);
-    if (payload.operation === 'state') return { ok: true, value: { account: options.account ?? account.account, gated: options.gated ?? account.gated, resourceSample: options.resourceSample ?? null, admission: admitted } };
+    if (payload.operation === 'state') return { ok: true, value: { account: options.account ?? account.account, gated: 'gated' in options ? options.gated : account.gated, resourceSample: options.resourceSample ?? null, admission: options.admission ?? admitted } };
     if (payload.kind === 'usageStats') return options.usageError ? { ok: false, error: { code: 'insights-result-invalid', message: 'bad' } } : { ok: true, value: options.usageResult ?? usage.emptyUsage };
     return { ok: true, value: options.diagnosticsResult ?? usage.childProcesses };
   } };
@@ -59,6 +59,8 @@ it('S14 non-empty official usage keeps units and the selected range', async () =
     expect(loaded.textContent).toContain('123,456');
     expect(loaded.textContent).toContain('100,000');
     expect(loaded.textContent).toContain('23,456');
+    // modelErrorRate is a 0..1 official ratio (0.02 here): it must render as a percentage, not a raw number.
+    expect(loaded.textContent).toContain('2%');
     expect(calls.some(c => c.operation === 'read' && c.kind === 'usageStats' && c.params.range === '30d')).toBe(true);
   } finally { store.dispose(); }
 });
@@ -97,6 +99,17 @@ it('S14 auxiliary generation is presented gated and is never invoked', async () 
     }
     expect(calls.some(c => c.operation === 'read' && String(c.kind).includes('generate'))).toBe(false);
     expect(calls.some(c => c.operation === 'read' && String(c.kind).includes('Connectivity'))).toBe(false);
+  } finally { store.dispose(); }
+});
+
+it('S14 an unconnected panel names the connection reason instead of an unrecognized-entry fallback', async () => {
+  const { store } = await mount({ gated: null, admission: { allowed: false, reason: 'not-connected' } });
+  try {
+    for (const kind of ['generateText', 'cancelGenerateText', 'testModelConnectivity']) {
+      const entry = document.querySelector(`[data-gated-kind="${kind}"]`) as HTMLElement;
+      expect(entry.textContent).toContain('not-connected');
+      expect(entry.textContent).not.toContain('Unrecognized official entry');
+    }
   } finally { store.dispose(); }
 });
 

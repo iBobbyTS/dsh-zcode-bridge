@@ -15,9 +15,9 @@
 | 面 | 真实结果（0 模型调用） | 判定 |
 |---|---|---|
 | 账号 `account/status` | 官方 `runtime-rejected` `-32601` | **不可达**（无 handler；与 AUTH-SOURCE-RESEARCH E06 一致） |
-| workspace usage `usage/stats {range:'30d'}` | 真实官方 `appUsageSnapshot`（隔离库全 0：`summary.totalTokens=0`、`source:"agent-db"`、heatmap/dailyModelUsage 空） | **可达**（真实空态） |
-| workspace usage `usage/stats {range:'all'}` | 真实官方快照（全 0） | **可达** |
-| session usage `session/usage {sessionId}` | 真实官方 `zcodeTaskTokenUsageResult`（隔离 draft 全 0） | **可达**（scoped） |
+| workspace usage `v4/usage/stats {range:'30d'}` | 真实官方 `appUsageSnapshot`（隔离库全 0：`summary.totalTokens=0`、`source:"agent-db"`、heatmap/dailyModelUsage 空） | **可达**（真实空态；v4 载体，legacy `usage/stats` @deprecated） |
+| workspace usage `v4/usage/stats {range:'all'}` | 真实官方快照（全 0） | **可达**（v4 载体） |
+| session usage `v4/conversation/usage {sessionId}` | 真实官方 `zcodeTaskTokenUsageResult`（隔离 draft 全 0） | **可达**（scoped；v4 载体，legacy `session/usage` @deprecated） |
 | process 诊断 `process/childProcesses` | 真实 `{processes:[]}`（无 MCP 子进程） | **可达**（真实空态） |
 | 辅助生成取消 `workspace/cancelGenerateText {operationId:'s14-never-created'}` | 真实 `{operationId,cancelled:false}` | **可达**（纯 map miss，非模型） |
 | 辅助生成 `workspace/generateText` | **未调用**（触发模型） | **gated**（红线 0 模型） |
@@ -33,8 +33,8 @@
 | 入口 | 正式载体 / 源锚点 | 真实程度与本节行为 |
 |---|---|---|
 | 账号状态 / 登录 / 登出 / 订阅 | **无 app-server RPC**；account 服务在 Host 进程内（E06：`services/src/node.ts:1494/2085/2614`，明确不暴露通用 RPC）；唯一 account 形状方法是 `provider/updateAccountConfig`（配置同步，非登录/状态查询） | 实现 `InsightsClient.account()`：`state:'unknown'`、`reason:'official-account-carrier-not-exposed'`、`login.available:false`。按 R15 不读凭据、不逆向鉴权、不调内部服务。真实探测 `account/status` = `-32601`。 |
-| workspace 用量 | `usage/stats` → `server.ts:710` → `server-operations.ts:1768 getUsageStats`；params `zcodeUsageStatsParamsSchema`，result `appUsageSnapshotSchema` | 实现 `read('usageStats',{range})`；每次 fresh 官方读、无本地缓存；单位/窗口/缺失语义（`avgTimeToFirstTokenMs:null` 等）原样保留。 |
-| session 用量 | `session/usage` → `server.ts:714` → `getTaskTokenUsage`（与 `v4/conversation/usage` 同 usage store） | 实现 `V4Conversation.sessionUsage()`；**scoped**——只取会话绑定 address.sessionId，调用方传值被忽略；纯聚合读，不消耗模型 admission、不留本地计数。 |
+| workspace 用量 | `v4/usage/stats` → `server.ts` v4 usage query case → `getUsageStats`（与 legacy `usage/stats` 同一 handler/params/result；legacy 在 `index.ts:3652-3654` 标 **@deprecated**，host `zcodeAgentService` 已改走 `v4/usage/stats`，仅剩 CLI wire 兼容）；params `zcodeUsageStatsParamsSchema`，result `appUsageSnapshotSchema` | 实现 `read('usageStats',{range})`；每次 fresh 官方读、无本地缓存；单位/窗口/缺失语义（`avgTimeToFirstTokenMs:null` 等）原样保留。 |
+| session 用量 | `v4/conversation/usage` → `server.ts` v4 usage query case → `getTaskTokenUsage`（与 legacy `session/usage` 同一 usage store/handler；legacy 在 `index.ts:3656-3658` 标 **@deprecated**，host 已改走 v4） | 实现 `V4Conversation.sessionUsage()`；**scoped**——只取会话绑定 address.sessionId，调用方传值被忽略；纯聚合读，不消耗模型 admission、不留本地计数。 |
 | process/MCP 资源诊断 | `process/childProcesses` → `server.ts:676` → `listChildProcesses(mcpTelemetry.listProcesses())`；params `{}`，result `{processes:[{pid,serverName,mcpSource,pluginName?}]}` | 实现 `read('childProcesses')`；纯内存列表、无 I/O；空即真实空。 |
 | 进程资源样本 | `process/resourceSample` 通知（`resource-sampler.ts:27`；schema `zcodeProcessResourceSampleSchema`） | `InsightsClient` 订阅该通知，schema 校验后仅保留最新一个样本；非法/额外字段丢弃；无样本如实 null。**未发给任何存储**。 |
 | 辅助文本生成 | `workspace/generateText` → `server.ts:636` → `generateWorkspaceText` | **gated**：呈现为 `{available:false,reason:'model-execution-gated'}`，桥不实现调用入口、不伪造生成结果。取消/连通性同。 |
@@ -75,7 +75,8 @@
 
 | Check | 实跑结果 |
 |---|---|
-| `node scripts/capture-s14.mjs /Applications/ZCode.app` | **PASS**，0 models；account -32601、usage/session-usage/child-processes/cancel-generate 真实；resourceSamples=0；[log](../probes/checks/s14-capture.log)。 |
+| `node scripts/capture-s14.mjs /Applications/ZCode.app` | **PASS**，0 models；account -32601、v4/usage/stats、v4/conversation/usage、child-processes、cancel-generate 真实；resourceSamples=0；[log](../probes/checks/s14-capture.log)。 |
+| CA14 修复复测：`node scripts/capture-s14.mjs /Applications/ZCode.app`（S14 CODE A 回归） | **PASS**，0 models；三处 method 均为 v4（`v4/usage/stats`×2、`v4/conversation/usage`），与 legacy 空态结果逐字段一致；[log](../probes/checks/s14-fix-capture.log)。 |
 | `node scripts/make-s14-fixtures.mjs` | **PASS**；注入值经官方 schema 校验；[log](../probes/checks/s14-fixtures.log)。 |
 | `node --test tests/s14-insights.test.mjs` | **9/9 PASS**。 |
 | `npm test` | **172/172 PASS**，基线 163；[log](../probes/checks/s14-node.log)。 |

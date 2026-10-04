@@ -27,7 +27,10 @@ export const GATED_CARRIERS = Object.freeze({
 // Read-only official carriers. Each is [method, paramsSchema, resultSchema, build]. None is a second
 // store: every call reads the official app-server. Workspace identity is not caller-supplied.
 const READ_CARRIERS = Object.freeze({
-  usageStats: Object.freeze(['usage/stats', zcodeUsageStatsParamsSchema, zcodeUsageStatsResultSchema,
+  // v4/usage/stats is the live carrier: zcodeAgentService migrated off the @deprecated legacy
+  // usage/stats (official index.ts:3652-3658; transport.ts usageStats). Same handler and schemas
+  // are dispatched for both names (server.ts v4 usage query case), so only the method string moves.
+  usageStats: Object.freeze(['v4/usage/stats', zcodeUsageStatsParamsSchema, zcodeUsageStatsResultSchema,
     (_workspace, params) => ({ range: params.range, ...(params.timeZone === undefined ? {} : { timeZone: params.timeZone }) })]),
   childProcesses: Object.freeze(['process/childProcesses', zcodeProcessChildProcessesParamsSchema, zcodeProcessChildProcessesResultSchema,
     () => ({})]),
@@ -70,6 +73,9 @@ export class InsightsClient {
   async read(kind, params = {}, { signal } = {}) {
     const carrier = Object.hasOwn(READ_CARRIERS, kind) ? READ_CARRIERS[kind] : null;
     if (!carrier) throw new BridgeError('insights-read-unknown');
+    // Null/primitive params would make a carrier's build() throw a bare TypeError before schema
+    // validation; treat them as invalid input and fail closed with the domain code.
+    if (params === null || typeof params !== 'object' || Array.isArray(params)) throw new BridgeError('insights-params-invalid');
     const admission = this.admission;
     if (!admission.allowed) throw new BridgeError(admission.reason);
     const parsed = carrier[1].safeParse(carrier[3](undefined, params));

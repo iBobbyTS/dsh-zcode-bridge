@@ -1,7 +1,7 @@
 {
   "provenance": {
     "kind": "official-runtime-capture",
-    "capturedAt": "2026-10-04T03:38:04.295Z",
+    "capturedAt": "2026-10-04T03:53:04.335Z",
     "paidModelCalls": 0,
     "isolation": "dedicated tmp HOME + workspace; real user storage untouched",
     "sanitization": "tmp paths aliased; stderr counted only",
@@ -25,10 +25,10 @@
       }
     },
     "usageStats30d": {
-      "method": "usage/stats",
+      "method": "v4/usage/stats",
       "result": {
         "range": "30d",
-        "generatedAt": 1791085085626,
+        "generatedAt": 1791085985978,
         "timeZone": "UTC",
         "source": "agent-db",
         "summary": {
@@ -437,10 +437,10 @@
       }
     },
     "usageStatsAll": {
-      "method": "usage/stats",
+      "method": "v4/usage/stats",
       "result": {
         "range": "all",
-        "generatedAt": 1791085085629,
+        "generatedAt": 1791085985979,
         "timeZone": "UTC",
         "source": "agent-db",
         "summary": {
@@ -501,7 +501,7 @@
       }
     },
     "sessionUsage": {
-      "method": "session/usage",
+      "method": "v4/conversation/usage",
       "result": {
         "sessionId": "/fixture/s14-session",
         "totalTokens": 0,
@@ -571,7 +571,7 @@
     },
     "usageStats": {
       "range": "30d",
-      "generatedAt": 1791085085634,
+      "generatedAt": 1791085985981,
       "timeZone": "UTC",
       "source": "agent-db",
       "summary": {

@@ -32,21 +32,28 @@ function peerStub(handlers = {}) {
 test('S14 InsightsClient reads official usage/diagnostics, forwards only the official params and fails closed', async () => {
   const calls = [];
   const peer = peerStub({
-    'usage/stats': ({ params }) => { calls.push(params); return Promise.resolve(usage.emptyUsage) },
+    'v4/usage/stats': ({ params }) => { calls.push(params); return Promise.resolve(usage.emptyUsage) },
     'process/childProcesses': ({ params }) => { calls.push(params); return Promise.resolve(usage.childProcesses) },
   });
   const client = new InsightsClient(peer, { auth: 'unavailable' });
   try {
     assert.deepEqual(await client.read('usageStats', { range: '30d' }), usage.emptyUsage);
     assert.deepEqual(calls[0], { range: '30d' }, 'workspace/secret fields are never forwarded to the official usage carrier');
+    assert.equal(peer.requests[0].method, 'v4/usage/stats', 'the live v4 carrier name is used, not the @deprecated legacy usage/stats');
     // Caller-supplied extras (e.g. workspace identity) are dropped by the schema.
     await client.read('usageStats', { range: '7d', workspace: { workspacePath: '/evil' } });
     assert.deepEqual(calls[1], { range: '7d' });
     assert.deepEqual(await client.read('childProcesses'), { processes: [] });
     await assert.rejects(client.read('usageStats', { range: 'not-a-range' }), { code: 'insights-params-invalid' });
+    // Null/primitive params fail closed with the domain code, never a bare TypeError from build().
+    const beforeNull = peer.requests.length;
+    await assert.rejects(client.read('usageStats', null), { code: 'insights-params-invalid' });
+    await assert.rejects(client.read('childProcesses', null), { code: 'insights-params-invalid' });
+    await assert.rejects(client.read('usageStats', '30d'), { code: 'insights-params-invalid' });
+    assert.equal(peer.requests.length, beforeNull, 'invalid params never reach the official runtime');
     await assert.rejects(client.read('unverifiedKind'), { code: 'insights-read-unknown' });
     assert.equal(peer.requests.some(r => r.method === 'unverifiedKind'), false, 'unknown kinds never reach the official runtime');
-    const bad = new InsightsClient(peerStub({ 'usage/stats': () => Promise.resolve({ ...usage.emptyUsage, summary: 'not-an-object' }) }));
+    const bad = new InsightsClient(peerStub({ 'v4/usage/stats': () => Promise.resolve({ ...usage.emptyUsage, summary: 'not-an-object' }) }));
     await assert.rejects(bad.read('usageStats', { range: '30d' }), { code: 'insights-result-invalid' });
     bad.dispose();
     assert.deepEqual(INSIGHTS_READ_KINDS, ['usageStats', 'childProcesses']);
@@ -94,7 +101,7 @@ test('S14 valid process resource sample is retained; unknown or malformed sample
 });
 
 test('S14 InsightsClient admission fails closed after dispose or a closed peer', async () => {
-  const peer = peerStub({ 'usage/stats': () => Promise.resolve(usage.emptyUsage) });
+  const peer = peerStub({ 'v4/usage/stats': () => Promise.resolve(usage.emptyUsage) });
   const client = new InsightsClient(peer);
   client.dispose();
   assert.equal(client.admission.allowed, false);
@@ -148,7 +155,7 @@ test('S14 sessionUsage is scoped to the bound address and validates the official
     // A caller-supplied sessionId is ignored: only the bound address identity is sent.
     const pending = conversation.sessionUsage({ sessionId: 'other-session' });
     const request = sent.at(-1);
-    assert.equal(request.method, 'session/usage');
+    assert.equal(request.method, 'v4/conversation/usage');
     assert.deepEqual(request.params, { sessionId: 'fixture-session' });
     response(request, usage.emptySessionUsage);
     assert.deepEqual(await pending, usage.emptySessionUsage);

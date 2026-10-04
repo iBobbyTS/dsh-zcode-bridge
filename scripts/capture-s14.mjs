@@ -84,10 +84,11 @@ try {
   // Account has no app-server RPC. Record the official method-not-found; never guess a state.
   await probe('accountStatusAbsent', 'account/status', {});
   // Real workspace usage aggregate (official usage store; zero in the fresh isolated HOME).
-  await probe('usageStats30d', 'usage/stats', { range: '30d' });
-  await probe('usageStatsAll', 'usage/stats', { range: 'all' });
+  // v4/usage/stats is the live carrier; legacy usage/stats is @deprecated and retained only for old-host wire compat.
+  await probe('usageStats30d', 'v4/usage/stats', { range: '30d' });
+  await probe('usageStatsAll', 'v4/usage/stats', { range: 'all' });
   // Real scoped session usage for the isolated draft (zero here, never fabricated).
-  await probe('sessionUsage', 'session/usage', { sessionId: v4SessionId });
+  await probe('sessionUsage', 'v4/conversation/usage', { sessionId: v4SessionId });
   // Real process/MCP diagnostics (pure in-memory list from the CLI).
   await probe('childProcesses', 'process/childProcesses', {});
   // The gated generate surface: only the non-model cancel carrier is probed. The cancel lookup for an
