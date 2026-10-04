@@ -79,7 +79,7 @@ OAuth STATIC 形态：UI `useOAuth` → `oauth.startOAuthWithPolling(provider)` 
 
 | 域 | 默认/解析优先级 | 本次实际隔离落点 | 默认触及真实数据 / 证据 |
 |---|---|---|---|
-| settings | `HOME` 或 homedir → `.zcode/v2/setting.json`；不跟随 DATA_BASE_DIR | `R/home/.zcode/v2/setting.json`（fresh 未产生文件）；setting.get LIVE；Phase 1 settings-live 合成迁移已证此位置 | 是；P03/P04。S01 不制造账号选择，不以选择证明 auth |
+| settings | `ZCODE_DESKTOP_HOME_DIR` > `HOME`/`USERPROFILE` > `homedir()` → `.zcode/v2/setting.json`；不跟随 DATA_BASE_DIR | `R/home/.zcode/v2/setting.json`（fresh 未产生文件）；setting.get LIVE；Phase 1 settings-live 合成迁移已证此位置 | 是；P03/P04。S01 不制造账号选择，不以选择证明 auth。**launcher 必须显式把 `ZCODE_DESKTOP_HOME_DIR` pin 到 scratch 或从启动 env scrub**：该变量是官方为隔离 dev 实例专设的最高优先级 home 覆盖，若继承用户已设值，settings 及其启动迁移写会落到该路径而非 scratch HOME |
 | tasks / provider / credentials / CA | setDataBaseDir > `ZCODE_DATA_BASE_DIR` > 启动 HOME/homedir → `.zcode/v2` | `R/data-base/.zcode/v2/{tasks-index.sqlite,provider_config.json,certs/...}` LIVE；`credentials.json` 在空账号分支未产生，路径 STATIC | 是；tasks 文件 147,456 B；provider 206 B；P03/P04/P07/P08。credential 写入尚未 LIVE |
 | session DB | storage config / `ZCODE_SESSION_DB_PATH`（也支持 SESSION_DB）；相对路径按 runtime cwd；默认 homedir `/.zcode/cli/db/db.sqlite` | 显式绝对 `R/session-db/db.sqlite`，LIVE 413,696 B；不与 tasks DB 合并 | 是；P03、env-config.adapter.ts:24–32、P07/P08。不把 DATA_BASE_DIR 当 session DB 隔离变量 |
 | CLI config/home | 默认 `~/.zcode/cli`，HOME 影响默认路径；`ZCODE_HOME` 并未找到这条链的可靠消费证据 | `HOME=R/home`；额外设 `ZCODE_HOME=R/runtime-home`，不以该变量作为隔离保证 | 默认是；文件配置与绝对 session env 必须分别验证 |
@@ -123,7 +123,7 @@ P10 CONTRACT-HARNESS 使用未修改 reference bridge/bus 和正式 shared schem
 |---|---|
 | 运行中 GUI | P07/P08 16 个 pid/ppid/comm 记录一致；只覆盖独立存储/禁网非登录态，不覆盖网络开启、共享 DB 或登录 deep-link 的冲突 |
 | Host 初始化写入 | 两份 fresh DB 的真实创建/迁移；禁止真实 HOME 启动做“只读资格检查” |
-| settings 和 DATA_BASE 分离 | 单独 HOME 隔离不够；必须同时覆盖 session DB、Electron 数据、内层 env、workspace、Keychain 域 |
+| settings 和 DATA_BASE 分离 | 单独 HOME 隔离不够；必须同时覆盖 session DB、Electron 数据、内层 env、workspace、Keychain 域，并 pin/scrub 优先级高于 `HOME` 的 `ZCODE_DESKTOP_HOME_DIR`，否则 settings 与启动迁移写会绕过 scratch HOME |
 | 凭据复制/错误恢复 | 不复制、不解密；默认 cipher 与 HOME/用户关联；reference corrupt OAuth recovery 可删除 store，真实读取也可能写入 |
 | OAuth 与 Chrome Keychain | 账号文件实现不是 Chrome import secret；禁用后者。静态未见 safeStorage 不作为未来登录真实写入的豁免 |
 | 运行 authority | 双独立 Main 的内存租约互不协调；共用 DB 不足以证明同会话互斥 |
