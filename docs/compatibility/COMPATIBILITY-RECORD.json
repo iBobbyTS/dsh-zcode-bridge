@@ -1,0 +1,53 @@
+{
+  "record_kind": "compatibility_evidence_record",
+  "bridge": {
+    "version": "0.1.0",
+    "commit": "e13324a",
+    "artifact_sha256": null,
+    "bundle": "bridge-bundle.json (host @dsh-zcode/host + client @dsh-zcode/bridge-client)"
+  },
+  "zcode": {
+    "app_version": "3.14.4",
+    "app_build": "3.14.4.7912",
+    "bundle_sha256": "fad4c35c4c36ec210d8a06d3fa0e77de23c8545e2eb6ff90aea1eb38d1e6275f",
+    "source_commit": null,
+    "actual_process_identity": "App Helper (Electron), launched headless with ELECTRON_RUN_AS_NODE=1",
+    "carriers_observed": ["runtime/capabilities", "session/list"],
+    "protocol_fingerprint": "legacy NDJSON stdio; capability/list/presentation responded; controller/hello -32601"
+  },
+  "dsh": {
+    "source_commit": "21fb059745",
+    "root_version": "0.2.0-rc.2",
+    "installed_artifact": "file: bundle profile install of @dsh-zcode/bridge + @dsh-zcode/host + @dsh-zcode/bridge-client (isolated temp profile, --ignore-scripts)",
+    "running_cohort": { "plugin-manager": "apps/cli 0.2.0-rc.2", "pnpm": "11.7.0" },
+    "profile_identity": "temporary isolated profile; no real user profile touched",
+    "client_artifact_sha256": null
+  },
+  "environment": { "os": "darwin", "arch": "arm64", "node": "24.14.0", "electron": "41.0.3", "native_helpers": [] },
+  "owned_data_formats": [
+    { "name": "dsh.zcode.compat-dismiss", "owner": "bridge client", "note": "local banner preference only; never ZCode-managed data" },
+    { "name": "dsh.zcode.local-groups", "owner": "bridge client", "note": "pre-existing local group preference" }
+  ],
+  "capabilities": [
+    { "id": "official-connection", "status": "verified", "scope": "restricted headless connect + session/list read" },
+    { "id": "version-banner", "status": "implemented", "scope": "newer-version warning with once/this-version/new-next-version dismiss; never blocks" },
+    { "id": "graded-fail-safe", "status": "implemented", "scope": "core decode stops new side effects; non-core isolated; unknown neutral" },
+    { "id": "bundle-install-roundtrip", "status": "verified", "scope": "isolated profile install/update/uninstall via DSH plugin-manager" },
+    { "id": "official-auth", "status": "blocked", "scope": "no verified official auth source; model execution unavailable" }
+  ],
+  "checks": [
+    { "id": "bridge-node", "result": "PASS", "note": "node --test tests/*.test.mjs" },
+    { "id": "bridge-dsh-integration", "result": "PASS", "note": "vitest dsh-vitest.config.mjs" },
+    { "id": "profile-roundtrip", "result": "PASS", "note": "scripts/capture-s16.ts real plugin-manager carrier" },
+    { "id": "real-gui-mounted", "result": "NOT_RUN", "note": "packaged GUI requires user cooperation; jsdom production mount used" },
+    { "id": "official-auth", "result": "BLOCKED", "note": "0 model calls; no auth source" }
+  ],
+  "decision": "GO_WITH_LIMITS",
+  "highest_actually_verified_zcode_version": "3.14.4",
+  "limitations": [
+    "Verified only for App 3.14.4 / build 3.14.4.7912 at cjs SHA-256 fad4c35c…6275f; a different digest does not reuse this evidence.",
+    "Restricted: official request authentication unavailable, so model execution is not certified.",
+    "Packaged DSH GUI and shared-GUI session write authority NOT_RUN.",
+    "Version banner and fail-safe decisions are implementation evidence, not a claim of full protocol parity."
+  ]
+}
