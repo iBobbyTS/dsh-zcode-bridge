@@ -93,6 +93,26 @@ CA3-P2-01 是「活跃禁写格从未被真实 running 会话激励」。本轮�
 - 检查：最终生产源与基线一致，bridge Node **280/280 PASS**；DSH 集成 **177/177 PASS（19 files）**；build/diff-check PASS；候选额外测试 **287/287 PASS**。0 我方 prompt/模型执行 RPC、0 凭据读取、0 直开真实 SQLite、0 bridge 写真实 ~/.zcode、0 session close、0 DSH 产品编辑、0 push。官方 GUI 仅 ps，全部前后清单一致；自有进程组 remaining=[]；共享 usage 增长不冒充我方请求计量。
 - 探针早期不合法 messageLimit、事件入参、遗漏握手/错误协议版本的失败均保存并在 README 如实解释，不计作有效冷订阅观测。未派发子 agent；既有用户持久 web viewer 未动。分块 Conventional Commits 见本轮 Git log（探针/隔离候选证据、handoff 升级说明）。
 
+### P28 盲区诚实操作化（2026-10-04，main 裁决；实现者 native @impl_std）
+
+**main 裁决：不再把「终态 task + usage 静止」声明为 idle；把跨 Host 活性盲区作为第四判定态 `unverifiable` 暴露，并加一次性确认门。** 依据 P27 负结果（30 秒 usage 窗对真实主会话仍 false-idle，`getTaskMeta` 无 live 信号；[live-signal-fix/README.md](../probes/checks/s03-p2-resume/live-signal-fix/README.md)）。本轮交付**闸门 + 确认机制 + 判定级/jsdom 测试**；S03 真实写入仍禁用，真实发送解锁归后续节。
+
+- `write-gate.mjs`：终态 `completed`/`error` 非我方持有时返回 `decision:'unverifiable'`，`allowed:false`，`requiresConfirmation:true`，`reason:'shared-terminal-task-liveness-unverifiable'`，`blindSpot:'cross-host-live-turn-undetectable'`。仅当 `confirmed`（显式操作者确认）时转 `idle/allowed:true/reason:'shared-terminal-task-operator-confirmed'`。running / own / 缺失陈旧语义不变。
+- usage 窗启发式：并入隔离候选的 `SharedWriteGate` 双采样，窗内 usage 计数或 `task.updatedAt` 移动 ⇒ `active`/禁写（无确认门）；静止仍 `unverifiable`（不升级为 idle）。窗长 `activityWindowMs` 默认 **5000 ms**、可配置 **2000–15000 ms**（不用 30 s）；只增只读白名单 `zcode-agent.getTaskTokenUsage`；preflight carrier 超时相应延长。注释如实标注为启发式、非保证。
+- UI（`directory-view.jsx` `SharedTaskPanel`）：`unverifiable` 且未确认时呈现一次性确认（含「对侧实时运行无法完全判定（长工具等待期检测盲区）」文案）；确认按 address 记入模块级 Set（每会话每 DSH web 会话一次，刷新重问）；确认后该会话后续写入按 idle 呈现（draft 可用），但 `active`/`unknown` 仍覆盖确认、Send 在 S03 恒禁用。
+
+四态判定表：
+
+| 输入 | decision | allowed | requiresConfirmation | 说明 |
+|---|---|---|---|---|
+| 非我方 fresh running | active | false | false | `official-gui-active-turn` 禁写 |
+| 我方 Main lease | active | false | false | `own-turn-busy`，优先于 DB |
+| 终态 completed/error，未确认 | **unverifiable** | false | **true** | 盲区，需一次性确认 |
+| 终态，已显式确认（或窗内 usage/updatedAt 移动） | idle / active | true / false | false | 确认转 idle；移动判 active 禁写 |
+| task 缺失/未知 status/陈旧/未来时间戳 | unknown | false | false | 保持 fail-closed |
+
+- Checks：bridge Node **291/291 PASS**（280 基线 + 11：`tests/p28-unverifiable-gate.test.mjs` 9 + `p2-route-b.test.mjs` 四态/确认 2）；DSH 集成 **178/178 PASS（19 files）**（177 基线 + 新确认流 1）；build PASS；`git diff --check` PASS。分块 commits：`14281fb`(host gate)、`cd7c8a2`(client UI)、`7576878`(host tests)、`0ae03c6`(client spec)。0 模型请求、0 凭据读取、0 session/close、0 DSH 产品编辑、0 push。
+
 - bridge Node **277/277 PASS**；新 targeted **59/59**（既有 launcher43+新16）。DSH 集成 **176/176 PASS，19 files**。native **1373/1373 PASS，60 files**（DSH 未编辑）；build PASS；touched lint/diff-check PASS。log 在本证据目录。
 - auth/core 首次 LIVE/真实 idle gate/三重窗/GUI并存 PASS；真实 active gate、GUI实际呈现与用户目录对照、修正后 viewer/final head LIVE **NOT_RUN/待 main**；真实模型写、session close、CAS/full-S06/跨侧 stop、真实撤销/损坏、Keychain item 操作均禁止/未执行。
 - 分块 Conventional Commits：`601c44f` host/gate/tests；`22d03a2` client projection/UI tests；harness/docs/evidence（其 hash 见 Git log）。没有 push、独立评审、acceptance 或任务权威修改。审计证据由 main 打包；本实现者没有另造审计 ZIP。
