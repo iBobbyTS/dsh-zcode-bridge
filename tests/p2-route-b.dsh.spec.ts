@@ -33,7 +33,7 @@ it('status card presents authenticated official Host while S03 execution stays e
 it('shared UI refreshes three decisions automatically while preserving the draft and zero send capability',async()=>{
  vi.useFakeTimers()
  const address={runtime:'zcode',authority:'official-host:1',workspace:'/project',sessionId:'one'}
- let decision={decision:'idle',allowed:true,reason:'shared-task-confirmed-idle'}
+ let decision={decision:'idle',allowed:true,reason:'shared-terminal-task-operator-confirmed'}
  const sources={selection:createSnapshotStore({readOnly:true,address,row:{title:'One'}}),rpc:{call:vi.fn(async()=>({ok:true,value:decision}))},disconnect:vi.fn()}
  try{
   render(React.createElement(ZCodeSessionPanel,{sources}))
@@ -46,7 +46,7 @@ it('shared UI refreshes three decisions automatically while preserving the draft
   decision={decision:'unknown',allowed:false,reason:'shared-task-signal-unavailable-or-stale'}
   await act(async()=>{await vi.advanceTimersByTimeAsync(2000)})
   expect(screen.getByTestId('zcode-shared-write-gate').textContent).toContain('unknown')
-  decision={decision:'idle',allowed:true,reason:'shared-task-confirmed-idle'}
+  decision={decision:'idle',allowed:true,reason:'shared-terminal-task-operator-confirmed'}
   await act(async()=>{await vi.advanceTimersByTimeAsync(2000)})
   expect(draft.disabled).toBe(false);expect(draft.value).toBe('retained draft');expect((screen.getByRole('button',{name:'Send'}) as HTMLButtonElement).disabled).toBe(true)
  }finally{cleanup();vi.useRealTimers()}
