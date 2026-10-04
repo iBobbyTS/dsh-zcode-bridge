@@ -1,0 +1,130 @@
+{
+  "provenance": {
+    "kind": "official-runtime-capture",
+    "capturedAt": "2026-10-04T01:25:48.323Z",
+    "paidModelCalls": 0,
+    "isolation": "dedicated tmp HOME + workspace; real user storage untouched",
+    "sanitization": "tmp paths aliased; stderr counted only",
+    "note": "no real background task or subagent instance was started; empty state and unknown-id rejection only",
+    "version": "3.14.4",
+    "build": "3.14.4.7912",
+    "sha256": "fad4c35c4c36ec210d8a06d3fa0e77de23c8545e2eb6ff90aea1eb38d1e6275f",
+    "stderrBytes": 0,
+    "parentCreated": true
+  },
+  "probes": {
+    "capabilities": {
+      "independentPlanState": true
+    },
+    "conversationProjection": {
+      "method": "v4/conversation/subscribe",
+      "result": {
+        "status": "live",
+        "backgroundWorks": [],
+        "subagents": {
+          "revision": 0,
+          "childSessionIds": [],
+          "running": [],
+          "endedTotal": 0
+        },
+        "activeWorks": [],
+        "canStop": false
+      }
+    },
+    "subagentsEmpty": {
+      "method": "session/subagents",
+      "result": {
+        "revision": 1,
+        "childSessionIds": [],
+        "running": [],
+        "ended": {
+          "total": 0,
+          "items": []
+        }
+      }
+    },
+    "subagentsDraft": {
+      "method": "session/subagents",
+      "error": {
+        "code": "runtime-rejected",
+        "protocolCode": -32004,
+        "message": "runtime-rejected"
+      }
+    },
+    "subagentsUnknownSession": {
+      "method": "session/subagents",
+      "error": {
+        "code": "runtime-rejected",
+        "protocolCode": -32004,
+        "message": "runtime-rejected"
+      }
+    },
+    "cancelUnknownTaskLegacy": {
+      "method": "session/cancelBackgroundTask",
+      "result": {
+        "cancelled": false,
+        "reason": "background_task_not_found",
+        "status": "lost",
+        "taskId": "s10-never-created"
+      }
+    },
+    "cancelUnknownSessionLegacy": {
+      "method": "session/cancelBackgroundTask",
+      "error": {
+        "code": "runtime-rejected",
+        "protocolCode": -32004,
+        "message": "runtime-rejected"
+      }
+    },
+    "bashOutputUnknown": {
+      "method": "v4/conversation/backgroundBashOutput",
+      "result": {
+        "kind": "unavailable",
+        "workId": "s10-never-created"
+      }
+    },
+    "cancelUnknownWorkCommand": {
+      "method": "v4/command",
+      "result": {
+        "commandId": "4eca6bf2-af76-4aef-8a43-abdf21e03557",
+        "status": "failed",
+        "revisionAtDecision": 0,
+        "reasonCode": "fault.command.backgroundWorkCancelRejected.not_found",
+        "message": "background work s10-never-created was not cancelled: background_task_not_found"
+      }
+    },
+    "cancelUnknownWorkSession": {
+      "method": "v4/command",
+      "result": {
+        "commandId": "fdc29db1-e2f3-4762-9ad4-e9eb3e6a2b8f",
+        "status": "rejected",
+        "reasonCode": "proto.sessionNotFound",
+        "revisionAtDecision": 0
+      }
+    }
+  },
+  "errorFacts": [
+    {
+      "name": "subagentsDraft",
+      "method": "session/subagents",
+      "code": "runtime-rejected",
+      "protocolCode": -32004,
+      "name2": "Error"
+    },
+    {
+      "name": "subagentsUnknownSession",
+      "method": "session/subagents",
+      "code": "runtime-rejected",
+      "protocolCode": -32004,
+      "name2": "Error"
+    },
+    {
+      "name": "cancelUnknownSessionLegacy",
+      "method": "session/cancelBackgroundTask",
+      "code": "runtime-rejected",
+      "protocolCode": -32004,
+      "name2": "Error"
+    }
+  ],
+  "status": "PASS"
+}
