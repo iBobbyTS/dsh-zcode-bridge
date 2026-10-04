@@ -1,3 +1,5 @@
+import { ZCodeHostToolsPanel, ZCodeHostToolResult } from './host-tools-view.jsx';
+export { ZCodeHostToolsPanel } from './host-tools-view.jsx';
 import React, { useState, useEffect, useRef, useCallback, useSyncExternalStore } from 'react';
 import { ZCodeHistoryControls } from './history-controls.jsx';
 import { ZCodeInputControls } from './input-controls.jsx';
@@ -51,6 +53,8 @@ export class ConversationController {
   get disposed() {
     return this.#disposed;
   }
+
+  hostRegistration(options) {return this.#conversation?.hostRegistration?.(options)}
 
   async connect(options) {
     if (this.#disposed) return;
@@ -2659,6 +2663,7 @@ export function ZCodeRowsList({ state, controller }) {
                   {row.inputText}
                 </pre>
               )}
+              <ZCodeHostToolResult row={row} />
               {row.output && (
                 <pre
                   data-testid="zcode-tool-output"
@@ -2671,7 +2676,7 @@ export function ZCodeRowsList({ state, controller }) {
                     overflowX: 'auto',
                   }}
                 >
-                  {typeof row.output === 'string' ? row.output : JSON.stringify(row.output, null, 2)}
+                  {typeof row.output === 'string' ? row.output : ['cua','node_repl_images'].includes(row.output.display?.kind)&&typeof row.output.text==='string'?row.output.text:JSON.stringify(row.output, null, 2)}
                 </pre>
               )}
               {row.error && (
@@ -2832,6 +2837,7 @@ export function ZCodeConversationView({ conversation, controller, reference, onO
       <ZCodeStatusBanner state={state} onReconnect={handleReconnect} />
       <ZCodeAlerts state={state} onReconnect={handleReconnect} />
       <ZCodeControlBar state={state} onStop={handleStop} />
+      <ZCodeHostToolsPanel key={`host:${sessionIdentity ?? 'default'}`} state={state} controller={activeController} />
       <ZCodeWorkPanel key={`work:${sessionIdentity ?? 'default'}`} state={state} controller={activeController} />
       <ZCodePendingInteractions
         key={`interactions:${sessionIdentity ?? 'default'}`}
