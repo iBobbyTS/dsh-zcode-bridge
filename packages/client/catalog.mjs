@@ -42,7 +42,12 @@ export class CatalogStore {
     return response.value;
   }
   async state(){
+    const generation=this.#generation;
     const value=await this.#call({operation:'state'});
+    // A connection reset/dispose owns the snapshot once it fires; a late state response must not
+    // resurrect the previous connection's admission or workspace into the reset store. Same guard
+    // as refresh(): the check happens after the await, before any publish.
+    if(this.#closed||generation!==this.#generation)return value;
     this.#publish({admission:value.admission??emptyAdmission('catalog-unavailable'),auth:value.auth??'unconfirmed',installationVerified:value.installationVerified===true,workspace:value.workspace??null,hostOperations:Array.isArray(value.operations)?value.operations:[]});
     return value;
   }

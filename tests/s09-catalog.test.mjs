@@ -286,6 +286,55 @@ test('S09 CatalogStore connection generation reset clears the display mirror', a
   } finally { store.dispose(); }
 });
 
+test('CB10-1: a connection reset during an in-flight state RPC drops the late admission instead of restoring the old connection', async () => {
+  let fire; const generation = { subscribe(listener) { fire = listener; return () => {} } };
+  const held = deferred();
+  const rpc = rpcStub(payload => {
+    if (payload.operation === 'state') return held.promise;
+    return { ok: false, error: { code: 'unexpected' } };
+  });
+  const store = new CatalogStore(rpc, { connectionGeneration: generation });
+  try {
+    const pending = store.state();
+    fire();
+    assert.equal(store.getSnapshot().admission.reads.reason, 'host-unreachable');
+    // The old connection's state response resolves after the reset: publishing it would bring the
+    // stale reads/writes allowed admission and workspace back into the reset store.
+    held.resolve({ ok: true, value: stateValue });
+    assert.deepEqual(await pending, stateValue);
+    const snapshot = store.getSnapshot();
+    assert.equal(snapshot.admission.reads.reason, 'host-unreachable', 'late state response must not restore the reset admission');
+    assert.equal(snapshot.admission.writes.allowed, false);
+    assert.equal(snapshot.workspace, null, 'the old connection workspace must not be restored');
+    assert.equal(snapshot.auth, 'unconfirmed');
+  } finally { store.dispose(); }
+});
+
+test('CB10-1: a connection reset in the trailing state RPC window of refresh keeps the reset store without a host-reachable admission', async () => {
+  let fire; const generation = { subscribe(listener) { fire = listener; return () => {} } };
+  const held = deferred();
+  const rpc = rpcStub(payload => {
+    if (payload.operation === 'read') return { ok: true, value: {} };
+    if (payload.operation === 'state') return held.promise;
+    return { ok: false, error: { code: 'unexpected' } };
+  });
+  const store = new CatalogStore(rpc, { connectionGeneration: generation });
+  try {
+    const refreshing = store.refresh();
+    // Let refresh finish the eager reads and park on the trailing state RPC.
+    await new Promise(resolve => setTimeout(resolve, 0));
+    fire();
+    assert.equal(store.getSnapshot().admission.reads.reason, 'host-unreachable');
+    held.resolve({ ok: true, value: stateValue });
+    await refreshing.catch(() => {});
+    const snapshot = store.getSnapshot();
+    assert.equal(snapshot.admission.reads.reason, 'host-unreachable', 'the reset admission must survive the late state response');
+    assert.equal(snapshot.admission.writes.allowed, false);
+    assert.equal(snapshot.workspace, null, 'the old workspace must not reappear');
+    assert.equal(snapshot.loaded, false);
+  } finally { store.dispose(); }
+});
+
 test('S09 catalog endpoint rejects foreign payload keys and unknown operations before reaching the host', async () => {
   const host = {
     catalogState: () => ({ admission: { reads: { allowed: true, reason: null }, writes: { allowed: true, reason: null } }, operations: [] }),
