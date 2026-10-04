@@ -1,0 +1,214 @@
+{
+  "provenance": {
+    "kind": "injected-semantic-fixture",
+    "source": "official.json",
+    "injectedFields": [
+      "admission.reason",
+      "scope"
+    ]
+  },
+  "remote": {
+    "schemaVersion": 1,
+    "hostPlatform": "darwin",
+    "transport": "app-server-stdio",
+    "scope": null,
+    "connection": {
+      "available": false,
+      "state": "unavailable",
+      "reason": "remote-connection-carrier-not-exposed",
+      "remoteAuthority": null,
+      "remoteSessionId": null
+    },
+    "workspaces": {
+      "available": false,
+      "state": "unknown",
+      "reason": "remote-connection-carrier-not-exposed",
+      "items": null
+    },
+    "sessions": {
+      "available": false,
+      "state": "unknown",
+      "reason": "remote-connection-carrier-not-exposed",
+      "items": null
+    },
+    "targets": [
+      {
+        "kind": "ssh",
+        "available": false,
+        "state": "unknown",
+        "reason": "remote-connection-carrier-not-exposed"
+      },
+      {
+        "kind": "wsl",
+        "available": false,
+        "state": "unknown",
+        "reason": "wsl-requires-windows-host"
+      },
+      {
+        "kind": "docker",
+        "available": false,
+        "state": "unknown",
+        "reason": "remote-connection-carrier-not-exposed"
+      }
+    ],
+    "carriers": [
+      {
+        "name": "connect",
+        "method": "zcode:connect-remote",
+        "owner": "desktop-main",
+        "transport": "electron-ipc",
+        "direction": "request",
+        "requestable": false,
+        "deprecated": false
+      },
+      {
+        "name": "cancelConnect",
+        "method": "zcode:cancel-pending-remote-connection",
+        "owner": "desktop-main",
+        "transport": "electron-ipc",
+        "direction": "request",
+        "requestable": false,
+        "deprecated": false
+      },
+      {
+        "name": "bindWorkspace",
+        "method": "zcode:bind-remote-workspace-session-context",
+        "owner": "desktop-main",
+        "transport": "electron-ipc",
+        "direction": "request",
+        "requestable": false,
+        "deprecated": false
+      },
+      {
+        "name": "disposeSession",
+        "method": "zcode:dispose-remote-session",
+        "owner": "desktop-main",
+        "transport": "electron-ipc",
+        "direction": "request",
+        "requestable": false,
+        "deprecated": false
+      },
+      {
+        "name": "sshAliases",
+        "method": "zcode:list-ssh-config-aliases",
+        "owner": "desktop-main",
+        "transport": "electron-ipc",
+        "direction": "request",
+        "requestable": false,
+        "deprecated": false
+      },
+      {
+        "name": "wslDistros",
+        "method": "zcode:list-wsl-distros",
+        "owner": "desktop-main",
+        "transport": "electron-ipc",
+        "direction": "request",
+        "requestable": false,
+        "deprecated": false
+      },
+      {
+        "name": "dockerAvailable",
+        "method": "zcode:is-docker-available",
+        "owner": "desktop-main",
+        "transport": "electron-ipc",
+        "direction": "request",
+        "requestable": false,
+        "deprecated": false
+      },
+      {
+        "name": "dockerContainers",
+        "method": "zcode:list-docker-containers",
+        "owner": "desktop-main",
+        "transport": "electron-ipc",
+        "direction": "request",
+        "requestable": false,
+        "deprecated": false
+      },
+      {
+        "name": "connectionLog",
+        "method": "zcode:remote-connection-log",
+        "owner": "desktop-main",
+        "transport": "electron-ipc",
+        "direction": "notification",
+        "requestable": false,
+        "deprecated": false
+      },
+      {
+        "name": "sessionClosed",
+        "method": "zcode:remote-session-closed",
+        "owner": "desktop-main",
+        "transport": "electron-ipc",
+        "direction": "notification",
+        "requestable": false,
+        "deprecated": false
+      },
+      {
+        "name": "botReconnected",
+        "method": "zcode:bot-remote-workspace-reconnected",
+        "owner": "desktop-main",
+        "transport": "electron-ipc",
+        "direction": "notification",
+        "requestable": false,
+        "deprecated": false
+      },
+      {
+        "name": "connectHttp",
+        "method": "/api/connect-remote",
+        "owner": "independent-server",
+        "transport": "http-ws",
+        "direction": "request",
+        "requestable": false,
+        "deprecated": false
+      },
+      {
+        "name": "remoteChannel",
+        "method": "/ws/remote/:id",
+        "owner": "independent-server",
+        "transport": "http-ws",
+        "direction": "request",
+        "requestable": false,
+        "deprecated": false
+      },
+      {
+        "name": "serverInfo",
+        "method": "/api/server-info",
+        "owner": "independent-server",
+        "transport": "http-ws",
+        "direction": "request",
+        "requestable": false,
+        "deprecated": false
+      },
+      {
+        "name": "hostCapability",
+        "method": "/api/rpc-host-capability",
+        "owner": "independent-server",
+        "transport": "http-ws",
+        "direction": "request",
+        "requestable": false,
+        "deprecated": false
+      },
+      {
+        "name": "terminalChannel",
+        "method": "/ws",
+        "owner": "independent-server",
+        "transport": "http-ws",
+        "direction": "request",
+        "requestable": false,
+        "deprecated": false
+      },
+      {
+        "name": "hostChannel",
+        "method": "/ws/host",
+        "owner": "independent-server",
+        "transport": "http-ws",
+        "direction": "request",
+        "requestable": false,
+        "deprecated": false
+      }
+    ],
+    "admission": {
+      "allowed": false,
+      "reason": "host-unreachable"
+    }
+  }
+}

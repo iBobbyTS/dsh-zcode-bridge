@@ -1,0 +1,392 @@
+{
+  "provenance": {
+    "kind": "official-runtime-capture",
+    "capturedAt": "2026-10-04T04:47:43.829Z",
+    "paidModelCalls": 0,
+    "isolation": "dedicated tmp HOME + workspace",
+    "note": "Outer IPC/HTTP names are deliberately sent as NDJSON requests to test absence ONLY. Notifications are not requested in their native transport. No outer server or remote backend is started.",
+    "version": "3.14.4",
+    "build": "3.14.4.7912",
+    "sha256": "fad4c35c4c36ec210d8a06d3fa0e77de23c8545e2eb6ff90aea1eb38d1e6275f",
+    "stderrBytes": 0,
+    "draftWithoutInput": true
+  },
+  "probes": {
+    "capabilities": {
+      "method": "runtime/capabilities",
+      "result": {
+        "independentPlanState": true
+      }
+    },
+    "localSessionList": {
+      "method": "session/list",
+      "result": {
+        "sessions": []
+      }
+    },
+    "connect": {
+      "method": "zcode:connect-remote",
+      "error": {
+        "code": "runtime-rejected",
+        "protocolCode": -32601,
+        "message": "runtime-rejected"
+      }
+    },
+    "cancelConnect": {
+      "method": "zcode:cancel-pending-remote-connection",
+      "error": {
+        "code": "runtime-rejected",
+        "protocolCode": -32601,
+        "message": "runtime-rejected"
+      }
+    },
+    "bindWorkspace": {
+      "method": "zcode:bind-remote-workspace-session-context",
+      "error": {
+        "code": "runtime-rejected",
+        "protocolCode": -32601,
+        "message": "runtime-rejected"
+      }
+    },
+    "disposeSession": {
+      "method": "zcode:dispose-remote-session",
+      "error": {
+        "code": "runtime-rejected",
+        "protocolCode": -32601,
+        "message": "runtime-rejected"
+      }
+    },
+    "sshAliases": {
+      "method": "zcode:list-ssh-config-aliases",
+      "error": {
+        "code": "runtime-rejected",
+        "protocolCode": -32601,
+        "message": "runtime-rejected"
+      }
+    },
+    "wslDistros": {
+      "method": "zcode:list-wsl-distros",
+      "error": {
+        "code": "runtime-rejected",
+        "protocolCode": -32601,
+        "message": "runtime-rejected"
+      }
+    },
+    "dockerAvailable": {
+      "method": "zcode:is-docker-available",
+      "error": {
+        "code": "runtime-rejected",
+        "protocolCode": -32601,
+        "message": "runtime-rejected"
+      }
+    },
+    "dockerContainers": {
+      "method": "zcode:list-docker-containers",
+      "error": {
+        "code": "runtime-rejected",
+        "protocolCode": -32601,
+        "message": "runtime-rejected"
+      }
+    },
+    "connectionLog": {
+      "method": "zcode:remote-connection-log",
+      "error": {
+        "code": "runtime-rejected",
+        "protocolCode": -32601,
+        "message": "runtime-rejected"
+      }
+    },
+    "sessionClosed": {
+      "method": "zcode:remote-session-closed",
+      "error": {
+        "code": "runtime-rejected",
+        "protocolCode": -32601,
+        "message": "runtime-rejected"
+      }
+    },
+    "botReconnected": {
+      "method": "zcode:bot-remote-workspace-reconnected",
+      "error": {
+        "code": "runtime-rejected",
+        "protocolCode": -32601,
+        "message": "runtime-rejected"
+      }
+    },
+    "connectHttp": {
+      "method": "/api/connect-remote",
+      "error": {
+        "code": "runtime-rejected",
+        "protocolCode": -32601,
+        "message": "runtime-rejected"
+      }
+    },
+    "remoteChannel": {
+      "method": "/ws/remote/:id",
+      "error": {
+        "code": "runtime-rejected",
+        "protocolCode": -32601,
+        "message": "runtime-rejected"
+      }
+    },
+    "serverInfo": {
+      "method": "/api/server-info",
+      "error": {
+        "code": "runtime-rejected",
+        "protocolCode": -32601,
+        "message": "runtime-rejected"
+      }
+    },
+    "hostCapability": {
+      "method": "/api/rpc-host-capability",
+      "error": {
+        "code": "runtime-rejected",
+        "protocolCode": -32601,
+        "message": "runtime-rejected"
+      }
+    },
+    "terminalChannel": {
+      "method": "/ws",
+      "error": {
+        "code": "runtime-rejected",
+        "protocolCode": -32601,
+        "message": "runtime-rejected"
+      }
+    },
+    "hostChannel": {
+      "method": "/ws/host",
+      "error": {
+        "code": "runtime-rejected",
+        "protocolCode": -32601,
+        "message": "runtime-rejected"
+      }
+    },
+    "v4RemoteTypeRejected": {
+      "method": "v4/command",
+      "result": {
+        "commandId": "fb09bff2-6cb5-4c1d-9cd7-db91bb520727",
+        "status": "rejected",
+        "reasonCode": "proto.invalidPayload",
+        "message": "[\n  {\n    \"code\": \"invalid_value\",\n    \"values\": [\n      \"createSession\",\n      \"createSelectionSideSession\",\n      \"sendText\",\n      \"sendGoalCommand\",\n      \"stop\",\n      \"compact\",\n      \"forkAssistant\",\n      \"applyFileRewind\",\n      \"editUserQuery\",\n      \"retryTurn\",\n      \"setAssistantFeedback\",\n      \"sendQueuedNow\",\n      \"editQueueItem\",\n      \"reorderQueueItem\",\n      \"deleteQueueItem\",\n      \"setAutoDrain\",\n      \"resolveInteraction\",\n      \"respondWorkspaceHookReview\",\n      \"toggleWorkspaceHookReviewItem\",\n      \"revokeWorkspaceHookTrust\",\n      \"requestWorkspaceHookReview\",\n      \"snoozeInteractionAutoResolution\",\n      \"switchModelConfig\",\n      \"switchCollaborationMode\",\n      \"setFollowupMode\",\n      \"pauseGoal\",\n      \"resumeGoal\",\n      \"cancelBackgroundWork\",\n      \"resumeWorkflowRun\",\n      \"startSavedWorkflow\",\n      \"amendWorkflowRunSettings\",\n      \"renameSession\",\n      \"deleteSession\",\n      \"discardSharedContext\"\n    ],\n    \"path\": [\n      \"type\"\n    ],\n    \"message\": \"Invalid option: expected one of \\\"createSession\\\"|\\\"createSelectionSideSession\\\"|\\\"sendText\\\"|\\\"sendGoalCommand\\\"|\\\"stop\\\"|\\\"compact\\\"|\\\"forkAssistant\\\"|\\\"applyFileRewind\\\"|\\\"editUserQuery\\\"|\\\"retryTurn\\\"|\\\"setAssistantFeedback\\\"|\\\"sendQueuedNow\\\"|\\\"editQueueItem\\\"|\\\"reorderQueueItem\\\"|\\\"deleteQueueItem\\\"|\\\"setAutoDrain\\\"|\\\"resolveInteraction\\\"|\\\"respondWorkspaceHookReview\\\"|\\\"toggleWorkspaceHookReviewItem\\\"|\\\"revokeWorkspaceHookTrust\\\"|\\\"requestWorkspaceHookReview\\\"|\\\"snoozeInteractionAutoResolution\\\"|\\\"switchModelConfig\\\"|\\\"switchCollaborationMode\\\"|\\\"setFollowupMode\\\"|\\\"pauseGoal\\\"|\\\"resumeGoal\\\"|\\\"cancelBackgroundWork\\\"|\\\"resumeWorkflowRun\\\"|\\\"startSavedWorkflow\\\"|\\\"amendWorkflowRunSettings\\\"|\\\"renameSession\\\"|\\\"deleteSession\\\"|\\\"discardSharedContext\\\"\"\n  }\n]",
+        "revisionAtDecision": 0
+      }
+    }
+  },
+  "v4LocalProjection": {
+    "status": "live",
+    "admission": {
+      "allowed": false,
+      "reason": "runtime-restricted"
+    },
+    "clientMode": "web-remote-replayable",
+    "scope": "local-only",
+    "remoteConnectionEstablished": false
+  },
+  "productionOracle": {
+    "schemaVersion": 1,
+    "hostPlatform": "darwin",
+    "transport": "app-server-stdio",
+    "scope": {
+      "authority": "official-headless:fc25ead9-f999-4fe4-9340-caa39cfe2aed",
+      "workspace": "/fixture/s15-workspace"
+    },
+    "connection": {
+      "available": false,
+      "state": "unavailable",
+      "reason": "remote-connection-carrier-not-exposed",
+      "remoteAuthority": null,
+      "remoteSessionId": null
+    },
+    "workspaces": {
+      "available": false,
+      "state": "unknown",
+      "reason": "remote-connection-carrier-not-exposed",
+      "items": null
+    },
+    "sessions": {
+      "available": false,
+      "state": "unknown",
+      "reason": "remote-connection-carrier-not-exposed",
+      "items": null
+    },
+    "targets": [
+      {
+        "kind": "ssh",
+        "available": false,
+        "state": "unknown",
+        "reason": "remote-connection-carrier-not-exposed"
+      },
+      {
+        "kind": "wsl",
+        "available": false,
+        "state": "unknown",
+        "reason": "wsl-requires-windows-host"
+      },
+      {
+        "kind": "docker",
+        "available": false,
+        "state": "unknown",
+        "reason": "remote-connection-carrier-not-exposed"
+      }
+    ],
+    "carriers": [
+      {
+        "name": "connect",
+        "method": "zcode:connect-remote",
+        "owner": "desktop-main",
+        "transport": "electron-ipc",
+        "direction": "request",
+        "requestable": false,
+        "deprecated": false
+      },
+      {
+        "name": "cancelConnect",
+        "method": "zcode:cancel-pending-remote-connection",
+        "owner": "desktop-main",
+        "transport": "electron-ipc",
+        "direction": "request",
+        "requestable": false,
+        "deprecated": false
+      },
+      {
+        "name": "bindWorkspace",
+        "method": "zcode:bind-remote-workspace-session-context",
+        "owner": "desktop-main",
+        "transport": "electron-ipc",
+        "direction": "request",
+        "requestable": false,
+        "deprecated": false
+      },
+      {
+        "name": "disposeSession",
+        "method": "zcode:dispose-remote-session",
+        "owner": "desktop-main",
+        "transport": "electron-ipc",
+        "direction": "request",
+        "requestable": false,
+        "deprecated": false
+      },
+      {
+        "name": "sshAliases",
+        "method": "zcode:list-ssh-config-aliases",
+        "owner": "desktop-main",
+        "transport": "electron-ipc",
+        "direction": "request",
+        "requestable": false,
+        "deprecated": false
+      },
+      {
+        "name": "wslDistros",
+        "method": "zcode:list-wsl-distros",
+        "owner": "desktop-main",
+        "transport": "electron-ipc",
+        "direction": "request",
+        "requestable": false,
+        "deprecated": false
+      },
+      {
+        "name": "dockerAvailable",
+        "method": "zcode:is-docker-available",
+        "owner": "desktop-main",
+        "transport": "electron-ipc",
+        "direction": "request",
+        "requestable": false,
+        "deprecated": false
+      },
+      {
+        "name": "dockerContainers",
+        "method": "zcode:list-docker-containers",
+        "owner": "desktop-main",
+        "transport": "electron-ipc",
+        "direction": "request",
+        "requestable": false,
+        "deprecated": false
+      },
+      {
+        "name": "connectionLog",
+        "method": "zcode:remote-connection-log",
+        "owner": "desktop-main",
+        "transport": "electron-ipc",
+        "direction": "notification",
+        "requestable": false,
+        "deprecated": false
+      },
+      {
+        "name": "sessionClosed",
+        "method": "zcode:remote-session-closed",
+        "owner": "desktop-main",
+        "transport": "electron-ipc",
+        "direction": "notification",
+        "requestable": false,
+        "deprecated": false
+      },
+      {
+        "name": "botReconnected",
+        "method": "zcode:bot-remote-workspace-reconnected",
+        "owner": "desktop-main",
+        "transport": "electron-ipc",
+        "direction": "notification",
+        "requestable": false,
+        "deprecated": false
+      },
+      {
+        "name": "connectHttp",
+        "method": "/api/connect-remote",
+        "owner": "independent-server",
+        "transport": "http-ws",
+        "direction": "request",
+        "requestable": false,
+        "deprecated": false
+      },
+      {
+        "name": "remoteChannel",
+        "method": "/ws/remote/:id",
+        "owner": "independent-server",
+        "transport": "http-ws",
+        "direction": "request",
+        "requestable": false,
+        "deprecated": false
+      },
+      {
+        "name": "serverInfo",
+        "method": "/api/server-info",
+        "owner": "independent-server",
+        "transport": "http-ws",
+        "direction": "request",
+        "requestable": false,
+        "deprecated": false
+      },
+      {
+        "name": "hostCapability",
+        "method": "/api/rpc-host-capability",
+        "owner": "independent-server",
+        "transport": "http-ws",
+        "direction": "request",
+        "requestable": false,
+        "deprecated": false
+      },
+      {
+        "name": "terminalChannel",
+        "method": "/ws",
+        "owner": "independent-server",
+        "transport": "http-ws",
+        "direction": "request",
+        "requestable": false,
+        "deprecated": false
+      },
+      {
+        "name": "hostChannel",
+        "method": "/ws/host",
+        "owner": "independent-server",
+        "transport": "http-ws",
+        "direction": "request",
+        "requestable": false,
+        "deprecated": false
+      }
+    ],
+    "admission": {
+      "allowed": false,
+      "reason": "remote-connection-carrier-not-exposed"
+    }
+  },
+  "status": "PASS"
+}
