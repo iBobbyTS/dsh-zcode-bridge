@@ -10,12 +10,17 @@ import { InsightsClient } from './insights.mjs';
 import { AutomationClient, OFF_PEAK_ENTITLEMENT_REASON } from './automation.mjs';
 import { ProtocolPeer } from './protocol.mjs';
 import { remoteState } from './remote.mjs';
+import { FailSafeState, commandAllowed } from './fail-safe.mjs';
+import { compatibilityProjection } from './compatibility.mjs';
 export const initialStatus=()=>({state:'unavailable',reason:'not-connected',auth:'unconfirmed',connected:false});
 /** Owns only children it launches; there is no attach or shared-process killer. */
 export class BridgeHost {
-  #conversations=new Set(); #handles=new Map(); #deleted=new Set(); #clientId='bridge-'+randomUUID(); #status=initialStatus(); #peer; #catalog; #insights; #automation; #hostTools; #operation; #disposed=false; #stop; #disposePromise;
+  #conversations=new Set(); #handles=new Map(); #deleted=new Set(); #clientId='bridge-'+randomUUID(); #status=initialStatus(); #peer; #catalog; #insights; #automation; #hostTools; #operation; #disposed=false; #stop; #disposePromise; #failSafe=new FailSafeState();
   constructor({appPath,workspacePath,inspect=inspectInstallation,spawnProcess=spawn,catalogLimit=4096,onStatus=()=>{}}={}){if(!Number.isSafeInteger(catalogLimit)||catalogLimit<50||catalogLimit>65536)throw new BridgeError('catalog-limit-invalid');this.catalogLimit=catalogLimit;this.appPath=appPath;this.workspacePath=workspacePath;this.inspect=inspect;this.spawnProcess=spawnProcess;this.onStatus=onStatus}
-  get status(){return structuredClone(this.#status)}
+  /** Adds the per-connection fail-safe grade and the version-compatibility truth table.
+   *  Both are derived facts: the fail-safe never persists, and the compatibility record is the
+   *  bridge's own verified-version constant, never a ZCode source-derived claim. */
+  get status(){const status=structuredClone(this.#status);status.failSafe=this.#failSafe.state;status.compatibility=compatibilityProjection(this.#status.installation??null);return status}
   /** Read official catalog facts only. An address query never activates a Session. */
   async listSessions({address,signal}={}){
     const peer=this.#peer,status=this.status;
@@ -53,7 +58,7 @@ export class BridgeHost {
     if(this.#deleted.has(address.sessionId))throw new BridgeError('session-deleted');
     // The publisher replaces by (connectionId, topic); each downstream owner needs its own stable slot.
     const connectionId=status.sessionAuthority+':'+randomUUID();
-    const conversation=new V4Conversation(this.#peer,{address,workspace:{workspacePath:status.workspacePath,workspaceKey:status.workspacePath},connectionId,clientId:this.#clientId,runnable:status.state==='available',managementAllowed:status.installation?.verified===true,hostTools:this.#hostTools,onChange:state=>{if(state.status==='closed')this.#conversations.delete(conversation);onChange(state)}});
+    const conversation=new V4Conversation(this.#peer,{address,workspace:{workspacePath:status.workspacePath,workspaceKey:status.workspacePath},connectionId,clientId:this.#clientId,runnable:status.state==='available',managementAllowed:status.installation?.verified===true,hostTools:this.#hostTools,onChange:state=>{if(state.status==='error'&&state.error?.code)this.#failSafe.observe(state.error.code);if(state.status==='closed')this.#conversations.delete(conversation);onChange(state)}});
     this.#conversations.add(conversation);return conversation;
   }
   /** Opaque per-view ownership; no runtime/command capability is accepted from UI. */
@@ -68,6 +73,8 @@ export class BridgeHost {
     finally{signal?.removeEventListener('abort',abort)}
   }
   async conversationOperation({handle,operation,command,commandId,kind,preferences,attachment,uploadId,chunkIndex,dataBase64,ref,target,attachmentIndex,offset,limit,baseRevision,baseLogEpoch,endedCursor,endedLimit,workId,params},signal){
+    // A core incompatibility stopped new side effects; only the explicit safe stop path remains.
+    if(operation==='command'&&this.#failSafe.blocksNewSideEffects&&!commandAllowed(this.#failSafe.level,command?.type))throw new BridgeError('runtime-incompatible');
     const conversation=this.#handles.get(handle);
     if(!conversation)throw new BridgeError('conversation-handle-invalid');
     if(operation==='release'){this.#handles.delete(handle);await conversation.cancel();return {released:true}}
@@ -96,12 +103,15 @@ export class BridgeHost {
   }
   /** Official MCP/plugin/skill directory read. Never a second catalog and never an MCP tool call. */
   async catalogRead(kind,params={},{signal}={}){
-    return this.#catalogClient().read(kind,params,{signal});
+    try{return await this.#catalogClient().read(kind,params,{signal})}catch(error){this.#observeFailure(error);throw error}
   }
   /** Official management operation. Progress correlates by operationId; official result is authoritative. */
   async catalogOperate(operation,params={},{signal,operationId}={}){
-    return this.#catalogClient().operate(operation,params,{signal,operationId});
+    if(this.#failSafe.blocksNewSideEffects)throw new BridgeError('runtime-incompatible');
+    try{return await this.#catalogClient().operate(operation,params,{signal,operationId})}catch(error){this.#observeFailure(error);throw error}
   }
+  /** Records an optional-capability failure without letting it stop already-confirmed paths. */
+  #observeFailure(error){const code=error?.code??error?.protocolCode;if(code)this.#failSafe.observe(code)}
   /** Bounded view of admission and in-flight operations. No official catalog is cached here. */
   catalogState(){
     const catalog=this.#catalog;
@@ -116,7 +126,7 @@ export class BridgeHost {
   }
   /** Official account/usage/diagnostic read. Never a second store; account state stays UNKNOWN. */
   async insightsRead(kind,params={},{signal}={}){
-    return this.#insightsClient().read(kind,params,{signal});
+    try{return await this.#insightsClient().read(kind,params,{signal})}catch(error){this.#observeFailure(error);throw error}
   }
   /** Bounded projection of account honesty, gated model surfaces and the latest resource sample. */
   insightsState(){
@@ -164,6 +174,8 @@ export class BridgeHost {
   async #connect(){
     let peer,stop,terminalReason;
     this.#hostTools?.dispose();this.#hostTools=undefined;this.#catalog?.dispose();this.#catalog=undefined;this.#insights?.dispose();this.#insights=undefined;this.#automation?.dispose();this.#automation=undefined;
+    // Fail-safe is per-connection runtime state; a fresh connection attempt starts neutral.
+    this.#failSafe.reset();
     this.#deleted.clear();this.#handles.clear();this.#status=initialStatus();this.#publish({state:'restricted',reason:'connecting',connected:false,auth:'unconfirmed'});
     try{
       const installation=await this.inspect(this.appPath);
@@ -182,7 +194,7 @@ export class BridgeHost {
       child.once('error',()=>{peer?.close('launch-failed')});
       peer=this.#peer=new ProtocolPeer(child.stdout,child.stdin,{
         onAuthUnavailable:()=>this.#publish({state:'restricted',reason:'official-auth-source-missing',auth:'unavailable'}),
-        onClose:reason=>{terminalReason=reason;this.#publish({state:'unavailable',reason,connected:false});void stop()},
+        onClose:reason=>{terminalReason=reason;this.#failSafe.observe(reason);this.#publish({state:'unavailable',reason,connected:false});void stop()},
       });
       const capabilities=await peer.request('runtime/capabilities',{});
       if(!capabilities||typeof capabilities.independentPlanState!=='boolean')throw new BridgeError('capabilities-invalid');
@@ -201,6 +213,9 @@ export class BridgeHost {
       return this.status;
     }catch(e){
       const reason=terminalReason??(e instanceof BridgeError?e.code:'launch-failed');
+      // Grade the terminal failure: a core decode/authority error marks the runtime incompatible,
+      // an optional-capability failure is isolated, an unknown code stays neutral.
+      this.#failSafe.observe(reason);
       this.#hostTools?.dispose();this.#hostTools=undefined;this.#catalog?.dispose();this.#catalog=undefined;this.#insights?.dispose();this.#insights=undefined;this.#automation?.dispose();this.#automation=undefined;
       peer?.close(reason);await stop?.();
       this.#publish({state:'unavailable',reason:this.#disposed?'disposed':reason,connected:false});

@@ -4,8 +4,11 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
+import { VERIFIED_VERSIONS } from './compatibility.mjs';
 const exec = promisify(execFile);
-export const VERIFIED = {version:'3.14.4',build:'3.14.4.7912',sha256:'fad4c35c4c36ec210d8a06d3fa0e77de23c8545e2eb6ff90aea1eb38d1e6275f'};
+// Single source of truth for the exact verified tuple; see compatibility.mjs.
+const verifiedBaseline = VERIFIED_VERSIONS[0];
+export const VERIFIED = {version:verifiedBaseline.version,build:verifiedBaseline.build,sha256:verifiedBaseline.bundleSha256};
 export class BridgeError extends Error { constructor(code) { super(code); this.code=code; } }
 export async function inspectInstallation(appPath, {platform=process.platform}={}) {
   if(platform!=='darwin') throw new BridgeError('unsupported-platform');

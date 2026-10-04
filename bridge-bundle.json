@@ -1,0 +1,24 @@
+{
+  "bundleId": "@dsh-zcode/bridge",
+  "version": "0.1.0",
+  "kind": "dsh-plugin-bundle",
+  "patch": "./cordis.patch.yml",
+  "plugins": [
+    { "id": "zcode-bridge-host", "package": "@dsh-zcode/host", "kind": "host", "version": "0.1.0" },
+    { "id": "zcode-bridge-client", "package": "@dsh-zcode/bridge-client", "kind": "client", "version": "0.1.0" }
+  ],
+  "compatibility": {
+    "zcode": {
+      "highestVerified": "3.14.4",
+      "note": "Derived from the bridge's own verified-version record (packages/host/compatibility.mjs); not from the ZCode source version.",
+      "verifiedTuples": [
+        { "id": "zcode-3.14.4-7912", "version": "3.14.4", "build": "3.14.4.7912" }
+      ]
+    },
+    "dsh": { "cohort": "0.2.0-rc.2", "note": "External plugin lock cohort; see package peerDependencies." }
+  },
+  "activation": {
+    "restartRequiredOnVersionChange": true,
+    "note": "Host and client plugin versions must agree with the running process; an installed update that is not active shows restart-required instead of claiming the upgrade took effect."
+  }
+}
