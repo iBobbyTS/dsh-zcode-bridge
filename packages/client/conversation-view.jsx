@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useSyncExternalStore } from 'react';
+import { ZCodeHistoryControls } from './history-controls.jsx';
 import { ZCodeInputControls } from './input-controls.jsx';
 import { attachmentMediaKind, attachmentPreviewKind, decodeBase64Bytes, encodeBase64 } from './attachment.mjs';
 
@@ -91,6 +92,15 @@ export class ConversationController {
   async queryCommand(commandId, options) {
     if (this.#disposed) throw new Error('Controller is disposed');
     return this.#conversation?.queryCommand?.(commandId, options);
+  }
+
+  async submitHistoryCommand(command) {
+    if (this.#disposed) throw new Error('Controller is disposed');
+    return this.#conversation.submit(command);
+  }
+  async historyQuery(params, options) {
+    if (this.#disposed) throw new Error('Controller is disposed');
+    return this.#conversation.historyQuery(params, options);
   }
 
   async submitInputCommand(command) {
@@ -2489,6 +2499,12 @@ export function ZCodeRowsList({ state, controller }) {
           );
         }
 
+        if (kind === 'timelineMarker' && row.marker?.type === 'compact') {
+          return <div key={rowId} data-testid="zcode-compaction-marker">Context compaction: {row.marker.status}
+            {row.marker.tokensBefore !== undefined && <span> · {row.marker.tokensBefore} → {row.marker.tokensAfter ?? 'pending'} tokens</span>}
+          </div>;
+        }
+
         if (kind === 'assistantText') {
           return (
             <div
@@ -2538,7 +2554,7 @@ export function ZCodeRowsList({ state, controller }) {
  * Main ZCode Conversation view component.
  * Integrates status banner, alerts, stop bar, pending interactions, command ledger, and message rows.
  */
-export function ZCodeConversationView({ conversation, controller, reference }) {
+export function ZCodeConversationView({ conversation, controller, reference, onOpenBranch }) {
   const [internal, setInternal] = useState(() => {
     if (controller || !conversation) return { conversation: null, controller: null };
     return { conversation, controller: new ConversationController(conversation) };
@@ -2607,13 +2623,8 @@ export function ZCodeConversationView({ conversation, controller, reference }) {
     return activeController?.requestWorkspaceHookReview(payload);
   };
 
-  const sessionIdentity = conversation?.address
-    ? `${conversation.address.runtime || 'zcode'}:${conversation.address.authority}:${conversation.address.workspace}:${conversation.address.sessionId}`
-    : reference?.address
-      ? `${reference.address.runtime || 'zcode'}:${reference.address.authority}:${reference.address.workspace}:${reference.address.sessionId}`
-      : (activeController?.conversation?.address
-        ? `${activeController.conversation.address.runtime || 'zcode'}:${activeController.conversation.address.authority}:${activeController.conversation.address.workspace}:${activeController.conversation.address.sessionId}`
-        : null);
+  const address = conversation?.address ?? reference?.address ?? activeController?.conversation?.address;
+  const sessionIdentity = address ? JSON.stringify([address.runtime, address.authority, address.workspace, address.sessionId]) : null;
 
   return (
     <div
@@ -2635,7 +2646,7 @@ export function ZCodeConversationView({ conversation, controller, reference }) {
       <ZCodeAlerts state={state} onReconnect={handleReconnect} />
       <ZCodeControlBar state={state} onStop={handleStop} />
       <ZCodePendingInteractions
-        key={sessionIdentity ?? 'default'}
+        key={`interactions:${sessionIdentity ?? 'default'}`}
         state={state}
         onResolve={handleResolve}
         onSnooze={handleSnooze}
@@ -2646,10 +2657,11 @@ export function ZCodeConversationView({ conversation, controller, reference }) {
         onQueryCommand={handleQueryCommand}
       />
       <ZCodeCommandLedger state={state} />
+      <ZCodeHistoryControls key={`history:${sessionIdentity ?? 'default'}`} state={state} controller={activeController} onOpenBranch={onOpenBranch} />
       <div style={{ flex: 1, overflowY: 'auto' }}>
         <ZCodeRowsList state={state} controller={activeController} />
       </div>
-      <ZCodeInputControls key={sessionIdentity ?? 'default'} state={state} controller={activeController} />
+      <ZCodeInputControls key={`input:${sessionIdentity ?? 'default'}`} state={state} controller={activeController} />
     </div>
   );
 }

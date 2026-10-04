@@ -60,3 +60,15 @@ on the restricted Host. See [S06 handoff](docs/handoff/S06-HANDOFF.md) for verif
 payloads, fixture provenance and real non-model capture results. Reproduce that
 capture with `node scripts/capture-s06.mjs /Applications/ZCode.app` and derive
 busy fixtures with `node scripts/make-s06-fixtures.mjs`.
+
+S08 adds official history branching, side-session creation, edit/retry, feedback,
+file diffs and rewind previews, and context compaction. Editing defaults to
+preserving workspace files; combined rewind is explicit. Retry starts a new
+execution and may repeat prior tool effects; uncertain delivery is recovered
+only by querying the original command ID. File writes remain owned by ZCode.
+Historical targets and previews retain their observed revision and epoch.
+The official compact carrier queues during busy/held work and rejects duplicate
+compaction, following the current projection admission. Model operations remain
+auth-gated; no successful live history/file-rewind oracle is claimed from empty
+drafts. See [S08 handoff](docs/handoff/S08-HANDOFF.md). Safe real probing and fixture
+replay: `node scripts/capture-s08.mjs`, `node scripts/make-s08-fixtures.mjs`.

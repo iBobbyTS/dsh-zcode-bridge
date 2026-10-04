@@ -20,6 +20,7 @@ export function apply(ctx,config={}) {
           if(!payload||typeof payload!=='object'||Array.isArray(payload))throw Object.assign(new Error(),{code:'invalid-payload'});
           const operationKeys={
             open:['operation','address'],
+            historyQuery:['operation','handle','kind','target','baseRevision','baseLogEpoch'],
             workspaceConfig:['operation','handle','kind','preferences'],
             attachmentStart:['operation','handle','attachment'],
             attachmentChunk:['operation','handle','uploadId','chunkIndex','dataBase64'],

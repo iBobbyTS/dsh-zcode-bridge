@@ -170,7 +170,7 @@ export class RuntimeSessions {
     const conversation=options?.conversation??this.#conversationResolver?.(fixed);
     const renderSessionArea=(options?.renderSessionArea||conversation)?()=>{
       if(typeof options?.renderSessionArea==='function')return options.renderSessionArea(reference);
-      return React.createElement(ZCodeConversationView,{key,reference,conversation,rpc:this.rpc});
+      return React.createElement(ZCodeConversationView,{key,reference,conversation,rpc:this.rpc,onOpenBranch:address=>this.open(address)});
     }:undefined;
     const reference=Object.freeze({runtime:'zcode',address:fixed,
       summary:{getSnapshot:()=>live?this.#zcodeRows.find(row=>row.key===key):undefined,subscribe:listener=>subscribe(this.list,listener)},

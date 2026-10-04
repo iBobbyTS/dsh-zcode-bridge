@@ -18,6 +18,8 @@ import {
   v4ConversationAttachmentReadParamsSchema, v4ConversationAttachmentReadResultSchema,
   v4ConversationAttachmentStatParamsSchema, v4ConversationAttachmentStatResultSchema,
   sharedContextRefSchema,
+  v4ConversationFileChangesParamsSchema, v4ConversationFileChangesResultSchema,
+  v4ConversationFileRewindPreviewParamsSchema, v4ConversationFileRewindPreviewResultSchema,
   zcodeWorkspaceUpdateInteractionPreferencesParamsSchema, zcodeWorkspaceUpdateInteractionPreferencesResultSchema,
   zcodeWorkspaceUpdateModelIoPreferencesParamsSchema, zcodeWorkspaceUpdateModelIoPreferencesResultSchema,
   zcodeWorkspaceReadPresentationParamsSchema, zcodeWorkspacePresentationSchema,
@@ -25,8 +27,11 @@ import {
 const nonempty=x=>typeof x==='string'&&x.trim().length>0;
 const int=x=>Number.isSafeInteger(x)&&x>=0;
 export const MANAGEMENT_COMMANDS=new Set(['renameSession','deleteSession','discardSharedContext']);
+export const HISTORY_COMMANDS=new Set(['forkAssistant','createSelectionSideSession','editUserQuery','retryTurn','applyFileRewind','setAssistantFeedback','compact']);
+const historyResources=new Set(['forkAssistant','createSelectionSideSession','applyFileRewind','setAssistantFeedback']);
+const historyActions={forkAssistant:'canFork',editUserQuery:'canEdit',retryTurn:'canRetry',applyFileRewind:'canRewindFiles'};
 const managementCommands=MANAGEMENT_COMMANDS;
-const availabilityCommands={editQueueItem:'queueEdit',reorderQueueItem:'queueEdit',deleteQueueItem:'queueEdit',sendQueuedNow:'sendQueuedNow',switchModelConfig:'switchModelConfig',setFollowupMode:'setFollowupMode',pauseGoal:'pauseGoal',resumeGoal:'resumeGoal'};
+const availabilityCommands={editQueueItem:'queueEdit',reorderQueueItem:'queueEdit',deleteQueueItem:'queueEdit',sendQueuedNow:'sendQueuedNow',switchModelConfig:'switchModelConfig',setFollowupMode:'setFollowupMode',pauseGoal:'pauseGoal',resumeGoal:'resumeGoal',compact:'compact'};
 const terminal=new Set(['completed','failed','interrupted','rejected','stale','noop','not-sent']);
 export const INPUT_COMMANDS=new Set(['sendText','sendGoalCommand','stop','sendQueuedNow','editQueueItem','reorderQueueItem','deleteQueueItem','setAutoDrain','switchModelConfig','switchCollaborationMode','setFollowupMode','pauseGoal','resumeGoal']);
 const workspaceCarriers={
@@ -319,14 +324,36 @@ export class V4Conversation {
     if(!parsed.success)throw new BridgeError('attachment-invalid');
     return v4ConversationAttachmentReadResultSchema.parse(await this.peer.request('v4/conversation/attachmentRead',parsed.data,{signal}));
   }
-  async submit({type,payload,commandId=newCommandId(),baseRevision}={}, {signal}={}){
-    const admission=managementCommands.has(type)?this.managementAdmission:this.admission;
+  /** Queries are pinned to the row's observed revision/epoch; late responses cannot authorize an apply. */
+  async historyQuery({kind,target,baseRevision,baseLogEpoch}={}, {signal}={}){
+    this.#projectionAdmission();
+    const carriers={fileChanges:['v4/conversation/fileChanges',v4ConversationFileChangesParamsSchema,v4ConversationFileChangesResultSchema],fileRewindPreview:['v4/conversation/fileRewindPreview',v4ConversationFileRewindPreviewParamsSchema,v4ConversationFileRewindPreviewResultSchema]};
+    const carrier=carriers[kind];if(!carrier)throw new BridgeError('history-query-unavailable');
+    const snapshot=this.#state.snapshot;
+    if(baseLogEpoch!==snapshot.logEpoch)throw new BridgeError('proto.staleLogEpoch');
+    if(baseRevision!==snapshot.revision)throw new BridgeError('proto.staleRevision');
+    const row=snapshot.rows.window.find(r=>r.rowId===target?.rowId&&r.entityId===target?.entityId);
+    if(!row)throw new BridgeError('row-target-unconfirmed');
+    if(row.kind!=='turnHeader'||(kind==='fileRewindPreview'&&row.actions?.canRewindFiles!==true))throw new BridgeError('guard.actionUnavailable');
+    const params=carrier[1].safeParse({sessionId:this.address.sessionId,target,baseRevision,baseLogEpoch});
+    if(!params.success)throw new BridgeError('history-query-invalid');
+    const result=carrier[2].parse(await this.peer.request(carrier[0],params.data,{signal}));
+    this.#projectionAdmission();
+    if(this.#state.snapshot.logEpoch!==baseLogEpoch)throw new BridgeError('proto.staleLogEpoch');
+    if(this.#state.snapshot.revision!==baseRevision)throw new BridgeError('proto.staleRevision');
+    return {kind,target,baseRevision,baseLogEpoch,result};
+  }
+  async submit({type,payload,commandId=newCommandId(),baseRevision,baseLogEpoch}={}, {signal}={}){
+    const resource=historyResources.has(type)&&!(type==='createSelectionSideSession'&&payload?.firstInput);
+    const admission=managementCommands.has(type)||resource?this.managementAdmission:this.admission;
     if(!admission.allowed)throw new BridgeError(admission.reason);
     if(baseRevision!==undefined&&!int(baseRevision))throw new BridgeError('command-invalid');
     if(!nonempty(commandId))throw new BridgeError('command-invalid');
     if(this.#commands.has(commandId))throw new BridgeError('command-already-tracked');
     if(signal?.aborted)throw new BridgeError('cancelled');
     const snapshot=this.#state.snapshot;
+    if(baseLogEpoch!==undefined&&baseLogEpoch!==snapshot.logEpoch)throw new BridgeError('proto.staleLogEpoch');
+    if(HISTORY_COMMANDS.has(type)&&baseRevision!==undefined&&baseRevision!==snapshot.revision)throw new BridgeError('proto.staleRevision');
     const availability=availabilityCommands[type];
     if(availability&&snapshot.availability?.[availability]?.allowed!==true)throw new BridgeError(snapshot.availability?.[availability]?.reasonCode??'action-unavailable');
     if(['editQueueItem','reorderQueueItem','deleteQueueItem','sendQueuedNow'].includes(type)){
@@ -347,7 +374,7 @@ export class V4Conversation {
     }
     if((type==='resolveInteraction'||type==='snoozeInteractionAutoResolution'||type==='respondWorkspaceHookReview'||type==='toggleWorkspaceHookReviewItem')&&!snapshot.pendingInteractions.some(x=>x.interactionId===payload?.interactionId))throw new BridgeError('interaction-unconfirmed');
     if(type==='revokeWorkspaceHookTrust'&&payload?.interactionId&&!snapshot.pendingInteractions.some(x=>x.interactionId===payload.interactionId))throw new BridgeError('interaction-unconfirmed');
-    if(type==='sendText'&&payload?.attachments!==undefined){
+    if(['sendText','editUserQuery'].includes(type)&&payload?.attachments!==undefined){
       if(!Array.isArray(payload.attachments))throw new BridgeError('command-invalid');
       if(payload.attachments.some(attachment=>!this.#boundAttachmentRef(attachment?.ref)))throw new BridgeError('attachment-ref-unbound');
     }
@@ -365,6 +392,11 @@ export class V4Conversation {
     const parsed=parseCommandEnvelope(envelope);
     if(!parsed.ok)throw new BridgeError('command-invalid');
     if(ROW_TARGETING_COMMANDS.has(type)&&!snapshot.rows.window.some(row=>row.rowId===payload.target.rowId&&row.entityId===payload.target.entityId))throw new BridgeError('row-target-unconfirmed');
+    if(HISTORY_COMMANDS.has(type)&&ROW_TARGETING_COMMANDS.has(type)){
+      const row=snapshot.rows.window.find(r=>r.rowId===payload.target.rowId&&r.entityId===payload.target.entityId);
+      const action=historyActions[type];
+      if((action&&row.actions?.[action]!==true)||(type==='setAssistantFeedback'&&row.kind!=='assistantText'))throw new BridgeError('guard.actionUnavailable');
+    }
     this.#reserveCommand();
     const controller=new AbortController(),abort=()=>controller.abort();signal?.addEventListener('abort',abort,{once:true});
     this.#commandControllers.set(commandId,controller);
@@ -385,6 +417,10 @@ export class V4Conversation {
     if(ack.commandId!==record.commandId||!int(ack.revisionAtDecision))throw new BridgeError('command-ack-mismatch');
     if(['rejected','stale','noop','failed'].includes(ack.status)&&!ack.reasonCode)throw new BridgeError('command-reason-missing');
     record.ack=ack;
+    if(['accepted','duplicate'].includes(ack.status)&&['forkAssistant','createSelectionSideSession'].includes(ack.result?.type)){
+      if(ack.result.type!==record.type||!nonempty(ack.result.sessionId)||ack.result.sessionId===this.address.sessionId)throw new BridgeError('command-result-mismatch');
+      record.branchAddress={...this.address,sessionId:ack.result.sessionId};
+    }
     if(!terminal.has(record.state))record.state=['accepted','duplicate'].includes(ack.status)?'accepted-awaiting-terminal':ack.status;
     this.#reconcileCommands();
   }
@@ -404,10 +440,12 @@ export class V4Conversation {
   #reconcileCommands(){
     const snapshot=this.#state.snapshot;if(!snapshot)return;
     for(const record of this.#commands.values()){
-      if(terminal.has(record.state)||record.logEpoch!==snapshot.logEpoch)continue;
+      if(terminal.has(record.state))continue;
+      const rerun=['editUserQuery','retryTurn'].includes(record.type)&&['accepted','duplicate'].includes(record.ack?.status);
+      if(record.logEpoch!==snapshot.logEpoch&&!rerun)continue;
       const header=snapshot.rows.window.find(row=>row.kind==='turnHeader'&&row.sourceCommandId===record.commandId);
       if(!header)continue;
-      record.turnId=header.turnId;
+      record.turnId=header.turnId;record.resultLogEpoch=snapshot.logEpoch;
       record.state=({completedSuccess:'completed',completedInterrupted:'interrupted',failed:'failed',running:'running'})[header.state];
       if(record.state==='running'&&snapshot.pendingInteractions.some(x=>x.anchorRowId!==null&&snapshot.rows.window.some(row=>row.rowId===x.anchorRowId&&row.turnId===header.turnId)))record.state='waiting';
     }
