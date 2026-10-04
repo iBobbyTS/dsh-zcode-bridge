@@ -1,4 +1,4 @@
-import { WORKFLOW_COMMANDS } from './workflow.mjs';
+import { WORKFLOW_COMMANDS, WORKFLOW_MANAGEMENT_WRITES } from './workflow.mjs';
 import { HostTools } from './host-tools.mjs';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -10,7 +10,7 @@ import { InsightsClient } from './insights.mjs';
 import { AutomationClient, OFF_PEAK_ENTITLEMENT_REASON } from './automation.mjs';
 import { ProtocolPeer } from './protocol.mjs';
 import { remoteState } from './remote.mjs';
-import { FailSafeState, commandAllowed } from './fail-safe.mjs';
+import { FailSafeState, commandAllowed, SAFE_OPERATIONS } from './fail-safe.mjs';
 import { compatibilityProjection } from './compatibility.mjs';
 export const initialStatus=()=>({state:'unavailable',reason:'not-connected',auth:'unconfirmed',connected:false});
 /** Owns only children it launches; there is no attach or shared-process killer. */
@@ -22,7 +22,12 @@ export class BridgeHost {
    *  bridge's own verified-version constant, never a ZCode source-derived claim. */
   get status(){const status=structuredClone(this.#status);status.failSafe=this.#failSafe.state;status.compatibility=compatibilityProjection(this.#status.installation??null);return status}
   /** Read official catalog facts only. An address query never activates a Session. */
-  async listSessions({address,signal}={}){
+  async listSessions(options={}){
+    try{return await this.#listSessions(options)}catch(error){this.#observeFailure(error);throw error}
+  }
+  /** #listSessions body; the public wrapper records any failure code (a core sessions-invalid
+   *  projection must stop new side effects, not only close the peer). */
+  async #listSessions({address,signal}={}){
     const peer=this.#peer,status=this.status;
     if(this.#disposed||!status.connected||!peer||peer.closed)throw new BridgeError('source-unavailable');
     if(address!==undefined&&(!address||address.runtime!=='zcode'||address.authority!==status.sessionAuthority||address.workspace!==status.workspacePath||typeof address.sessionId!=='string'||!address.sessionId))throw new BridgeError('source-address-mismatch');
@@ -46,7 +51,7 @@ export class BridgeHost {
       return {address:{runtime:'zcode',authority:status.sessionAuthority,workspace:status.workspacePath,sessionId:session.sessionId},title:session.title,cwd:session.workspace.workspacePath,running:undefined};
     });
     if(new Set(sessions.map(row=>row.address.sessionId)).size!==sessions.length)throw new BridgeError('sessions-invalid');
-    if(address&&sessions.length===0){const catalog=await this.listSessions({signal});return {...catalog,sessions:catalog.sessions.filter(row=>row.address.sessionId===address.sessionId)}}
+    if(address&&sessions.length===0){const catalog=await this.#listSessions({signal});return {...catalog,sessions:catalog.sessions.filter(row=>row.address.sessionId===address.sessionId)}}
     const visible=sessions.filter(row=>!this.#deleted.has(row.address.sessionId));
     return {sessions:visible,catalog:{complete:!truncated,truncated,limit,deleted:[...this.#deleted],sharedGui:'unverified',authorityKind:'owned-headless',lifetime:'process'},management:{rename:status.installation?.verified===true,delete:status.installation?.verified===true,archive:false,pin:false,reason:'archive-pin-carrier-unverified',renameCas:false,deleteSemantics:'official-runtime-removal'},scope:{authority:status.sessionAuthority,workspace:status.workspacePath},availability:{state:status.state,reason:status.reason,capabilities:{create:false,open:false,nativeAgent:false}}};
   }
@@ -58,7 +63,7 @@ export class BridgeHost {
     if(this.#deleted.has(address.sessionId))throw new BridgeError('session-deleted');
     // The publisher replaces by (connectionId, topic); each downstream owner needs its own stable slot.
     const connectionId=status.sessionAuthority+':'+randomUUID();
-    const conversation=new V4Conversation(this.#peer,{address,workspace:{workspacePath:status.workspacePath,workspaceKey:status.workspacePath},connectionId,clientId:this.#clientId,runnable:status.state==='available',managementAllowed:status.installation?.verified===true,hostTools:this.#hostTools,onChange:state=>{if(state.status==='error'&&state.error?.code)this.#failSafe.observe(state.error.code);if(state.status==='closed')this.#conversations.delete(conversation);onChange(state)}});
+    const conversation=new V4Conversation(this.#peer,{address,workspace:{workspacePath:status.workspacePath,workspaceKey:status.workspacePath},connectionId,clientId:this.#clientId,runnable:status.state==='available',managementAllowed:status.installation?.verified===true,hostTools:this.#hostTools,onChange:state=>{if(state.status==='error'){const code=typeof state.error==='string'?state.error:state.error?.code;if(code)this.#failSafe.observe(code)}if(state.status==='closed')this.#conversations.delete(conversation);onChange(state)}});
     this.#conversations.add(conversation);return conversation;
   }
   /** Opaque per-view ownership; no runtime/command capability is accepted from UI. */
@@ -73,8 +78,8 @@ export class BridgeHost {
     finally{signal?.removeEventListener('abort',abort)}
   }
   async conversationOperation({handle,operation,command,commandId,kind,preferences,attachment,uploadId,chunkIndex,dataBase64,ref,target,attachmentIndex,offset,limit,baseRevision,baseLogEpoch,endedCursor,endedLimit,workId,params},signal){
-    // A core incompatibility stopped new side effects; only the explicit safe stop path remains.
-    if(operation==='command'&&this.#failSafe.blocksNewSideEffects&&!commandAllowed(this.#failSafe.level,command?.type))throw new BridgeError('runtime-incompatible');
+    // A core incompatibility stopped new side effects; only the explicit safe whitelist remains.
+    if(this.#failSafe.blocksNewSideEffects&&!this.#coreOperationAllowed(operation,command,kind))throw new BridgeError('runtime-incompatible');
     const conversation=this.#handles.get(handle);
     if(!conversation)throw new BridgeError('conversation-handle-invalid');
     if(operation==='release'){this.#handles.delete(handle);await conversation.cancel();return {released:true}}
@@ -112,6 +117,17 @@ export class BridgeHost {
   }
   /** Records an optional-capability failure without letting it stop already-confirmed paths. */
   #observeFailure(error){const code=error?.code??error?.protocolCode;if(code)this.#failSafe.observe(code)}
+  /** Whitelist of operations allowed once a core incompatibility stopped new side effects: reads,
+   *  ownership release, explicit safe-stop commands, workflow reads and workspace presentation reads.
+   *  Every other listed write surface (attachment staging/commit, workflow-store writes, workspace
+   *  preference writes, host registration) is refused rather than relying on a peer close. */
+  #coreOperationAllowed(operation,command,kind){
+    if(operation==='command')return commandAllowed(this.#failSafe.level,command?.type);
+    if(SAFE_OPERATIONS.has(operation))return true;
+    if(operation==='workflowManage')return !WORKFLOW_MANAGEMENT_WRITES.has(kind);
+    if(operation==='workspaceConfig')return kind==='presentation';
+    return false;
+  }
   /** Bounded view of admission and in-flight operations. No official catalog is cached here. */
   catalogState(){
     const catalog=this.#catalog;

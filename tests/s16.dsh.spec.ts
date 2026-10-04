@@ -62,6 +62,17 @@ it('renders the warning banner with three dismiss modes and hides it locally', a
   expect(parseDismissState(localStorage.getItem('dsh.zcode.compat-dismiss')).thisVersion).toContain('3.15.0');
 });
 
+it('hides the banner immediately when dismissed once, without waiting for the next poll', async () => {
+  const status = { state: 'restricted', reason: 'runtime-unverified', auth: 'unavailable', connected: true, compatibility: classification(), failSafe: { level: 'none', incompatible: false, isolated: [] } };
+  const rpc = { call: async () => ({ ok: true, value: status }) };
+  render(React.createElement(StatusCard, { rpc, connectionState: { subscribe: () => () => {} } }));
+  await waitFor(() => expect(screen.getByTestId('zcode-version-banner')).toBeTruthy());
+  fireEvent.click(screen.getByTestId('zcode-dismiss-once'));
+  // The local store must notify its subscribers; otherwise the banner lingers until the 2s poll.
+  await waitFor(() => expect(screen.queryByTestId('zcode-version-banner')).toBeNull());
+  expect(parseDismissState(localStorage.getItem('dsh.zcode.compat-dismiss')).once).toHaveLength(0);
+});
+
 it('shows an unknown version as neutral, never as available', async () => {
   const status = { state: 'restricted', reason: 'runtime-unverified', auth: 'unavailable', connected: true, compatibility: classification({ state: 'unknown', reason: 'version-undetermined', actual: { version: null, build: null, sha256: null }, bannerRequired: false }), failSafe: { level: 'none', incompatible: false, isolated: [] } };
   const rpc = { call: async () => ({ ok: true, value: status }) };

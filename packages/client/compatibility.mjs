@@ -92,6 +92,9 @@ export class CompatibilityStore {
   #persist(state) {
     try { this.#storage?.setItem(DISMISS_STORAGE_KEY, serializeDismissState(state)); this.#snapshot = { state, error: null, revision: this.#snapshot.revision + 1 } }
     catch { this.#snapshot = { state, error: 'local-settings-write-failed', revision: this.#snapshot.revision + 1 } }
+    this.#notify();
+  }
+  #notify() {
     for (const listener of Array.from(this.#listeners)) { try { listener(this) } catch { /* observer teardown cannot block */ } }
   }
   getSnapshot = () => this.#snapshot;
@@ -99,7 +102,13 @@ export class CompatibilityStore {
   dismiss(mode, version) {
     if (this.#closed) throw Object.assign(new Error('disposed'), { code: 'disposed' });
     const { state, persisted } = dismissBanner(this.#snapshot.state, mode, version);
-    if (persisted) this.#persist(state); else this.#snapshot = { state, error: this.#snapshot.error, revision: this.#snapshot.revision + 1 };
+    if (persisted) this.#persist(state);
+    else {
+      // `once` and other non-persisted dismissals must still notify: the banner recomputes from the
+      // snapshot subscription and disappears immediately, not on the next poll.
+      this.#snapshot = { state, error: this.#snapshot.error, revision: this.#snapshot.revision + 1 };
+      this.#notify();
+    }
     return this.#snapshot;
   }
   /** Reconcile the one-time `new-next-version` skip and return the banner decision.
