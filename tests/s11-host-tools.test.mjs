@@ -47,7 +47,7 @@ test('S11 callback params reject malformed/foreign workspace and do not invoke a
  let calls=0;const f=fixture({browserExecutor:{execute:()=>{calls++;return lifecycle.results.screenshot}}});try{
  for(const [i,params] of [{...lifecycle.requests.execute.params,command:{method:'future'}},{...lifecycle.requests.execute.params,workspacePath:'/foreign'},{...lifecycle.requests.execute.params,workspaceIdentity:'foreign'},{...lifecycle.requests.list.params,unexpected:true}].entries())f.wire({id:'invalid-'+i,method:i===3?'interaction/browserList':'interaction/browserExecute',params});
  await tick();assert.equal(calls,0);assert.equal(f.sent.length,4);for(const m of f.sent)assert.equal(m.error.code,-32602);
- assert.equal(f.host.snapshot('s11-session').records.length,0);
+ assert.equal(f.host.snapshot('s11-session').records.length,2);for(const record of f.host.snapshot('s11-session').records){assert.equal(record.status,'rejected');assert.equal(record.protocolCode,-32602)}
  }finally{f.dispose()}
 });
 

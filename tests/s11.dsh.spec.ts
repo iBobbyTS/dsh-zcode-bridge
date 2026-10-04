@@ -43,6 +43,9 @@ describe('S11 host observation in the webui session area',()=>{
  it('shows a truthful gated empty state and never offers an execute/success control',async()=>{
  const f=fixture();try{render(React.createElement(ZCodeHostToolsPanel,{state:f.state(),controller:{}}));expect(screen.getByTestId('zcode-browser-host-state').textContent).toContain('gated');expect(screen.getByTestId('zcode-computer-host-state').textContent).toContain('permissions: unknown');expect(screen.getByTestId('zcode-host-tools-empty')).not.toBeNull();expect(screen.queryByText('Execute')).toBeNull();expect(screen.queryByText('available')).toBeNull()}finally{f.dispose()}
  });
+ it('shows a local unsupported callback rejection with its protocol code without a fake action',async()=>{
+ const f=fixture();try{f.wire({...lifecycle.requests.execute,params:{...lifecycle.requests.execute.params,command:{method:'future'}}});await tick();render(React.createElement(ZCodeHostToolsPanel,{state:f.state(),controller:{}}));expect(screen.getByTestId('zcode-host-response').textContent).toContain('rejected');expect(screen.getByTestId('zcode-host-response').textContent).toContain('-32602');expect(screen.getByTestId('zcode-browser-host-state').textContent).toContain('gated')}finally{f.dispose()}
+ });
  it('shows the same-id official fallback reason and discovery empty result',async()=>{
  const f=fixture();try{f.wire(lifecycle.requests.list);f.wire(lifecycle.requests.execute);await tick();render(React.createElement(ZCodeHostToolsPanel,{state:f.state(),controller:{}}));expect(screen.getByText('Discovered backends: none')).not.toBeNull();expect(screen.getAllByTestId('zcode-host-response')[1].textContent).toContain('backend_unavailable');expect(screen.getAllByTestId('zcode-host-response')[1].textContent).toContain('side effects: none');expect(screen.getByTestId('zcode-browser-host-state').textContent).toContain('gated')}finally{f.dispose()}
  });

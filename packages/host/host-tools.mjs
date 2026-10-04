@@ -62,7 +62,16 @@ export class HostTools {
     return validated.data;
   }
   #settled({request,response,outcome}){
-    const record=this.#records.get(request.id);
+    let record=this.#records.get(request.id);
+    if(!record&&[LIST,EXECUTE].includes(request.method)){
+      const p=request.params;
+      // A schema rejection with a local routing identity is still visible to its session.
+      // Do not copy malformed payloads or attach a foreign workspace failure to a local owner.
+      if(!p||typeof p.sessionId!=='string'||!p.sessionId||(p.workspacePath!==undefined&&p.workspacePath!==this.#workspace.workspacePath)||(p.workspaceKey!==undefined&&p.workspaceKey!==this.#workspace.workspaceKey)||p.workspaceIdentity!==undefined||p.remoteSessionId!==undefined)return;
+      if(this.#records.size>=MAX_RECORDS){const old=[...this.#records].find(([,r])=>r.status!=='pending');if(!old)return;this.#records.delete(old[0]);}
+      record={id:request.id,requestId:typeof p.requestId==='string'?p.requestId:String(request.id),sessionId:p.sessionId,kind:'browser',method:'unrecognized',status:'pending',browserId:null,browserGeneration:null};
+      this.#records.set(request.id,record);
+    }
     if(!record||record.status!=='pending')return;
     // B05: timeout/disconnect after dispatch is ambiguous. Never retry or call it completed;
     // ProtocolPeer aborts the handler and drops its late resolution by reverse id.
