@@ -29,23 +29,37 @@ export function ZCodeWorkflowGraph({display}){
   const marker=useId().replace(/:/g,'');
   if(display?.kind!=='create_workflow')return <p>Graph unavailable · official projection absent.</p>;
   const graph=display.causalityGraph;
-  const nodes=graph?.phases??graph?.participants??[];
-  const edges=graph?.phases?graph.phaseEdges??[]:graph?.handoffs??[];
+  // Official graph is phases+participants+handoffs. Phase edges and participant handoffs
+  // are separate official sources and are never merged, dropped or inferred from each other.
+  const frame=graph?.phases??graph?.participants??[];
+  const phaseEdges=graph?.phaseEdges??[];
+  const handoffs=graph?.handoffs??[];
+  // Handoffs connect participants. When phases are the node frame, place the official
+  // participant cards as layout endpoints so those official edges stay visible.
+  const endpoints=handoffs.length&&graph?.phases?graph.participants??[]:[];
+  const layout=[...frame,...endpoints.filter(p=>!frame.some(n=>n.id===p.id))];
+  const byId=new Map(layout.map(n=>[n.id,n]));
   const label=node=>node.name??graph?.lanes?.find(l=>l.id===node.lane)?.name??node.id;
-  const positions=new Map(nodes.map((n,i)=>[n.id,{x:20,y:20+i*90}]));
+  const positions=new Map(layout.map((n,i)=>[n.id,{x:20,y:20+i*90}]));
   return <div data-testid="zcode-workflow-graph" style={style}>
     <p>Official workflow graph · {display.ok?'checked':'diagnostics present'}</p>
     {display.diagnostics?.map((d,i)=><p role="alert" key={i}>Line {d.line}:{d.column} · {d.code} · {d.message}</p>)}
     {!graph&&<p>Graph unavailable · no official graph in this projection.</p>}
     {graph&&<>
-      <svg role="img" aria-label="Official workflow causality graph" viewBox={`0 0 720 ${Math.max(150,nodes.length*90+20)}`} style={{width:'100%',maxWidth:900}}>
-        <defs><marker id={marker} markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="currentColor"/></marker></defs>
-        {edges.map((e,i)=>{const a=positions.get(e.from),b=positions.get(e.to);return a&&b?<path key={i} d={`M${a.x+320},${a.y+25} H${380+(i%8)*30} V${b.y+25} H${b.x+320}`} stroke="currentColor" fill="none" strokeDasharray={e.back?'4 3':undefined} markerEnd={`url(#${marker})`}/>:null})}
-        {nodes.map(n=>{const p=positions.get(n.id);return <g key={n.id}><rect x={p.x} y={p.y} width="320" height="50" rx="6" fill="#f1f5f9" stroke="#64748b"/><text x={p.x+8} y={p.y+30} fill="#0f172a" fontSize="16">{label(n).slice(0,32)}</text></g>})}
+      {(!!phaseEdges.length||!!handoffs.length)&&<p data-testid="zcode-workflow-graph-legend">Legend: solid arrow · phase transition{phaseEdges.length?' (dotted = loop back)':''}{handoffs.length?' · purple dashed arrow · participant handoff':''}.</p>}
+      <svg role="img" aria-label="Official workflow causality graph" viewBox={`0 0 720 ${Math.max(150,layout.length*90+20)}`} style={{width:'100%',maxWidth:900}}>
+        <defs>
+          <marker id={`${marker}-phase`} markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="currentColor"/></marker>
+          <marker id={`${marker}-handoff`} markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="#7c3aed"/></marker>
+        </defs>
+        {phaseEdges.map((e,i)=>{const a=positions.get(e.from),b=positions.get(e.to);return a&&b?<path key={`phase-${i}`} data-edge="phase" d={`M${a.x+320},${a.y+25} H${380+(i%8)*30} V${b.y+25} H${b.x+320}`} stroke="currentColor" fill="none" strokeDasharray={e.back?'4 3':undefined} markerEnd={`url(#${marker}-phase)`}/>:null})}
+        {handoffs.map((e,i)=>{const a=positions.get(e.from),b=positions.get(e.to);return a&&b?<path key={`handoff-${i}`} data-edge="handoff" d={`M${a.x+320},${a.y+25} H${420+(i%8)*30} V${b.y+25} H${b.x+320}`} stroke="#7c3aed" fill="none" strokeDasharray="6 3" markerEnd={`url(#${marker}-handoff)`}/>:null})}
+        {layout.map(n=>{const p=positions.get(n.id);return <g key={n.id}><rect x={p.x} y={p.y} width="320" height="50" rx="6" fill="#f1f5f9" stroke="#64748b"/><text x={p.x+8} y={p.y+30} fill="#0f172a" fontSize="16">{label(n).slice(0,32)}</text></g>})}
       </svg>
-      {nodes.map(n=><p key={n.id}>{label(n)}{n.alongside?.length?` · alongside ${n.alongside.map(id=>label(nodes.find(v=>v.id===id)??{id})).join(', ')}`:''}{graph.participants?.filter(p=>p.phase===n.id).map(p=>` · ${label(p)}${p.many?' (many)':p.member?` (${p.member.index+1}/${p.member.of})`:''}`)}</p>)}
-      <ul>{edges.map((e,i)=><li key={i}>{label(nodes.find(n=>n.id===e.from)??{id:e.from})} → {label(nodes.find(n=>n.id===e.to)??{id:e.to})}{e.back?' · loop back':''}{e.types?.length?` · ${e.types.join(', ')}`:''}</li>)}</ul>
-      {!!graph.exits?.length&&<p>Engine return after: {graph.exits.map(id=>label(nodes.find(n=>n.id===id)??{id})).join(', ')}. Engine return is separate from published artifacts.</p>}
+      {frame.map(n=><p key={n.id}>{label(n)}{n.alongside?.length?` · alongside ${n.alongside.map(id=>label(byId.get(id)??{id})).join(', ')}`:''}{graph.participants?.filter(p=>p.phase===n.id).map(p=>` · ${label(p)}${p.many?' (many)':p.member?` (${p.member.index+1}/${p.member.of})`:''}`)}</p>)}
+      {!!phaseEdges.length&&<ul data-testid="zcode-workflow-phase-edges">{phaseEdges.map((e,i)=><li key={i}>phase · {label(byId.get(e.from)??{id:e.from})} → {label(byId.get(e.to)??{id:e.to})}{e.back?' · loop back':''}</li>)}</ul>}
+      {!!handoffs.length&&<ul data-testid="zcode-workflow-handoffs">{handoffs.map((e,i)=><li key={i}>handoff · {label(byId.get(e.from)??{id:e.from})} → {label(byId.get(e.to)??{id:e.to})}{e.back?' · loop back':''}{e.types?.length?` · ${e.types.join(', ')}`:''}</li>)}</ul>}
+      {!!graph.exits?.length&&<p>Engine return after: {graph.exits.map(id=>label(byId.get(id)??{id})).join(', ')}. Engine return is separate from published artifacts.</p>}
     </>}
     {(graph?.truncated||display.truncated)&&<p role="status">Official graph truncated · incomplete projection.</p>}
   </div>;

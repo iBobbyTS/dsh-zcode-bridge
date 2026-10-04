@@ -74,4 +74,18 @@ describe('S12 workflow session UI',()=>{
  it('graph absent/unknown displays remain unavailable and do not analyze saved scripts',()=>{
   render(React.createElement(ZCodeWorkflowGraph,{display:{kind:'future-graph',script:'anything'}}));expect(screen.queryByRole('img')).toBeNull();expect(screen.getByText(/Graph unavailable/)).toBeTruthy();
  });
+ it('CB13-1: coexisting phase edges and participant handoffs both render, and a lone handoff survives phases',()=>{
+  const graph=fixture.display.causalityGraph;const view=render(React.createElement(ZCodeWorkflowGraph,{display:fixture.display}));
+  expect(view.container.querySelectorAll('path[data-edge="phase"]').length).toBe(graph.phaseEdges.length);
+  expect(view.container.querySelectorAll('path[data-edge="handoff"]').length).toBe(graph.handoffs.length);
+  expect(screen.getByTestId('zcode-workflow-handoffs').textContent).toContain('handoff · Researcher → Reviewer · markdown');
+  expect(screen.getByTestId('zcode-workflow-graph-legend').textContent).toContain('participant handoff');
+  cleanup();
+  const single={kind:'create_workflow',ok:true,errorCount:0,diagnostics:[],causalityGraph:{steps:[{id:'ask#1',kind:'ask',label:'Research',lane:'actor#1',phase:'p1'},{id:'ask#2',kind:'ask',label:'Review',lane:'actor#2',phase:'p1'}],lanes:[{id:'actor#1',name:'Researcher'},{id:'actor#2',name:'Reviewer'}],participants:[{id:'a1',phase:'p1',lane:'actor#1',steps:['ask#1']},{id:'a2',phase:'p1',lane:'actor#2',steps:['ask#2']}],handoffs:[{from:'a1',to:'a2',types:['markdown']}],phases:[{id:'p1',name:'Solo'}]}};
+  const one=render(React.createElement(ZCodeWorkflowGraph,{display:single}));
+  expect(one.container.querySelectorAll('path[data-edge="handoff"]').length).toBe(1);
+  expect(one.container.querySelector('path[data-edge="handoff"]').getAttribute('stroke-dasharray')).toBe('6 3');
+  expect(screen.getByTestId('zcode-workflow-handoffs').textContent).toContain('markdown');
+  expect(screen.queryByTestId('zcode-workflow-phase-edges')).toBeNull();
+ });
 });
