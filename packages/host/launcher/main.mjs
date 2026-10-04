@@ -90,7 +90,12 @@ control.on('line',line=>{
       }
       if(closing)return;
       process.stdout.write(JSON.stringify({type:'launcher-read',id:m.id,ok:true,value})+'\n');
-    }catch(e){process.stdout.write(JSON.stringify({type:'launcher-read',id:m.id,ok:false,code:typeof e.code==='string'?e.code:'route-b-read-failed'})+'\n');publish({phase:'failed',reason:'route-b-read-failed'});void stop(2);}
+    }catch(e){
+      // Local-only diagnostic (scratch runRoot, 0600): the carrier returns only a code, so the
+      // bounded message is retained here for the operator. It is never forwarded to DSH state.
+      try{appendFileSync(join(config.runRoot,'launcher-read-errors.jsonl'),JSON.stringify({operation:m.operation,code:typeof e?.code==='string'?e.code:null,name:typeof e?.name==='string'?e.name:null,message:String(e?.message??'').slice(0,300),at:Date.now()})+'\n',{mode:0o600})}catch{}
+      process.stdout.write(JSON.stringify({type:'launcher-read',id:m.id,ok:false,code:typeof e.code==='string'?e.code:'route-b-read-failed'})+'\n');publish({phase:'failed',reason:'route-b-read-failed'});void stop(2);
+    }
   });
 });
 async function verifyProvider(){
