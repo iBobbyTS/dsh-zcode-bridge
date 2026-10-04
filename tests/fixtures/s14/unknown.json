@@ -1,0 +1,25 @@
+{
+  "provenance": {
+    "kind": "injected-from-official-schema",
+    "injected": [
+      "unknown read kind",
+      "future account state"
+    ]
+  },
+  "readError": {
+    "code": "insights-read-unknown"
+  },
+  "accountUnknown": {
+    "state": "future_state",
+    "reason": "future-reason",
+    "auth": "unconfirmed",
+    "query": {
+      "available": false,
+      "reason": "future-reason"
+    },
+    "login": {
+      "available": false,
+      "reason": "future-reason"
+    }
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "provenance": {
+    "kind": "real-production-oracle",
+    "source": "official.json productionOracle",
+    "paidModelCalls": 0,
+    "note": "account/status returned the official -32601; no account carrier exists, so state stays UNKNOWN"
+  },
+  "account": {
+    "state": "unknown",
+    "reason": "official-account-carrier-not-exposed",
+    "auth": "unavailable",
+    "query": {
+      "available": false,
+      "reason": "official-account-carrier-not-exposed"
+    },
+    "login": {
+      "available": false,
+      "reason": "official-account-carrier-not-exposed"
+    }
+  },
+  "gated": {
+    "generateText": {
+      "available": false,
+      "reason": "model-execution-gated",
+      "method": "workspace/generateText"
+    },
+    "cancelGenerateText": {
+      "available": false,
+      "reason": "model-execution-gated",
+      "method": "workspace/cancelGenerateText"
+    },
+    "testModelConnectivity": {
+      "available": false,
+      "reason": "model-execution-gated",
+      "method": "provider/testModelConnectivity"
+    }
+  },
+  "accountStatusProbe": {
+    "method": "account/status",
+    "error": {
+      "code": "runtime-rejected",
+      "protocolCode": -32601,
+      "message": "runtime-rejected"
+    }
+  }
+}
