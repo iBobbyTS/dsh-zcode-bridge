@@ -16,7 +16,7 @@ export const initialStatus=()=>({state:'unavailable',reason:'not-connected',auth
 /** Owns only children it launches; there is no attach or shared-process killer. */
 export class BridgeHost {
   #conversations=new Set(); #handles=new Map(); #deleted=new Set(); #clientId='bridge-'+randomUUID(); #status=initialStatus(); #peer; #catalog; #insights; #automation; #hostTools; #operation; #disposed=false; #stop; #disposePromise; #failSafe=new FailSafeState();
-  constructor({appPath,workspacePath,inspect=inspectInstallation,spawnProcess=spawn,catalogLimit=4096,onStatus=()=>{}}={}){if(!Number.isSafeInteger(catalogLimit)||catalogLimit<50||catalogLimit>65536)throw new BridgeError('catalog-limit-invalid');this.catalogLimit=catalogLimit;this.appPath=appPath;this.workspacePath=workspacePath;this.inspect=inspect;this.spawnProcess=spawnProcess;this.onStatus=onStatus}
+  constructor({appPath,workspacePath,inspect=inspectInstallation,spawnProcess=spawn,catalogLimit=4096,onStatus=()=>{},authorityMode='restricted-cli',launcher}={}){if(!Number.isSafeInteger(catalogLimit)||catalogLimit<50||catalogLimit>65536)throw new BridgeError('catalog-limit-invalid');if(!['restricted-cli','host-backed'].includes(authorityMode))throw new BridgeError('authority-mode-invalid');this.authorityMode=authorityMode;this.launcher=launcher;this.catalogLimit=catalogLimit;this.appPath=appPath;this.workspacePath=workspacePath;this.inspect=inspect;this.spawnProcess=spawnProcess;this.onStatus=onStatus}
   /** Adds the per-connection fail-safe grade and the version-compatibility truth table.
    *  Both are derived facts: the fail-safe never persists, and the compatibility record is the
    *  bridge's own verified-version constant, never a ZCode source-derived claim. */
@@ -189,6 +189,11 @@ export class BridgeHost {
     this.#operation=this.#connect().finally(()=>{this.#operation=undefined});return this.#operation;
   }
   async #connect(){
+    if(this.authorityMode==='host-backed'){
+      if(!this.launcher){this.#publish({state:'unavailable',reason:'launcher-unconfigured',connected:false});return this.status}
+      const project=state=>{if(!this.#disposed)this.#publish({state:state.phase==='ready'?'restricted':'unavailable',reason:state.phase==='ready'?'host-execution-disabled-s03':state.reason??'launcher-'+state.phase,connected:false,auth:state.auth??'unconfirmed',authority:'official-host-channel',launcher:state,authorityMode:'host-backed'})};
+      this.launcherUnsubscribe??=this.launcher.subscribe(project);project(await this.launcher.start());return this.status;
+    }
     let peer,stop,terminalReason;
     this.#hostTools?.dispose();this.#hostTools=undefined;this.#catalog?.dispose();this.#catalog=undefined;this.#insights?.dispose();this.#insights=undefined;this.#automation?.dispose();this.#automation=undefined;
     // Fail-safe is per-connection runtime state; a fresh connection attempt starts neutral.
@@ -242,7 +247,8 @@ export class BridgeHost {
   dispose(){
     if(this.#disposePromise)return this.#disposePromise;
     this.#disposed=true;this.#hostTools?.dispose();this.#hostTools=undefined;this.#catalog?.dispose();this.#catalog=undefined;this.#insights?.dispose();this.#insights=undefined;this.#automation?.dispose();this.#automation=undefined;this.#peer?.close('disposed');
-    this.#disposePromise=(async()=>{await this.#operation;await this.#stop?.();this.#publish({state:'unavailable',reason:'disposed',connected:false})})();return this.#disposePromise;
+    this.launcherUnsubscribe?.();this.launcherUnsubscribe=undefined;
+    this.#disposePromise=(async()=>{await this.launcher?.dispose();await this.#operation;await this.#stop?.();this.#publish({state:'unavailable',reason:'disposed',connected:false})})();return this.#disposePromise;
   }
 }
 /** EOF first, then signals only the exact owned ChildProcess, never a discovered PID. */

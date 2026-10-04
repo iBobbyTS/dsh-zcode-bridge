@@ -1,0 +1,77 @@
+{
+  "archiveSha256": "232e913ea13d60bd0ecc86bf9f2f145328809608fe4d48e76685d61a8076aef0",
+  "files": [
+    {
+      "path": "out/host/chunk-3RFWSRX3.js",
+      "sha256": "5177461780279daaa72fc804bbdd2666ea6e841bf461242a23f2c5b8c729d434"
+    },
+    {
+      "path": "out/host/chunk-3SE4EMXI.js",
+      "sha256": "ae7385dd8dcc934a2b83129ac6cd8dd9740b6e462376dd8cb461e524842b07d6"
+    },
+    {
+      "path": "out/host/chunk-73ZRIWCD.js",
+      "sha256": "4b850e5deb8022fbaf77319efa42ddb3ed50d75040fa7185caf5986ab0d6c12c"
+    },
+    {
+      "path": "out/host/chunk-AIU63WBB.js",
+      "sha256": "caf0c48f70a3e9bc48085e81b1dee22f98ba44ba167a79f8ea9091acb7cb69f1"
+    },
+    {
+      "path": "out/host/chunk-AUZZ66CO.js",
+      "sha256": "10fe8ebfa11ac81d268d35b46fbfe746071b2d68a2bf4b3889a7fb7b4119749a"
+    },
+    {
+      "path": "out/host/chunk-BPMMBPK6.js",
+      "sha256": "16fc45eb5bc8f3803054105b7dfe99ed6b88e8f3ab3837381bfaa78c3a5c2b1a"
+    },
+    {
+      "path": "out/host/chunk-FNQWK6LT.js",
+      "sha256": "154169b320e8db602bc7cc27be55717ef6735845a66e2285a9764e4b817047de"
+    },
+    {
+      "path": "out/host/chunk-IYVG6UP7.js",
+      "sha256": "9d397efaa06a283c0405296d97b0e2420983c1c49bd8eb52196e9a7cdeffd29a"
+    },
+    {
+      "path": "out/host/chunk-KSJDXDKL.js",
+      "sha256": "67422b505cd0ba7210c66f2224128cef2f48374e9261e360df9a245e3041c8cf"
+    },
+    {
+      "path": "out/host/chunk-LL2TIAQ2.js",
+      "sha256": "47f2bcc2d3d1978af312ce7f245f5cd1cde661d22a44f5a798daa199b5709c19"
+    },
+    {
+      "path": "out/host/chunk-MZDDONWW.js",
+      "sha256": "f7a3a2c7001cab381e90a02d640363cc6c322a51c8387fba22c6a3f7399b2c36"
+    },
+    {
+      "path": "out/host/chunk-NZC7DO6E.js",
+      "sha256": "9d672ac27376a3d87ad5605af02efaa6578045d63a81d13e93dbaea747bd6101"
+    },
+    {
+      "path": "out/host/chunk-OVJK236Q.js",
+      "sha256": "c6af1128f7ec80c2274be5107f350fea885553d18f7caad8b6f33a0577ae04d0"
+    },
+    {
+      "path": "out/host/chunk-TVWDPSHD.js",
+      "sha256": "e896096d9cee128cd7f132504218b6612a66e4bbd8cfee51926161a3a61cb098"
+    },
+    {
+      "path": "out/host/chunk-UHHNTW2R.js",
+      "sha256": "e18062d19280253e1c40a683f47d3891a27e335c5bc28d98986d714e3fc1f598"
+    },
+    {
+      "path": "out/host/chunk-Y3R65CLN.js",
+      "sha256": "01402c87988d856cb0ae3bc648b2746b62efc6a393afa7c10d0f18c28a6c828d"
+    },
+    {
+      "path": "out/host/index.js",
+      "sha256": "c143ce16c61ad1d01d8cbfca0a0e2f506aa5afa3858db3f088e69ecf11d588d3"
+    },
+    {
+      "path": "out/host/tasksStorageWorker.js",
+      "sha256": "edea1d2ab3b0412ee7d1612bda734a9690c6c37883c7442a7050417f19f0ec28"
+    }
+  ]
+}

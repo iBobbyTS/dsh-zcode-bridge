@@ -1,4 +1,5 @@
 import { BridgeHost } from './runtime.mjs';
+import { HostLauncher, handleLauncher } from './launcher/index.mjs';
 export const inject=['connection'];
 export const CHANNEL='/zcode-bridge';
 const CATALOG_KEYS={read:['operation','kind','params'],operate:['operation','action','params','operationId'],state:['operation']};
@@ -53,7 +54,8 @@ export async function handleRemote(host,payload,signal){
 }
 /** Uses DSH's authenticated carrier and plugin lifecycle; no DSH loop is registered. */
 export function apply(ctx,config={}) {
-  const host=new BridgeHost({appPath:config.appPath,workspacePath:config.workspacePath,catalogLimit:config.catalogLimit});
+  const launcher=config.launcher?new HostLauncher(config.launcher):undefined;
+  const host=new BridgeHost({appPath:config.appPath,workspacePath:config.workspacePath,catalogLimit:config.catalogLimit,authorityMode:config.authorityMode,launcher});
   ctx.effect(()=>()=>host.dispose(),'zcode-bridge: owned runtime');
   ctx.inject(['webServer'],webCtx=>{
     // Connection binds routes to the Context reading the service. The injected
@@ -95,6 +97,7 @@ export function apply(ctx,config={}) {
       if(endpoint==='insights')return handleInsights(host,payload,signal);
       if(endpoint==='automation')return handleAutomation(host,payload,signal);
       if(endpoint==='remote')return handleRemote(host,payload,signal);
+      if(endpoint==='launcher')return handleLauncher(launcher??{state:{phase:'unconfigured',revision:0,channelAvailable:false,services:[]},waitState:async()=>({phase:'unconfigured',revision:0,channelAvailable:false,services:[]})},payload,signal);
       if(endpoint!=='status'&&endpoint!=='connect')return {ok:false,error:{code:'not-found',message:`Endpoint ${endpoint} not found`,details:{}}};
       if(payload!==null&&payload!==undefined&&!(typeof payload==='object'&&!Array.isArray(payload)&&Object.keys(payload).length===0))return {ok:false,error:{code:'invalid-payload',message:'This endpoint accepts no runtime commands',details:{}}};
       if(signal.aborted)return {ok:false,error:{code:'cancelled',message:'Cancelled',details:{}}};
