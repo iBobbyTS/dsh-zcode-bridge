@@ -3,6 +3,7 @@ import { resolve, join, relative, isAbsolute, dirname } from 'node:path';
 import { homedir } from 'node:os';
 import { createHash, randomUUID } from 'node:crypto';
 import { verifyRouteBArtifacts } from './route-b.mjs';
+import { DEFAULT_ACTIVITY_WINDOW_MS, MIN_ACTIVITY_WINDOW_MS, MAX_ACTIVITY_WINDOW_MS } from './write-gate.mjs';
 
 export const ELECTRON_VERSION='41.0.3';
 export const HOST_DIGEST='c143ce16c61ad1d01d8cbfca0a0e2f506aa5afa3858db3f088e69ecf11d588d3';
@@ -45,14 +46,15 @@ export function assertLandings(config){
   for(const source of [env,runtimeProcessEnvPatch])if(Object.keys(source).some(k=>!allowed.has(k)))throw fault('inherited-env-denied');
   return {passed:true,settings:join(paths.home,'.zcode/v2/setting.json'),tasks:shared?.tasks??tasksLink,sessionDb:paths.sessionDb,keychain:'OS-access-denied',sharedAuthority:'NO-GO'};
 }
-export function createLauncherConfig({scratchRoot,runId=randomUUID(),artifactRoot,electronPath,builtinConfig,sharedDatabaseRoot,mode='scratch',routeBArtifacts,desktopHome=process.env.ZCODE_DESKTOP_HOME_DIR}={}){
+export function createLauncherConfig({scratchRoot,runId=randomUUID(),artifactRoot,electronPath,builtinConfig,sharedDatabaseRoot,mode='scratch',routeBArtifacts,desktopHome=process.env.ZCODE_DESKTOP_HOME_DIR,activityWindowMs=DEFAULT_ACTIVITY_WINDOW_MS}={}){
+  if(!Number.isSafeInteger(activityWindowMs)||activityWindowMs<MIN_ACTIVITY_WINDOW_MS||activityWindowMs>MAX_ACTIVITY_WINDOW_MS)throw fault('activity-window-invalid');
   if(!scratchRoot||!artifactRoot||!electronPath||!builtinConfig||!/^[a-zA-Z0-9_-]{1,100}$/.test(runId))throw fault('launcher-config-required');
   scratchRoot=resolve(scratchRoot);const runRoot=join(scratchRoot,'runs',runId),realHome=homedir();
   const paths={home:join(runRoot,'home'),dataBase:join(runRoot,'data-base'),runtimeHome:join(runRoot,'runtime-home'),sessionDb:join(runRoot,'session-db/db.sqlite'),userData:join(runRoot,'userData'),sessionData:join(runRoot,'sessionData'),logs:join(runRoot,'logs'),temp:join(runRoot,'tmp'),workspace:join(runRoot,'workspace')};
   for(const key of ['appData','crashDumps','desktop','documents','downloads','music','pictures','videos'])paths[key]=join(runRoot,'electron-'+key);
   if(sharedDatabaseRoot!==undefined)paths.sessionDb=join(resolve(sharedDatabaseRoot),'db.sqlite');
   const env={PATH:'/usr/bin:/bin:/usr/sbin:/sbin',SHELL:'/bin/sh',LANG:'en_US.UTF-8',HOME:paths.home,USERPROFILE:paths.home,ZCODE_DESKTOP_HOME_DIR:paths.home,ZCODE_DATA_BASE_DIR:paths.dataBase,ZCODE_SESSION_DB_PATH:paths.sessionDb,SESSION_DB:paths.sessionDb,ZCODE_HOME:paths.runtimeHome,TMPDIR:paths.temp,ZCODE_BUILTIN_PROVIDER_CONFIG_FILE:resolve(builtinConfig),ZCODE_NATIVE_SEARCH_ENHANCEMENTS_ENABLED:'0',ZCODE_MEMORY_ENABLED:'0',ZCODE_PROCESS_LABEL:'dsh-host-'+runId};
-  const config={scratchRoot,runRoot,runId,hostId:'dsh-host-'+randomUUID(),deliveryKind:'desktop_window',artifactRoot:resolve(artifactRoot),electronPath:resolve(electronPath),builtinConfig:resolve(builtinConfig),realHome,paths,env,runtimeProcessEnvPatch:{...env},cwd:paths.workspace,agentSpawnFallbackCwd:paths.workspace};
+  const config={scratchRoot,runRoot,runId,activityWindowMs,hostId:'dsh-host-'+randomUUID(),deliveryKind:'desktop_window',artifactRoot:resolve(artifactRoot),electronPath:resolve(electronPath),builtinConfig:resolve(builtinConfig),realHome,paths,env,runtimeProcessEnvPatch:{...env},cwd:paths.workspace,agentSpawnFallbackCwd:paths.workspace};
   if(sharedDatabaseRoot!==undefined)config.sharedDatabaseRoot=resolve(sharedDatabaseRoot);
   if(!['scratch','route-b'].includes(mode))throw fault('launcher-mode-invalid');
   if(mode==='route-b'){

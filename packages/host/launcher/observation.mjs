@@ -1,4 +1,4 @@
-export const ROUTE_B_READ_CALLS=Object.freeze(['oauth.restoreCachedSessionState','oauth.getActiveProvider','oauth.getProviders','provider-settings.getView','setting.get','zcode-task.listTasks','zcode-task.listPinnedTasks','zcode-task.getTaskMeta','zcode-agent.listSessions','zcode-agent.getAppUsageStats']);
+export const ROUTE_B_READ_CALLS=Object.freeze(['oauth.restoreCachedSessionState','oauth.getActiveProvider','oauth.getProviders','provider-settings.getView','setting.get','zcode-task.listTasks','zcode-task.listPinnedTasks','zcode-task.getTaskMeta','zcode-agent.listSessions','zcode-agent.getAppUsageStats','zcode-agent.getTaskTokenUsage']);
 export function usageProjection(value){
   if(value?.source!=='agent-db'||!Array.isArray(value.models))throw Error('usage-observation-invalid');
   const keys=['totalTokens','inputTokens','outputTokens','totalSessions','totalTurns','toolCallCount'];

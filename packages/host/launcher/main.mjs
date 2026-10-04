@@ -3,7 +3,7 @@ import { app, utilityProcess, MessageChannelMain, BrowserWindow, webContents } f
 import { readFileSync, appendFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ROUTE_B_READ_CALLS, authProjection, usageProjection } from './observation.mjs';
-import { decideSharedWrite } from './write-gate.mjs';
+import { SharedWriteGate } from './write-gate.mjs';
 import { projectTask, projectTaskCatalog } from './task-catalog.mjs';
 import { createInterface } from 'node:readline';
 import { ELECTRON_VERSION, assertLandings, fault } from './config.mjs';
@@ -54,10 +54,13 @@ control.on('line',line=>{
       if(m.operation==='catalog')value={tasks,observedAt:Date.now()};
       if(m.operation==='preflight'){
         const t=tasks.find(t=>t.taskId===m.address?.sessionId&&t.workspacePath===m.address?.workspace);
-        const owned=authority.owns(config.hostId,t??{taskId:m.address?.sessionId,workspacePath:m.address?.workspace});
-        const raw=owned?t:t?await safeCall('zcode-task','getTaskMeta',[{taskId:t.taskId,workspacePath:t.workspacePath,...(t.workspaceIdentity?{workspaceIdentity:t.workspaceIdentity}:{})}]):null;
-        const fresh=raw?projectTask(raw):null;
-        value=decideSharedWrite({task:fresh,observedAt:Date.now(),owned});
+        const gate=new SharedWriteGate({
+          isOwned:()=>authority.owns(config.hostId,t??{taskId:m.address?.sessionId,workspacePath:m.address?.workspace}),
+          readTask:async()=>{const raw=t?await safeCall('zcode-task','getTaskMeta',[{taskId:t.taskId,workspacePath:t.workspacePath,...(t.workspaceIdentity?{workspaceIdentity:t.workspaceIdentity}:{})}]):null;return raw?projectTask(raw):null;},
+          readActivity:()=>safeCall('zcode-agent','getTaskTokenUsage',[{sessionId:t.taskId,workspacePath:t.workspacePath,...(t.workspaceIdentity?{workspaceIdentity:t.workspaceIdentity}:{})}]),
+          windowMs:config.activityWindowMs,
+        });
+        value=await gate.preflight(m.address);
       }
       if(m.operation==='observation')value={tasks,usage:usageProjection(await safeCall('zcode-agent','getAppUsageStats',[{range:'all',timeZone:'UTC'}])),rpc:[...rpc],at:Date.now(),schedulerPolicy};
       if(closing)return;

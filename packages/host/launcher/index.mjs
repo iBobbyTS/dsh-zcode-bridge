@@ -52,7 +52,9 @@ export class HostLauncher {
     if(this.#reads.size>=32)return Promise.reject(fault('route-b-read-limit'));
     const id=++this.#readSeq;
     return new Promise((resolve,reject)=>{
-      const timer=setTimeout(()=>{this.#reads.delete(id);reject(fault('route-b-read-timeout'));void this.stop();},25000);
+      // preflight performs a bounded activity window inside Main; extend its carrier budget only.
+      const timeoutMs=25000+(operation==='preflight'?(this.options.activityWindowMs??5000):0);
+      const timer=setTimeout(()=>{this.#reads.delete(id);reject(fault('route-b-read-timeout'));void this.stop();},timeoutMs);
       this.#reads.set(id,{resolve,reject,timer});
       this.#child.stdin.write(JSON.stringify({id,operation,...(address?{address}:{})})+'\n',e=>{if(e){clearTimeout(timer);this.#reads.delete(id);reject(fault('route-b-read-transport'));}});
     });
