@@ -1,0 +1,39 @@
+{
+  "oracle": "s16-profile-roundtrip",
+  "bridgeVersion": "0.1.0",
+  "steps": {
+    "install": {
+      "exitCode": 0,
+      "truncated": false,
+      "installed": {
+        "root": "0.1.0",
+        "hostEntry": true,
+        "clientArtifact": true,
+        "bundleMetadata": "0.1.0",
+        "bundles": [
+          "@dsh-zcode/bridge"
+        ]
+      }
+    },
+    "update": {
+      "exitCode": 0,
+      "truncated": false,
+      "installed": {
+        "root": "0.1.1",
+        "bundleMetadata": "0.1.1"
+      },
+      "restartRequired": true
+    },
+    "uninstall": {
+      "exitCode": 0,
+      "truncated": false,
+      "remaining": {
+        "host": false,
+        "client": false,
+        "root": false,
+        "bundles": []
+      }
+    }
+  },
+  "pass": true
+}
