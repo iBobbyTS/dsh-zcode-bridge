@@ -3,6 +3,7 @@ import {notifySubscribers} from '@deepseek-ai/dsh-client-store';
 import React from 'react';
 import {RemoteConversation} from './remote-conversation.mjs';
 import {ZCodeConversationView} from './conversation-view.jsx';
+import {sortDirectoryRows} from './directory-presentation.mjs';
 
 const unavailable=reason=>Object.freeze({state:'unavailable',reason,capabilities:Object.freeze({create:false,open:false,nativeAgent:false})});
 const sourceError=code=>Object.assign(new Error(code),{code});
@@ -83,7 +84,7 @@ export class RuntimeSessions {
   #subscribe(listeners,listener){if(this.#closed)return ()=>{};listeners.add(listener);return ()=>listeners.delete(listener)}
   #publish(){
     if(this.#closed)return;
-    const matches=this.#zcodeRows.filter(row=>!this.#deleted.has(row.key)&&(row.title||row.address.sessionId).toLocaleLowerCase().includes(this.#query.toLocaleLowerCase()));
+    const matches=sortDirectoryRows(this.#zcodeRows.filter(row=>!this.#deleted.has(row.key)&&row.sharedTask?.deleted!==true&&row.sharedTask?.archived!==true&&`${row.title||row.address.sessionId} ${row.address.workspace}`.toLocaleLowerCase().includes(this.#query.toLocaleLowerCase())));
     this.#page=Math.min(this.#page,Math.max(0,Math.ceil(matches.length/this.#pageSize)-1));
     this.#directory=Object.freeze({rows:Object.freeze(matches.slice(this.#page*this.#pageSize,(this.#page+1)*this.#pageSize).map(row=>({...row,group:this.#groups[row.key]??''}))),query:this.#query,page:this.#page,pageSize:this.#pageSize,total:matches.length,catalog:this.#catalog,settingsError:this.#settingsError});
     this.#rows=Object.freeze([...this.#native.list.getSnapshot(),...this.#zcodeRows]);

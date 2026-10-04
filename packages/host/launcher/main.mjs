@@ -4,6 +4,7 @@ import { readFileSync, appendFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ROUTE_B_READ_CALLS, authProjection, usageProjection } from './observation.mjs';
 import { decideSharedWrite } from './write-gate.mjs';
+import { projectTask, projectTaskCatalog } from './task-catalog.mjs';
 import { createInterface } from 'node:readline';
 import { ELECTRON_VERSION, assertLandings, fault } from './config.mjs';
 import { HostChannel } from './channel.mjs';
@@ -71,14 +72,9 @@ async function verifyProvider(){
   if(auth.auth!=='authenticated')throw fault('official-provider-status-lost');
   publish(auth);
 }
-function projectTask(t){
-  if(!t||typeof t.taskId!=='string'||typeof t.workspacePath!=='string'||typeof t.title!=='string')throw fault('route-b-task-invalid');
-  return Object.fromEntries(['taskId','workspacePath','workspaceIdentity','title','status','updatedAt','createdAt','traceId','cronAutomationId','offPeakTaskId'].filter(k=>t[k]!==undefined).map(k=>[k,t[k]]));
-}
 async function readTasks(){
   const a=await safeCall('zcode-task','listTasks',[{}]),b=await safeCall('zcode-task','listPinnedTasks',[{}]);
-  if(!Array.isArray(a)||!Array.isArray(b))throw fault('route-b-tasks-invalid');
-  return [...a,...b].map(projectTask);
+  return projectTaskCatalog(a,b);
 }
 app.whenReady().then(()=>{
   for(const k of electronPaths)if(app.getPath(k)!==config.paths[k])throw fault('electron-path-mismatch:'+k);

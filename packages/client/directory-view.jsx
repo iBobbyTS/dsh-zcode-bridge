@@ -1,8 +1,9 @@
 import React,{useState,useMemo,useEffect,useSyncExternalStore} from 'react';
 import {ZCodeConversationView,ConversationController} from './conversation-view.jsx';
 import {SessionUsage} from './insights-view.jsx';
+import {directorySections} from './directory-presentation.mjs';
 
-export const directoryLocales={en:{directory:'ZCode sessions',search:'Search sessions',refresh:'Refresh',open:'Open / continue',previous:'Previous',next:'Next',shared:'Official GUI shared sessions: unverified',scope:'Bridge-owned store · valid for this running instance',partial:'Catalog is incomplete: official limit reached. Search covers the loaded prefix.',restricted:'Model execution remains restricted. Opening reads official history.',ungrouped:'Ungrouped',group:'DSH-only group (local display)',rename:'Rename',title:'Session title',delete:'Delete',confirm:'Confirm official deletion',cancel:'Cancel',disconnect:'Disconnect view',unverified:'Archive / pin unavailable: official carrier unverified',archive:'Archive',pin:'Pin',empty:'Select a ZCode session in the sidebar.',queryOutcome:'Query official outcome',pending:'Official command accepted; terminal outcome is not inferred.',failure:'Official operation failed',settings:'Local group settings could not be saved',catalogEntry:'MCP, plugins and skills',insightsEntry:'Account, usage and diagnostics',automationEntry:'Automations and off-peak',remoteEntry:'Remote workspaces and sessions'},zh:{directory:'ZCode 会话',search:'搜索会话',refresh:'刷新',open:'打开 / 继续',previous:'上一页',next:'下一页',shared:'官方 GUI 共享会话：未验证',scope:'bridge 自有 store · 仅在本实例存活期间有效',partial:'目录不完整：已达到官方 limit。搜索仅覆盖已加载前缀。',restricted:'模型执行仍受限。打开只读取官方历史。',ungrouped:'未分组',group:'DSH-only 分组（本地展示）',rename:'重命名',title:'会话标题',delete:'删除',confirm:'确认官方删除',cancel:'取消',disconnect:'断开视图',unverified:'归档 / 置顶不可用：官方 carrier 未核实',archive:'归档',pin:'置顶',empty:'请在侧栏选择 ZCode 会话。',queryOutcome:'查询官方结果',pending:'官方已受理；未推断执行终态。',failure:'官方操作失败',settings:'本地分组设置未能保存',catalogEntry:'MCP、插件与 Skills',insightsEntry:'账号、用量与诊断',automationEntry:'定时任务与闲时任务',remoteEntry:'远程工作区与会话'}};
+export const directoryLocales={en:{directory:'ZCode sessions',search:'Search sessions',refresh:'Refresh',open:'Open / continue',previous:'Previous',next:'Next',shared:'Official GUI shared sessions: unverified',scope:'Bridge-owned store · valid for this running instance',partial:'Catalog is incomplete: official limit reached. Search covers the loaded prefix.',restricted:'Model execution remains restricted. Opening reads official history.',ungrouped:'Ungrouped',group:'DSH-only group (local display)',rename:'Rename',title:'Session title',delete:'Delete',confirm:'Confirm official deletion',cancel:'Cancel',disconnect:'Disconnect view',unverified:'Archive / pin unavailable: official carrier unverified',archive:'Archive',pin:'Pin',readOnly:'Official shared task store · read-only',pinned:'Pinned',archived:'Archived',archiveScope:'Archived tasks are excluded by the current read-only carrier.',recent:'Updated most recently first',custom:'Custom title',default:'Default title',generated:'Generated title',first_input:'First input title',unknown:'Title source unavailable',tools:'Directories and diagnostics',empty:'Select a ZCode session in the sidebar.',queryOutcome:'Query official outcome',pending:'Official command accepted; terminal outcome is not inferred.',failure:'Official operation failed',settings:'Local group settings could not be saved',catalogEntry:'MCP, plugins and skills',insightsEntry:'Account, usage and diagnostics',automationEntry:'Automations and off-peak',remoteEntry:'Remote workspaces and sessions'},zh:{directory:'ZCode 会话',search:'搜索会话',refresh:'刷新',open:'打开 / 继续',previous:'上一页',next:'下一页',shared:'官方 GUI 共享会话：未验证',scope:'bridge 自有 store · 仅在本实例存活期间有效',partial:'目录不完整：已达到官方 limit。搜索仅覆盖已加载前缀。',restricted:'模型执行仍受限。打开只读取官方历史。',ungrouped:'未分组',group:'DSH-only 分组（本地展示）',rename:'重命名',title:'会话标题',delete:'删除',confirm:'确认官方删除',cancel:'取消',disconnect:'断开视图',unverified:'归档 / 置顶不可用：官方 carrier 未核实',archive:'归档',pin:'置顶',readOnly:'官方共享目录 · 只读',pinned:'置顶',archived:'已归档',archiveScope:'当前只读通道不加载归档会话。',recent:'最近更新优先',custom:'自定义标题',default:'默认标题',generated:'生成标题',first_input:'首条输入标题',unknown:'标题来源不可得',tools:'目录与诊断',empty:'请在侧栏选择 ZCode 会话。',queryOutcome:'查询官方结果',pending:'官方已受理；未推断执行终态。',failure:'官方操作失败',settings:'本地分组设置未能保存',catalogEntry:'MCP、插件与 Skills',insightsEntry:'账号、用量与诊断',automationEntry:'定时任务与闲时任务',remoteEntry:'远程工作区与会话'}};
 const fallback=key=>directoryLocales.en[key];
 /** Occupies the existing sidebar's runtime-directory seam. All identities are full keys. */
 export function ZCodeDirectory({sources,onOpen,onOpenCatalog,onOpenInsights,onOpenAutomation,onOpenRemote,t=fallback}){
@@ -10,29 +11,54 @@ export function ZCodeDirectory({sources,onOpen,onOpenCatalog,onOpenInsights,onOp
   const availability=useSyncExternalStore(sources.zcodeAvailability.subscribe,sources.zcodeAvailability.getSnapshot,sources.zcodeAvailability.getSnapshot);
   const [busy,setBusy]=useState(false),[error,setError]=useState(null);
   const act=async action=>{setBusy(true);setError(null);try{await action()}catch(e){setError(e.code??e.message)}finally{setBusy(false)}};
-  return <section aria-label={t('directory')} style={{padding:8,overflowWrap:'anywhere'}}>
-    <h4><span role="img" aria-label="ZCode">Z</span> {t('directory')}</h4>
-    <p>{state.catalog.readOnly?'Official shared task store · read-only':t('shared')}</p><p>{state.catalog.readOnly?'Official Host metadata across workspaces':t('scope')}</p>
-    <input aria-label={t('search')} value={state.query} onChange={e=>sources.setDirectory({query:e.target.value})}/>
-    <button disabled={busy} onClick={()=>void act(()=>sources.refresh())}>{t('refresh')}</button>
-    {onOpenCatalog&&<button type="button" onClick={()=>onOpenCatalog()}>{t('catalogEntry')}</button>}
-    {onOpenInsights&&<button type="button" onClick={()=>onOpenInsights()}>{t('insightsEntry')}</button>}
-    {onOpenRemote&&<button type="button" onClick={()=>onOpenRemote()}>{t('remoteEntry')}</button>}
-    {onOpenAutomation&&<button type="button" onClick={()=>onOpenAutomation()}>{t('automationEntry')}</button>}
+  const shared=state.catalog.readOnly===true;
+  const rows=<DirectoryRows rows={state.rows} sources={sources} t={t} busy={busy} shared={shared} act={act} onOpen={onOpen}/>;
+  const paging=<nav aria-label={t('directory')} style={{display:'flex',alignItems:'center',gap:8,justifyContent:'space-between',marginTop:8}}>
+    <button disabled={state.page===0} onClick={()=>sources.setDirectory({page:state.page-1})}>{t('previous')}</button>
+    <small>{state.page+1} / {Math.max(1,Math.ceil(state.total/state.pageSize))} · {state.total}</small>
+    <button disabled={(state.page+1)*state.pageSize>=state.total} onClick={()=>sources.setDirectory({page:state.page+1})}>{t('next')}</button>
+  </nav>;
+  return <section aria-label={t('directory')} style={{padding:8,minWidth:0,fontSize:13}}>
+    <h4 style={{margin:'8px 0'}}>ZCode · {t('directory')}</h4>
+    <small>{shared?t('readOnly'):t('shared')}</small>
+    {!shared&&<p>{t('scope')}</p>}
+    <div style={{display:'flex',gap:6,margin:'8px 0'}}>
+      <input style={{minWidth:0,width:'100%'}} aria-label={t('search')} placeholder={t('search')} value={state.query} onChange={e=>sources.setDirectory({query:e.target.value})}/>
+      <button style={{whiteSpace:'nowrap'}} disabled={busy} onClick={()=>void act(()=>sources.refresh())}>{t('refresh')}</button>
+    </div>
+    <details style={{marginBottom:8}}><summary>{t('tools')}</summary><div style={{display:'flex',flexWrap:'wrap',gap:6,paddingTop:6}}>
+      {onOpenCatalog&&<button type="button" onClick={()=>onOpenCatalog()}>{t('catalogEntry')}</button>}
+      {onOpenInsights&&<button type="button" onClick={()=>onOpenInsights()}>{t('insightsEntry')}</button>}
+      {onOpenRemote&&<button type="button" onClick={()=>onOpenRemote()}>{t('remoteEntry')}</button>}
+      {onOpenAutomation&&<button type="button" onClick={()=>onOpenAutomation()}>{t('automationEntry')}</button>}
+    </div></details>
     {availability.state==='unavailable'&&<p role="alert">{t('failure')}: {availability.reason}</p>}
     {state.catalog.truncated&&<p role="alert">{t('partial')}</p>}
-    {state.settingsError&&<p role="alert">{t('settings')}: {state.settingsError}</p>}
+    {state.settingsError&&!shared&&<p role="alert">{t('settings')}: {state.settingsError}</p>}
     {error&&<p role="alert">{t('failure')}: {error}</p>}
-    {[...new Set(state.rows.map(row=>row.group))].map(group=><div key={group}><h5>{group||t('ungrouped')}</h5><ul>{state.rows.filter(row=>row.group===group).map(row=><li key={row.key} data-session-key={row.key}>
-      <button disabled={busy} onClick={()=>void act(async()=>{await sources.open(row.address);onOpen?.()})} title={t('open')}>{row.title||row.address.sessionId}</button>
-      <GroupInput row={row} sources={sources} t={t}/>
-    </li>)}</ul></div>)}
-    <button disabled={state.page===0} onClick={()=>sources.setDirectory({page:state.page-1})}>{t('previous')}</button>
-    <span>{state.page+1} / {Math.max(1,Math.ceil(state.total/state.pageSize))} · {state.total}</span>
-    <button disabled={(state.page+1)*state.pageSize>=state.total} onClick={()=>sources.setDirectory({page:state.page+1})}>{t('next')}</button>
-    <p>{t('restricted')}</p>
+    {shared&&<small>{t('recent')}</small>}
+    {rows}
+    {paging}
+    {shared&&<details style={{marginTop:10}}><summary>{t('archived')}</summary><p>{t('archiveScope')}</p></details>}
+    {!shared&&<p>{t('restricted')}</p>}
   </section>;
 }
+function DirectoryRows({rows,sources,t,busy,shared,act,onOpen}){
+  return <div style={{maxHeight:'clamp(120px, calc(100dvh - 560px), 55vh)',overflowY:'auto',minWidth:0}}>{directorySections(rows).map(section=><div key={section.key} data-workspace={section.workspace} style={{borderTop:'1px solid var(--dsw-alias-border-primary, #8884)',paddingTop:6,marginTop:8}}>
+    <h5 title={section.workspace} style={{margin:'0 0 4px',display:'flex',gap:5,minWidth:0}}>
+      {section.pinned&&<span>{t('pinned')} · </span>}
+      <span style={{whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{shared?section.workspace.split('/').filter(Boolean).slice(-2).join('/')||section.workspace:section.group||t('ungrouped')}</span>
+    </h5>
+    <ul style={{listStyle:'none',margin:0,padding:0}}>{section.rows.map(row=><li key={row.key} data-session-key={row.key} style={{minWidth:0,marginBottom:3}}>
+      <button disabled={busy} onClick={()=>void act(async()=>{await sources.open(row.address);onOpen?.()})} title={row.title||row.address.sessionId} style={{display:'block',width:'100%',minWidth:0,textAlign:'left',padding:'6px 8px',border:'1px solid var(--dsw-alias-border-primary, #8884)',borderRadius:6,background:'transparent',color:'inherit'}}>
+        <span style={{display:'block',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{row.title||row.address.sessionId}</span>
+        {shared&&<small data-title-source={row.sharedTask?.titleSource??'unknown'} style={{display:'block',opacity:0.7,fontSize:11}}>{t(row.sharedTask?.titleSource??'unknown')}</small>}
+      </button>
+      {!shared&&<GroupInput row={row} sources={sources} t={t}/>}
+    </li>)}</ul>
+  </div>)}</div>;
+}
+
 function GroupInput({row,sources,t}){
   const [draft,setDraft]=useState(row.group);
   useEffect(()=>{setDraft(row.group)},[row.group]);

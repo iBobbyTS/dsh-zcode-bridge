@@ -71,3 +71,9 @@ test('Host-backed projection exposes official multi-workspace metadata without a
  assert.equal((await h.connect()).auth,'authenticated');const result=await h.listSessions();assert.equal(result.sessions[0].address.workspace,'/project');assert.equal(result.catalog.readOnly,true);assert.equal(result.management.rename,false);assert.throws(()=>h.createConversation(result.sessions[0].address),/source-unavailable/);
  listener({phase:'failed',reason:'official-credential-recovery-observed'});assert.equal(h.status.connected,false);await h.dispose();
 });
+test('Host presentation exposes only verified title sources and hides deleted metadata',async()=>{
+ const task={taskId:'one',title:'Title',workspacePath:'/project',status:'completed',updatedAt:10};
+ const launcher={state:{},subscribe:()=>()=>{},start:async()=>({phase:'ready',auth:'authenticated',mainPid:1}),read:async()=>({tasks:[{...task,titleOverridden:true,pinned:true},{...task,taskId:'unknown'},{...task,taskId:'generated',titleSource:'generated'},{...task,taskId:'deleted',deleted:true}],observedAt:20}),dispose:async()=>{}};
+ const h=new BridgeHost({authorityMode:'host-backed',launcher});
+ try{await h.connect();const result=await h.listSessions();assert.equal(result.sessions.length,3);assert.deepEqual(result.sessions.map(row=>row.sharedTask.titleSource),['custom','unknown','generated']);assert.equal(result.sessions[0].sharedTask.pinned,true);assert.equal(result.management.rename,false)}finally{await h.dispose()}
+});

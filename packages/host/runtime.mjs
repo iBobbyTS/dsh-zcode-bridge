@@ -61,8 +61,8 @@ export class BridgeHost {
     if(this.#disposed||!state.connected)throw new BridgeError('source-unavailable');
     if(address&&(address.runtime!=='zcode'||address.authority!==state.sessionAuthority||typeof address.workspace!=='string'||typeof address.sessionId!=='string'))throw new BridgeError('source-address-mismatch');
     const {tasks,observedAt}=await this.launcher.read('catalog',{signal});
-    const visible=address?tasks.filter(t=>t.taskId===address.sessionId&&t.workspacePath===address.workspace):tasks;
-    const sessions=visible.map(t=>({address:{runtime:'zcode',authority:state.sessionAuthority,workspace:t.workspacePath,sessionId:t.taskId},title:t.title,cwd:t.workspacePath,running:undefined,sharedTask:{status:t.status,lastActivityAt:t.updatedAt,cronAutomationId:t.cronAutomationId,offPeakTaskId:t.offPeakTaskId,observedAt}}));
+    const visible=tasks.filter(t=>t.deleted!==true&&(!address||(t.taskId===address.sessionId&&t.workspacePath===address.workspace)));
+    const sessions=visible.map(t=>({address:{runtime:'zcode',authority:state.sessionAuthority,workspace:t.workspacePath,sessionId:t.taskId},title:t.title,cwd:t.workspacePath,running:undefined,sharedTask:{status:t.status,lastActivityAt:t.updatedAt,pinned:t.pinned===true,archived:t.archived===true,titleSource:t.titleOverridden===true?'custom':['custom','default','generated','first_input'].includes(t.titleSource)?t.titleSource:'unknown',cronAutomationId:t.cronAutomationId,offPeakTaskId:t.offPeakTaskId,observedAt}}));
     return {sessions,catalog:{complete:true,truncated:false,limit:tasks.length,deleted:[],sharedGui:'shared-task-store',authorityKind:'official-host-channel',lifetime:'official',readOnly:true,multiWorkspace:true},management:{rename:false,delete:false,archive:false,pin:false,reason:'read-only-s03'},scope:{authority:state.sessionAuthority,workspace:'official-task-catalog'},availability:{state:'restricted',reason:'route-b-read-only-zero-model-requests',capabilities:{create:false,open:false,nativeAgent:false}}};
   }
   async sharedWritePreflight(address,{signal}={}){
