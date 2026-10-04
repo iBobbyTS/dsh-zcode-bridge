@@ -9,6 +9,7 @@ import { CatalogClient } from './catalog.mjs';
 import { InsightsClient } from './insights.mjs';
 import { AutomationClient, OFF_PEAK_ENTITLEMENT_REASON } from './automation.mjs';
 import { ProtocolPeer } from './protocol.mjs';
+import { remoteState } from './remote.mjs';
 export const initialStatus=()=>({state:'unavailable',reason:'not-connected',auth:'unconfirmed',connected:false});
 /** Owns only children it launches; there is no attach or shared-process killer. */
 export class BridgeHost {
@@ -140,6 +141,11 @@ export class BridgeHost {
     const auth=this.#status.auth??'unconfirmed';
     return {management:{available:false,reason,carriers:[]},offPeak:{available:false,reason,entitlement:{state:'unknown',reason:OFF_PEAK_ENTITLEMENT_REASON},carriers:[]},runFeedback:{available:false,reason,execution:{state:'gated',reason:'model-execution-gated'}},account:{state:'unknown',reason:'official-account-carrier-not-exposed',auth},reverse:{allowed:false,reason,records:[]},admission:{allowed:false,reason}};
   }
+  /** Remote management belongs to the outer Host/server, not this local stdio process. */
+  remoteState(){
+    const connected=!this.#disposed&&this.#status.connected===true&&this.#peer&&!this.#peer.closed;
+    return remoteState({connected:!!connected,authority:this.#status.sessionAuthority,workspace:this.#status.workspacePath,reason:this.#disposed?'disposed':this.#status.reason});
+  }
   async #acceptLifecycle(conversation,result){
     // Accepted deletion is an official decision, including a later query of a
     // lost ACK. Fence all owners before cleanup; never resend the command.
@@ -163,6 +169,9 @@ export class BridgeHost {
       const installation=await this.inspect(this.appPath);
       if(this.#disposed)throw new BridgeError('disposed');
       if(!this.workspacePath)throw new BridgeError('workspace-required');
+      // Never resolve an opaque remote identity against the local filesystem or launch a local
+      // runtime for it. Unknown future remote kinds fail closed through the same boundary.
+      if(typeof this.workspacePath==='string'&&this.workspacePath.trim().startsWith('remote:'))throw new BridgeError('remote-workspace-unavailable');
       let workspacePath;try{workspacePath=await realpath(this.workspacePath)}catch{throw new BridgeError('workspace-missing')}
       if(this.#disposed)throw new BridgeError('disposed');
       this.#publish({installation,workspacePath,sessionAuthority:'official-headless:'+randomUUID()});

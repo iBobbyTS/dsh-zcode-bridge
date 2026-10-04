@@ -44,6 +44,13 @@ export async function handleAutomation(host,payload,signal){
   }catch(error){return {ok:false,error:{code:error.code??'automation-unavailable',message:'Official automation projection rejected',details:{}}}}
 }
 const sourceEndpoint='sessions';
+/** Read-only S15 projection; remote identity, target and credentials are never accepted. */
+export async function handleRemote(host,payload,signal){
+  if(!payload||typeof payload!=='object'||Array.isArray(payload)||payload.operation!=='state'||Object.keys(payload).some(key=>key!=='operation'))return {ok:false,error:{code:'invalid-payload',message:'Only remote state may be read',details:{}}};
+  if(signal?.aborted)return {ok:false,error:{code:'cancelled',message:'Cancelled',details:{}}};
+  try{return {ok:true,value:host.remoteState()}}
+  catch(error){return {ok:false,error:{code:error.code??'remote-unavailable',message:'Remote projection unavailable',details:{}}}}
+}
 /** Uses DSH's authenticated carrier and plugin lifecycle; no DSH loop is registered. */
 export function apply(ctx,config={}) {
   const host=new BridgeHost({appPath:config.appPath,workspacePath:config.workspacePath,catalogLimit:config.catalogLimit});
@@ -87,6 +94,7 @@ export function apply(ctx,config={}) {
       if(endpoint==='catalog')return handleCatalog(host,payload,signal);
       if(endpoint==='insights')return handleInsights(host,payload,signal);
       if(endpoint==='automation')return handleAutomation(host,payload,signal);
+      if(endpoint==='remote')return handleRemote(host,payload,signal);
       if(endpoint!=='status'&&endpoint!=='connect')return {ok:false,error:{code:'not-found',message:`Endpoint ${endpoint} not found`,details:{}}};
       if(payload!==null&&payload!==undefined&&!(typeof payload==='object'&&!Array.isArray(payload)&&Object.keys(payload).length===0))return {ok:false,error:{code:'invalid-payload',message:'This endpoint accepts no runtime commands',details:{}}};
       if(signal.aborted)return {ok:false,error:{code:'cancelled',message:'Cancelled',details:{}}};
