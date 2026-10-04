@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { historyTarget, historyAllowed, historyTargetCurrent, historyResultText } from './history-controls.mjs';
+import { historyTarget, historyAllowed, historyTargetCurrent, historyResultText, historyEditSubmittable } from './history-controls.mjs';
 
 function FilePreview({ preview }) {
   return <div data-testid="zcode-rewind-preview">
@@ -47,7 +47,7 @@ function HistoryRow({ state, row, controller, onOpenBranch }) {
           <option value="rewind">Change conversation branch and rewind files</option>
         </select></label>
         <p>Editing cuts the active conversation branch and executes the edited input with a new command ID. Existing attachments are retained.</p>
-        <button disabled={!allowed('editUserQuery') || !historyTargetCurrent(state, editor) || !text.trim()} onClick={() => run({ type: 'editUserQuery', payload: { target: editor.target, newText: text, workspaceMode: mode }, ...editor })}>Execute edited input</button>
+        <button disabled={!allowed('editUserQuery') || !historyTargetCurrent(state, editor) || !historyEditSubmittable(row, text)} onClick={() => run({ type: 'editUserQuery', payload: { target: editor.target, newText: text, workspaceMode: mode }, ...editor })}>Execute edited input</button>
         {!historyTargetCurrent(state, editor) && <p role="alert">History changed; reopen the editor before executing.</p>}
       </div>}
     </>}

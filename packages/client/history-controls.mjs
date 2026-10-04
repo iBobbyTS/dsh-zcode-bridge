@@ -14,6 +14,14 @@ export function historyAllowed(state, row, type) {
   if (type === 'setAssistantFeedback') return row.kind === 'assistantText';
   return action ? row.actions?.[action] === true : false;
 }
+/**
+ * Official editUserQuery admits "text or retained attachment" (same rule as the S07 input submission):
+ * omitting `attachments` keeps the canonical input's attachments, so an empty edited text is a valid
+ * attachment-only edit. Guards (admission, canEdit, CAS) stay outside this helper.
+ */
+export function historyEditSubmittable(row, text) {
+  return Boolean(String(text ?? '').trim()) || (Array.isArray(row?.attachments) && row.attachments.length > 0);
+}
 /** Preview confirmation and editor keep the original CAS rather than silently adopting a new revision. */
 export function historyTargetCurrent(state, token) {
   const s = state?.snapshot;

@@ -5,10 +5,21 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { s08Runtime } from './fixtures/s08-runtime.mjs';
-import { historyTarget, historyAllowed, historyResultText } from '../packages/client/history-controls.mjs';
+import { historyTarget, historyAllowed, historyResultText, historyEditSubmittable } from '../packages/client/history-controls.mjs';
 const row = (f, id) => f.conversation.state.snapshot.rows.window.find(r => r.rowId === id);
 const token = (f, id) => historyTarget(f.conversation.state, row(f, id));
 async function send(f, type, id, extra = {}, result) { const t = id ? token(f, id) : {}; const p = f.conversation.submit({ type, payload: { ...(t.target ? { target: t.target } : {}), ...extra }, ...t }); f.ack(f.sent.at(-1), result); return p; }
+
+test('S08 edit admission follows official text-or-retained-attachment rule (S07 inputSubmission parity)', () => {
+  const retained = [{ ref: 'zcode-artifact://fixture-session/tool-result-a', fileName: 'a.txt', mime: 'text/plain', bytes: 4 }];
+  // Official editUserQuery omits attachments when they are not edited, so an attachment-only edit is valid.
+  assert.equal(historyEditSubmittable({ attachments: retained }, ''), true);
+  assert.equal(historyEditSubmittable({ attachments: retained }, '   '), true);
+  // No text and no retained attachment is still rejected, matching inputSubmission's input-empty rule.
+  assert.equal(historyEditSubmittable({}, ''), false);
+  assert.equal(historyEditSubmittable({ attachments: [] }, ' \n '), false);
+  assert.equal(historyEditSubmittable({}, 'edited'), true);
+});
 
 test('S08 non-last stable assistant fork preserves parent rows and uses complete branch address', async () => {
   const f = s08Runtime(); try { await f.open(); const before = f.conversation.state.snapshot;

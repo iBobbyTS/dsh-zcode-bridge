@@ -33,6 +33,26 @@ it('S08 edit defaults to preserve and keeps original CAS; earlier non-editable i
   } finally { f.dispose(); }
 });
 
+it('S08 attachment-only edit: clearing text with retained attachments stays executable and keeps canonical attachments on the wire', async () => {
+  const f = await mount(); try {
+    await act(async () => { f.update(s => { const target = s.rows.window.find(row => row.rowId === 5); target.attachments = [{ ref: 'zcode-artifact://fixture-session/tool-result-retained', fileName: 'retained.txt', mime: 'text/plain', bytes: 4 }]; }); });
+    fireEvent.click(part(5).getByText('Edit input')); fireEvent.change(screen.getByLabelText('Edited input'), { target: { value: '' } });
+    const button = screen.getByText('Execute edited input') as HTMLButtonElement; expect(button.disabled).toBe(false);
+    fireEvent.click(button);
+    const command = f.sent.at(-1).params; expect(command.type).toBe('editUserQuery');
+    // Omitting attachments is the official "retain canonical attachments" signal; text may be empty.
+    expect(command.payload).toEqual({ target: { rowId: 5, entityId: 'input-2' }, newText: '', workspaceMode: 'preserve' }); expect(command.payload.attachments).toBeUndefined();
+    await answer(f, { type: 'editUserQuery', disposition: 'rewind', sessionId: 'fixture-session' });
+  } finally { f.dispose(); }
+});
+
+it('S08 text-only edit still requires text: clearing whitespace with no retained attachment disables execute', async () => {
+  const f = await mount(); try {
+    fireEvent.click(part(5).getByText('Edit input'));
+    for (const value of ['', '   ']) { fireEvent.change(screen.getByLabelText('Edited input'), { target: { value } }); expect((screen.getByText('Execute edited input') as HTMLButtonElement).disabled).toBe(true); }
+  } finally { f.dispose(); }
+});
+
 it('S08 retry explains reexecution, produces a fresh command id each user action and never calls recovery resend', async () => {
   const f = await mount(); try {
     expect(part(6).getByText(/Previous tool side effects may happen again/)).toBeDefined();
