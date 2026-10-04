@@ -12174,6 +12174,75 @@ var backgroundBashOutputResultSchema2 = z52.union([
     code: z52.string().optional()
   })
 ]);
+
+// ../reference/ZCode/packages/shared/src/zcode-protocol-v4/workflow-workspace.ts
+import { z as z53 } from "zod";
+var WORKFLOW_WORKSPACE_LIMITS = {
+  /** 一次清单最多多少行；超界由网关截尾并置 `truncated`。 */
+  maxNodes: 2e3,
+  /** `op` 名的长度（`git-changed-files` 是最长的那个）。 */
+  maxOpLength: 32,
+  /** 实参个数（引擎侧截断后 ≤ 8；未截断的原值按 facade 签名 ≤ 3）。 */
+  maxArgs: 16,
+  /** 失败信息的展示长度；超长由宿主切尾。 */
+  maxErrorMessageLength: 2e3,
+  /** 正文一次最多读回多少字节（截断而不是拒绝——这是审计面，不是脚本的取数面）。 */
+  resultMaxBytes: 32 * 1024
+};
+var workflowRunWorkspaceNodeKindSchema = z53.enum(["world-read", "world-run"]);
+var workflowRunWorkspaceNodeStatusSchema = z53.enum(["running", "completed", "failed"]);
+var workflowRunWorkspaceNodeErrorSchema = z53.object({
+  code: z53.string().min(1).max(64),
+  message: z53.string().max(WORKFLOW_WORKSPACE_LIMITS.maxErrorMessageLength)
+}).strict();
+var workflowRunWorkspaceNodeSummarySchema = z53.object({
+  resultBytes: z53.number().int().nonnegative(),
+  resultCount: z53.number().int().nonnegative().optional(),
+  exitCode: z53.number().int().optional(),
+  stdoutBytes: z53.number().int().nonnegative().optional(),
+  stderrBytes: z53.number().int().nonnegative().optional()
+}).strict();
+var workflowRunWorkspaceNodeSchema = z53.object({
+  siteId: z53.string().min(1).max(64),
+  ordinal: z53.number().int().nonnegative(),
+  kind: workflowRunWorkspaceNodeKindSchema,
+  op: z53.string().min(1).max(WORKFLOW_WORKSPACE_LIMITS.maxOpLength).optional(),
+  args: z53.array(z53.unknown()).max(WORKFLOW_WORKSPACE_LIMITS.maxArgs).optional(),
+  inputTruncated: z53.literal(true).optional(),
+  status: workflowRunWorkspaceNodeStatusSchema,
+  error: workflowRunWorkspaceNodeErrorSchema.optional(),
+  summary: workflowRunWorkspaceNodeSummarySchema.optional(),
+  /** journal 行的建立 / 最近更新时刻（epoch 毫秒）；二者之差就是这一步的耗时。 */
+  createdAt: z53.number().int().nonnegative(),
+  updatedAt: z53.number().int().nonnegative()
+}).strict();
+var v4ConversationWorkflowRunWorkspaceParamsSchema = z53.object({
+  sessionId: z53.string().min(1),
+  runId: z53.string().min(1)
+}).strict();
+var v4ConversationWorkflowRunWorkspaceResultSchema = z53.object({
+  /** 按落库先后（journal 行 id 升序 = 引擎准入顺序）。 */
+  nodes: z53.array(workflowRunWorkspaceNodeSchema).max(WORKFLOW_WORKSPACE_LIMITS.maxNodes),
+  /** 清单超过 maxNodes 被截尾。 */
+  truncated: z53.boolean().optional()
+}).strict();
+var v4ConversationWorkflowRunNodeResultParamsSchema = z53.object({
+  sessionId: z53.string().min(1),
+  runId: z53.string().min(1),
+  siteId: z53.string().min(1).max(64),
+  ordinal: z53.number().int().nonnegative(),
+  /** 缺省与上限都是 resultMaxBytes；网关钳制。 */
+  maxBytes: z53.number().int().positive().max(WORKFLOW_WORKSPACE_LIMITS.resultMaxBytes).optional()
+}).strict();
+var v4ConversationWorkflowRunNodeResultResultSchema = z53.object({
+  status: workflowRunWorkspaceNodeStatusSchema,
+  /** 有界化后的正文；running 行与 failed 行缺席。 */
+  result: z53.unknown().optional(),
+  error: workflowRunWorkspaceNodeErrorSchema.optional(),
+  truncated: z53.boolean(),
+  /** 截断前的序列化字节数。 */
+  totalBytes: z53.number().int().nonnegative()
+}).strict();
 export {
   COMMANDS_REQUIRING_BASE_REVISION,
   PROTOCOL_V4_LIMITS,
@@ -12196,6 +12265,7 @@ export {
   parseCommandEnvelope,
   sharedContextImportStateSchema,
   sharedContextRefSchema,
+  toolCallCreateWorkflowDisplaySchema,
   v4AttachmentAbortParamsSchema,
   v4AttachmentAbortResultSchema,
   v4AttachmentBeginParamsSchema,
@@ -12224,6 +12294,20 @@ export {
   v4ConversationSubscribeParamsSchema,
   v4ConversationSubscribeResultSchema,
   v4ConversationUnsubscribeParamsSchema,
+  v4ConversationWorkflowRunArtifactDataParamsSchema,
+  v4ConversationWorkflowRunArtifactDataResultSchema,
+  v4ConversationWorkflowRunArtifactReadParamsSchema,
+  v4ConversationWorkflowRunArtifactReadResultSchema,
+  v4ConversationWorkflowRunArtifactsParamsSchema,
+  v4ConversationWorkflowRunArtifactsResultSchema,
+  v4ConversationWorkflowRunEventsParamsSchema,
+  v4ConversationWorkflowRunEventsResultSchema,
+  v4ConversationWorkflowRunNodeResultParamsSchema,
+  v4ConversationWorkflowRunNodeResultResultSchema,
+  v4ConversationWorkflowRunWorkspaceParamsSchema,
+  v4ConversationWorkflowRunWorkspaceResultSchema,
+  v4ConversationWorkflowRunsParamsSchema,
+  v4ConversationWorkflowRunsResultSchema,
   zcodeBrowserExecuteParamsSchema2 as zcodeBrowserExecuteParamsSchema,
   zcodeBrowserExecuteResultSchema2 as zcodeBrowserExecuteResultSchema,
   zcodeBrowserListParamsSchema2 as zcodeBrowserListParamsSchema,
@@ -12268,6 +12352,18 @@ export {
   zcodeSessionSubagentsResultSchema2 as zcodeSessionSubagentsResultSchema,
   zcodeSkillsReferenceCatalogParamsSchema2 as zcodeSkillsReferenceCatalogParamsSchema,
   zcodeSkillsReferenceCatalogResultSchema2 as zcodeSkillsReferenceCatalogResultSchema,
+  zcodeWorkflowsDeleteParamsSchema2 as zcodeWorkflowsDeleteParamsSchema,
+  zcodeWorkflowsDeleteResultSchema2 as zcodeWorkflowsDeleteResultSchema,
+  zcodeWorkflowsGetParamsSchema2 as zcodeWorkflowsGetParamsSchema,
+  zcodeWorkflowsGetResultSchema2 as zcodeWorkflowsGetResultSchema,
+  zcodeWorkflowsListParamsSchema2 as zcodeWorkflowsListParamsSchema,
+  zcodeWorkflowsListResultSchema2 as zcodeWorkflowsListResultSchema,
+  zcodeWorkflowsMoveParamsSchema2 as zcodeWorkflowsMoveParamsSchema,
+  zcodeWorkflowsMoveResultSchema2 as zcodeWorkflowsMoveResultSchema,
+  zcodeWorkflowsRunsParamsSchema2 as zcodeWorkflowsRunsParamsSchema,
+  zcodeWorkflowsRunsResultSchema2 as zcodeWorkflowsRunsResultSchema,
+  zcodeWorkflowsUpdateMetaParamsSchema2 as zcodeWorkflowsUpdateMetaParamsSchema,
+  zcodeWorkflowsUpdateMetaResultSchema2 as zcodeWorkflowsUpdateMetaResultSchema,
   zcodeWorkspacePresentationSchema2 as zcodeWorkspacePresentationSchema,
   zcodeWorkspaceReadPresentationParamsSchema2 as zcodeWorkspaceReadPresentationParamsSchema,
   zcodeWorkspaceUpdateInteractionPreferencesParamsSchema2 as zcodeWorkspaceUpdateInteractionPreferencesParamsSchema,

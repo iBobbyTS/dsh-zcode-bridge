@@ -11,6 +11,10 @@
       "ROW_TARGETING_COMMANDS"
     ],
     "transport": [
+      "v4ConversationWorkflowRunEventsParamsSchema",
+      "v4ConversationWorkflowRunEventsResultSchema",
+      "v4ConversationWorkflowRunsParamsSchema",
+      "v4ConversationWorkflowRunsResultSchema",
       "v4BackgroundBashOutputParamsSchema",
       "conversationTopicFrameSchema",
       "conversationTopicWireCandidateSchema",
@@ -70,6 +74,18 @@
       "PROTOCOL_V4_LIMITS"
     ],
     "../zcode-protocol/index": [
+      "zcodeWorkflowsListParamsSchema",
+      "zcodeWorkflowsListResultSchema",
+      "zcodeWorkflowsGetParamsSchema",
+      "zcodeWorkflowsGetResultSchema",
+      "zcodeWorkflowsUpdateMetaParamsSchema",
+      "zcodeWorkflowsUpdateMetaResultSchema",
+      "zcodeWorkflowsDeleteParamsSchema",
+      "zcodeWorkflowsDeleteResultSchema",
+      "zcodeWorkflowsMoveParamsSchema",
+      "zcodeWorkflowsMoveResultSchema",
+      "zcodeWorkflowsRunsParamsSchema",
+      "zcodeWorkflowsRunsResultSchema",
       "zcodeBrowserListParamsSchema",
       "zcodeBrowserListResultSchema",
       "zcodeBrowserExecuteParamsSchema",
@@ -124,6 +140,23 @@
     "../background-bash-output": [
       "backgroundBashOutputSchema",
       "backgroundBashOutputResultSchema"
+    ],
+    "workflow-artifacts": [
+      "v4ConversationWorkflowRunArtifactsParamsSchema",
+      "v4ConversationWorkflowRunArtifactsResultSchema",
+      "v4ConversationWorkflowRunArtifactDataParamsSchema",
+      "v4ConversationWorkflowRunArtifactDataResultSchema",
+      "v4ConversationWorkflowRunArtifactReadParamsSchema",
+      "v4ConversationWorkflowRunArtifactReadResultSchema"
+    ],
+    "workflow-workspace": [
+      "v4ConversationWorkflowRunWorkspaceParamsSchema",
+      "v4ConversationWorkflowRunWorkspaceResultSchema",
+      "v4ConversationWorkflowRunNodeResultParamsSchema",
+      "v4ConversationWorkflowRunNodeResultResultSchema"
+    ],
+    "create-workflow-display": [
+      "toolCallCreateWorkflowDisplaySchema"
     ],
     "cuaPermission": [
       "cuaPermissionObservationSchema"
@@ -484,6 +517,11 @@
       "path": "packages/shared/src/zcode-protocol-v4/wire-assembler.ts",
       "sha256": "ad15fb1af701f8155912e251fe9f38b04d2cfa2d2c1548868a52fc96953c3a4c",
       "bytes": 20220
+    },
+    {
+      "path": "packages/shared/src/zcode-protocol-v4/workflow-workspace.ts",
+      "sha256": "a126c8047c495f1bdcbdd46473615d786a56a39b3a2060783950238c3df7631a",
+      "bytes": 6876
     }
   ]
 }
