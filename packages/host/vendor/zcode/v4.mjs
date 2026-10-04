@@ -10816,6 +10816,7 @@ var zcodeUsageStatsParamsSchema2 = z51.object({
   range: z51.enum(APP_USAGE_RANGES),
   timeZone: z51.string().optional()
 }).strict();
+var zcodeUsageStatsResultSchema = appUsageSnapshotSchema;
 var zcodeTaskTokenUsageParamsSchema2 = z51.object({
   sessionId: nonEmptyString4
 }).strict();
@@ -12346,12 +12347,19 @@ export {
   zcodePluginsUpdateParamsSchema2 as zcodePluginsUpdateParamsSchema,
   zcodePluginsValidateParamsSchema2 as zcodePluginsValidateParamsSchema,
   zcodePluginsValidateResultSchema2 as zcodePluginsValidateResultSchema,
+  zcodeProcessChildProcessesParamsSchema2 as zcodeProcessChildProcessesParamsSchema,
+  zcodeProcessChildProcessesResultSchema2 as zcodeProcessChildProcessesResultSchema,
+  zcodeProcessResourceSampleSchema2 as zcodeProcessResourceSampleSchema,
   zcodeSessionCancelBackgroundTaskParamsSchema2 as zcodeSessionCancelBackgroundTaskParamsSchema,
   zcodeSessionCancelBackgroundTaskResultSchema2 as zcodeSessionCancelBackgroundTaskResultSchema,
   zcodeSessionSubagentsParamsSchema2 as zcodeSessionSubagentsParamsSchema,
   zcodeSessionSubagentsResultSchema2 as zcodeSessionSubagentsResultSchema,
   zcodeSkillsReferenceCatalogParamsSchema2 as zcodeSkillsReferenceCatalogParamsSchema,
   zcodeSkillsReferenceCatalogResultSchema2 as zcodeSkillsReferenceCatalogResultSchema,
+  zcodeTaskTokenUsageParamsSchema2 as zcodeTaskTokenUsageParamsSchema,
+  zcodeTaskTokenUsageResultSchema2 as zcodeTaskTokenUsageResultSchema,
+  zcodeUsageStatsParamsSchema2 as zcodeUsageStatsParamsSchema,
+  zcodeUsageStatsResultSchema,
   zcodeWorkflowsDeleteParamsSchema2 as zcodeWorkflowsDeleteParamsSchema,
   zcodeWorkflowsDeleteResultSchema2 as zcodeWorkflowsDeleteResultSchema,
   zcodeWorkflowsGetParamsSchema2 as zcodeWorkflowsGetParamsSchema,

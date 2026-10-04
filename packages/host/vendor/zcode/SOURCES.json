@@ -135,7 +135,14 @@
       "zcodePluginsDescribeParamsSchema",
       "zcodePluginsDescribeResultSchema",
       "zcodePluginOperationProgressNotificationSchema",
-      "zcodePluginOperationStateSchema"
+      "zcodePluginOperationStateSchema",
+      "zcodeUsageStatsParamsSchema",
+      "zcodeUsageStatsResultSchema",
+      "zcodeTaskTokenUsageParamsSchema",
+      "zcodeTaskTokenUsageResultSchema",
+      "zcodeProcessChildProcessesParamsSchema",
+      "zcodeProcessChildProcessesResultSchema",
+      "zcodeProcessResourceSampleSchema"
     ],
     "../background-bash-output": [
       "backgroundBashOutputSchema",
