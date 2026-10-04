@@ -3,7 +3,7 @@ import {readFileSync,writeFileSync,mkdirSync} from 'node:fs';
 import {resolve,join} from 'node:path';
 import {compareObservation} from '../packages/host/launcher/observation.mjs';
 const out=resolve(process.env.S03_WEB_CHECK_OUTPUT??'docs/probes/checks/s03-p2/persistent-web');mkdirSync(out,{recursive:true});
-const log=readFileSync('/private/tmp/s03-web-server-final.log','utf8'),url=log.match(/dsh web: (http:\/\/127\.0\.0\.1:3092\/\?token=[^\s]+)/)?.[1];if(!url)throw Error('web-url-unavailable');
+const log=readFileSync('/private/tmp/s03-web-restart2.log','utf8'),url=log.match(/dsh web: (http:\/\/127\.0\.0\.1:3092\/\?token=[^\s]+)/)?.[1];if(!url)throw Error('web-url-unavailable');
 const response=await fetch(url,{redirect:'manual'}),cookie=response.headers.getSetCookie().map(c=>c.split(';')[0]).join(';');
 const call=async(method,payload)=>{const r=await fetch('http://127.0.0.1:3092/zcode-bridge/'+method,{method:'POST',headers:{'content-type':'application/json',cookie},body:JSON.stringify({type:'client-request',rpcId:'s03-web-read',method,payload})});const body=await r.json();if(!body.result?.ok)throw Error(body.result?.error?.code??'web-read-failed');return body.result.value;};
 const save=(name,v)=>writeFileSync(join(out,name+'.json'),JSON.stringify(v,null,2));
