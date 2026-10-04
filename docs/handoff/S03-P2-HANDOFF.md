@@ -38,7 +38,7 @@
 
 | 输入 | 判定/准入 | 证据 |
 |---|---|---|
-| fresh running、非我方 | active/other，禁写、保留视图 | Node 判定级 + UI 合成；**真实 running 激励 NOT_RUN** |
+| fresh running、非我方 | active/other，禁写、保留视图 | Node 判定级 + UI 合成；**真实活跃会话激励已做→FAIL（false-idle，见修复轮更新）** |
 | 我方内存 active（DB 缺失也优先） | active/ours，normal busy、禁重复写 | Node 判定级；无真实我方 turn |
 | fresh 官方查询 + completed/error | idle/none，eligible | 真 idle `gates.json`，completed 自动化绑定会话；S03 仍无实际写入 |
 | task 缺失、未知 status、查询陈旧/未来 timestamp | unknown，禁写 | Node 判定级 |
@@ -66,6 +66,17 @@
 - supervisor **43609** / CLI **43658**；`.agent-work/tmp/s03-p2-web/server-pid.json` 是实时 owner 清单。用户要求保持，任务结束不主动关闭。接管/重启仅信号这些 own PID，禁进程名杀 GUI。
 - 从 repo 运行 `HOME=/Users/ibobby node scripts/start-s03-web.mjs`，脚本填写全部 profile/launcher/env 绑定并输出新的 token URL；旧 token 失效。web 子命令不支持 `--profile`，固定使用 web profile，首次错误 flag 已记失败。
 - main/operator Connect → 侧栏 Refresh；只读 metadata card/闸门轮询，Send 禁用，不恢复/关闭/停止真实会话。`S03_WEB_CHECK_OUTPUT=<fresh-dir> node scripts/check-s03-web.mjs --observe-existing` 只观察既有实例；去掉 flag 会由调用者显式 Connect，请勿混用旧失败输出目录。
+
+## 修复轮更新：CA3-P2-01 真实活跃激励（2026-10-04，实现者 native @impl_std）
+
+CA3-P2-01 是「活跃禁写格从未被真实 running 会话激励」。本轮按合同用主 agent 会话自身作激励，**判定结果为 FAIL，不是 NOT_RUN**：官方共享 task metadata 对一个正在跑的真实会话仍报 `completed`，闸门因此返回 `idle/allowed`，即 **false-idle（活跃被当空闲）**。
+
+- 激励源：驱动本派发的官方 GUI 主 agent 会话 `sess_2df40173-…`（标题 `dsh-zcode`，workspace `dsh-zcode-acp`）。进程链 `验证 subagent shell → zcode-cli(1878) → zcode-host-local-1(1843) → ZCode(1783)` 证明该 GUI 运行时正处于一个 open turn 内（正在执行本 subagent），而共享行状态为 `completed`、`lastActivityAt` 停在 1791143554641。约 90s×7 次 live 轮询与只读 DB 副本（含 WAL）查询均 0 running 行、0 running automation。
+- 判定实测：对该真实活跃会话 `writePreflight` → `{decision:'idle', reason:'shared-task-confirmed-idle', allowed:true, owner:'none'}`（应为 active/official-gui-active-turn/allowed=false）。对照 completed 会话 → idle/allowed（PASS）。归属格仍为判定级（`tests/p2-route-b.test.mjs:36` + S06 先例；0 模型请求/禁 session create 下无真实我方会话可造）。
+- 根因（源码）：共享 tasks-index 的 `task_status` 对**已存在的会话**只在终态迁移写 completed/error（`zcodeTaskIndexSyncer.ts:567-624,661-699`；stream 事件同样只写 completed/error，`zcodeTaskServiceAdapter.ts:1420-1484`）；被 resume 的会话在下一轮 running 期间不会回写 running。`getTaskMeta`/`listSessions` 都读同一冷共享库（`zcodeTaskServiceAdapter.ts:2605-2608`；`zcodeAgentService.ts:3614-3635`），无跨 Host live 信号（S06 已记原始 sessions-index 跨 Host LIVE FAIL）。故闸门对“resume 后的活跃 turn”无法与空闲区分。
+- **未改产品语义**：无有界修复可用（要加 live 信号必须扩展 `ROUTE_B_READ_CALLS`/订阅面，超出本 bounded 修复边界），按「发现真缺陷则上报、不改语义」返回 parent adjudication。证据 [active-stimulus/](../probes/checks/s03-p2-resume/active-stimulus/result.json)（`result.json`/`preflight-active-real.json`/`preflight-idle.json`/`process-ancestry.json`/`tasks-index-readonly.json`/`catalog.json`/`live-poll.txt`/`source-evidence.json`）；0 模型请求、0 写入、0 凭据读取、GUI 仅 ps。
+- NIT 债务（不修）：Main 的 `rpc` 观测数组每次 `safeCall` 无界 `push`（`packages/host/launcher/main.mjs:25`），而 SharedTaskPanel 每 2s 轮询 `writePreflight`→`getTaskMeta`，长生命周期 Main 内该数组单增；建议后续改为有界环形/计数。
+- 本轮 checks（无产品代码改动）：bridge Node **280/280 PASS**、DSH 集成 **177/177 PASS（19 files）**、build PASS；log 在证据目录（`node.log`/`integration.log`/`build.log`）。
 
 ## Checks 与交付
 
