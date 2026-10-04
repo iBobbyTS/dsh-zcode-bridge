@@ -36,6 +36,8 @@ export function apply(ctx,config={}) {
           const operationKeys={
             open:['operation','address'],
             historyQuery:['operation','handle','kind','target','baseRevision','baseLogEpoch'],
+            workflowManage:['operation','handle','kind','params'],
+            workflowRead:['operation','handle','kind','params'],
             hostRegistration:['operation','handle'],
             subagents:['operation','handle','endedCursor','endedLimit'],
             backgroundOutput:['operation','handle','workId'],

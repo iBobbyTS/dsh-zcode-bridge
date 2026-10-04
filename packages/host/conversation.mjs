@@ -1,3 +1,4 @@
+import { requestWorkflow, WORKFLOW_MANAGEMENT_WRITES, WORKFLOW_COMMANDS, WORKFLOW_LIMITATIONS } from './workflow.mjs';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { BridgeError } from './installation.mjs';
 import { uploadAttachmentTransaction, encodeBase64 } from './attachment.mjs';
@@ -79,7 +80,7 @@ export class V4Conversation {
     this.#offNotification=peer.onNotification(m=>{if(m.method==='v4/conversation/frame')this.#wire(m.params)});
     this.#offClosed=peer.onClosed(code=>this.#disconnect(code));
   }
-  get state(){return structuredClone({...this.#state,commands:[...this.#commands.values()],observerErrors:this.#observerErrors,profile:this.clientMode==='desktop-continuous'?'continuous':'replayable',admission:this.admission,managementAdmission:this.managementAdmission,attachmentAdmission:this.attachmentAdmission,workAdmission:this.workAdmission,...(this.hostTools?{hostTools:this.hostTools.snapshot(this.address.sessionId)}:{})})}
+  get state(){return structuredClone({...this.#state,commands:[...this.#commands.values()],observerErrors:this.#observerErrors,profile:this.clientMode==='desktop-continuous'?'continuous':'replayable',admission:this.admission,managementAdmission:this.managementAdmission,attachmentAdmission:this.attachmentAdmission,workAdmission:this.workAdmission,workflowAdmission:{reads:this.workAdmission,writes:this.managementAdmission,...WORKFLOW_LIMITATIONS},...(this.hostTools?{hostTools:this.hostTools.snapshot(this.address.sessionId)}:{})})}
   get admission(){return {allowed:!this.#closed&&this.runnable&&this.#state.status==='live'&&!!this.#state.snapshot,reason:this.#closed?'closed':!this.runnable?'runtime-restricted':this.#state.status!=='live'?'projection-unconfirmed':null}}
   get managementAdmission(){return {allowed:!this.#closed&&this.managementAllowed&&this.#state.status==='live'&&!!this.#state.snapshot,reason:this.#closed?'closed':!this.managementAllowed?'management-unverified':this.#state.status!=='live'?'projection-unconfirmed':null}}
   /** Attachment resource calls follow the official session-scoped wire, not model admission. */
@@ -88,6 +89,21 @@ export class V4Conversation {
    *  not the model-execution admission: a restricted runtime with no new model admission can still carry
    *  real background work, and the official carrier rejects unsupported/expired targets itself. */
   get workAdmission(){return {allowed:!this.#closed&&this.#state.status==='live'&&!!this.#state.snapshot,reason:this.#closed?'closed':this.#state.status!=='live'?'projection-unconfirmed':null}}
+  async workflowManage(kind,params={}, {signal}={}){
+    const writes=WORKFLOW_MANAGEMENT_WRITES.has(kind),admission=writes?this.managementAdmission:this.workAdmission;
+    if(!admission.allowed)throw new BridgeError(admission.reason);
+    const generation=this.#generation;
+    const result=await requestWorkflow(this.peer,{kind,params,workspace:this.workspace,management:true},{signal});
+    if(this.#closed||generation!==this.#generation||!this.workAdmission.allowed)throw new BridgeError(writes?'workflow-outcome-unknown':'workflow-owner-replaced');
+    return result;
+  }
+  async workflowRead(kind,params={}, {signal}={}){
+    if(!this.workAdmission.allowed)throw new BridgeError(this.workAdmission.reason);
+    const generation=this.#generation;
+    const result=await requestWorkflow(this.peer,{kind,params,sessionId:this.address.sessionId},{signal});
+    if(this.#closed||generation!==this.#generation||!this.workAdmission.allowed)throw new BridgeError('workflow-owner-replaced');
+    return result;
+  }
   async hostRegistration({signal}={}){
     if(!this.workAdmission.allowed)throw new BridgeError(this.workAdmission.reason);
     if(!this.hostTools)throw new BridgeError('host-unavailable');
@@ -420,6 +436,7 @@ export class V4Conversation {
     }
     // Identity is the official workId bound to this session. It is deliberately not snapshot-filtered:
     // an expired id must reach the official runtime and be rejected there, not silently redirected.
+    if(WORKFLOW_COMMANDS.has(type)&&type!=='startSavedWorkflow'&&!nonempty(payload?.workId))throw new BridgeError('command-invalid');
     if(type==='cancelBackgroundWork'&&!nonempty(payload?.workId))throw new BridgeError('command-invalid');
     if((type==='resolveInteraction'||type==='snoozeInteractionAutoResolution'||type==='respondWorkspaceHookReview'||type==='toggleWorkspaceHookReviewItem')&&!snapshot.pendingInteractions.some(x=>x.interactionId===payload?.interactionId))throw new BridgeError('interaction-unconfirmed');
     if(type==='revokeWorkspaceHookTrust'&&payload?.interactionId&&!snapshot.pendingInteractions.some(x=>x.interactionId===payload.interactionId))throw new BridgeError('interaction-unconfirmed');
@@ -449,7 +466,7 @@ export class V4Conversation {
     this.#reserveCommand();
     const controller=new AbortController(),abort=()=>controller.abort();signal?.addEventListener('abort',abort,{once:true});
     this.#commandControllers.set(commandId,controller);
-    const record={commandId,type,sessionId:envelope.sessionId,logEpoch:snapshot.logEpoch,revision:snapshot.revision,state:'sent-unconfirmed',...(WORK_COMMANDS.has(type)?{workId:payload.workId}:{})};
+    const record={commandId,type,sessionId:envelope.sessionId,logEpoch:snapshot.logEpoch,revision:snapshot.revision,state:'sent-unconfirmed',...(WORK_COMMANDS.has(type)||type==='resumeWorkflowRun'?{workId:payload.workId}:{}),...(type==='resumeWorkflowRun'?{baselineWorkflowSequence:snapshot.workflowRuns?.runs?.find(r=>r.runId===payload.workId)?.lastEventSequence??-1}:{})};
     this.#commands.set(commandId,record);this.#publish();
     try{
       await this.peer.request('v4/command',parsed.envelope,{signal:controller.signal,onResult:raw=>{this.#ack(record,raw);return raw}});
@@ -465,6 +482,13 @@ export class V4Conversation {
     const ack=commandAckSchema.parse(raw);
     if(ack.commandId!==record.commandId||!int(ack.revisionAtDecision))throw new BridgeError('command-ack-mismatch');
     if(['rejected','stale','noop','failed'].includes(ack.status)&&!ack.reasonCode)throw new BridgeError('command-reason-missing');
+    if(['accepted','duplicate'].includes(ack.status)&&WORKFLOW_COMMANDS.has(record.type)){
+      if(record.type==='resumeWorkflowRun')record.workflowRunId=record.workId;
+      else{
+        if(ack.result?.type!==record.type||!nonempty(ack.result.runId)||!nonempty(ack.result.toolCallId))throw new BridgeError('command-result-mismatch');
+        record.workflowRunId=ack.result.runId;record.workflowToolCallId=ack.result.toolCallId;
+      }
+    }
     record.ack=ack;
     if(['accepted','duplicate'].includes(ack.status)&&['forkAssistant','createSelectionSideSession'].includes(ack.result?.type)){
       if(ack.result.type!==record.type||!nonempty(ack.result.sessionId)||ack.result.sessionId===this.address.sessionId)throw new BridgeError('command-result-mismatch');
@@ -496,7 +520,17 @@ export class V4Conversation {
       // leaves running (or disappears), the accepted cancellation is settled.
       if(record.type==='cancelBackgroundWork'&&['accepted','duplicate'].includes(record.ack?.status)){
         const work=(snapshot.backgroundWorks??[]).find(w=>w.workId===record.workId);
-        record.state=!(work&&work.status==='running')?'completed':'running';
+        const workflow=(snapshot.workflowRuns?.runs??[]).find(r=>r.runId===record.workId);
+        record.state=work?.status==='running'||workflow&&['pending','running'].includes(workflow.status)?'running':'completed';
+        continue;
+      }
+      if(WORKFLOW_COMMANDS.has(record.type)&&['accepted','duplicate'].includes(record.ack?.status)){
+        const run=snapshot.workflowRuns?.runs?.find(r=>r.runId===record.workflowRunId);
+        // Resume ACK may arrive before run-started. The previous stopped incarnation
+        // cannot settle the new command: journal sequence must advance beyond its base.
+        if(run&&(record.type!=='resumeWorkflowRun'||run.lastEventSequence>record.baselineWorkflowSequence)){
+          record.state=({pending:'running',running:'running',completed:'completed',errored:'failed',stopped:'interrupted'})[run.status];
+        }
         continue;
       }
       const header=snapshot.rows.window.find(row=>row.kind==='turnHeader'&&row.sourceCommandId===record.commandId);

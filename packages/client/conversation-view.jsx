@@ -1,3 +1,4 @@
+import { ZCodeWorkflowPanel } from './workflow-view.jsx';
 import { ZCodeHostToolsPanel, ZCodeHostToolResult } from './host-tools-view.jsx';
 export { ZCodeHostToolsPanel } from './host-tools-view.jsx';
 import React, { useState, useEffect, useRef, useCallback, useSyncExternalStore } from 'react';
@@ -54,6 +55,9 @@ export class ConversationController {
     return this.#disposed;
   }
 
+  workflowManage(kind,params,options) {if(this.#disposed)throw new Error('Controller is disposed');return this.#conversation.workflowManage(kind,params,options)}
+  workflowRead(kind,params,options) {if(this.#disposed)throw new Error('Controller is disposed');return this.#conversation.workflowRead(kind,params,options)}
+  submitWorkflowCommand(command,options) {if(this.#disposed)throw new Error('Controller is disposed');return this.#conversation.submit(command,options)}
   hostRegistration(options) {return this.#conversation?.hostRegistration?.(options)}
 
   async connect(options) {
@@ -2838,6 +2842,7 @@ export function ZCodeConversationView({ conversation, controller, reference, onO
       <ZCodeAlerts state={state} onReconnect={handleReconnect} />
       <ZCodeControlBar state={state} onStop={handleStop} />
       <ZCodeHostToolsPanel key={`host:${sessionIdentity ?? 'default'}`} state={state} controller={activeController} />
+      <ZCodeWorkflowPanel key={`workflow:${sessionIdentity ?? 'default'}`} state={state} controller={activeController} />
       <ZCodeWorkPanel key={`work:${sessionIdentity ?? 'default'}`} state={state} controller={activeController} />
       <ZCodePendingInteractions
         key={`interactions:${sessionIdentity ?? 'default'}`}

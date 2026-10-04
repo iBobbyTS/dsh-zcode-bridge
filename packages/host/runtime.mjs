@@ -1,3 +1,4 @@
+import { WORKFLOW_COMMANDS } from './workflow.mjs';
 import { HostTools } from './host-tools.mjs';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -63,7 +64,7 @@ export class BridgeHost {
     catch(error){this.#handles.delete(handle);await conversation.cancel();throw error}
     finally{signal?.removeEventListener('abort',abort)}
   }
-  async conversationOperation({handle,operation,command,commandId,kind,preferences,attachment,uploadId,chunkIndex,dataBase64,ref,target,attachmentIndex,offset,limit,baseRevision,baseLogEpoch,endedCursor,endedLimit,workId},signal){
+  async conversationOperation({handle,operation,command,commandId,kind,preferences,attachment,uploadId,chunkIndex,dataBase64,ref,target,attachmentIndex,offset,limit,baseRevision,baseLogEpoch,endedCursor,endedLimit,workId,params},signal){
     const conversation=this.#handles.get(handle);
     if(!conversation)throw new BridgeError('conversation-handle-invalid');
     if(operation==='release'){this.#handles.delete(handle);await conversation.cancel();return {released:true}}
@@ -71,6 +72,8 @@ export class BridgeHost {
     if(operation==='connect'){await conversation.connect();return conversation.state}
     if(operation==='query'){const result=await conversation.queryCommand(commandId,{signal});await this.#acceptLifecycle(conversation,result);return result}
     if(operation==='historyQuery')return conversation.historyQuery({kind,target,baseRevision,baseLogEpoch},{signal});
+    if(operation==='workflowManage')return conversation.workflowManage(kind,params,{signal});
+    if(operation==='workflowRead')return conversation.workflowRead(kind,params,{signal});
     if(operation==='hostRegistration')return conversation.hostRegistration({signal});
     if(operation==='subagents')return conversation.listSubagents({endedCursor,endedLimit},{signal});
     if(operation==='backgroundOutput')return conversation.readBackgroundBashOutput({workId},{signal});
@@ -82,7 +85,7 @@ export class BridgeHost {
     if(operation==='attachmentRead')return conversation.attachmentRead({ref,target,attachmentIndex,offset,limit,signal});
     if(operation==='conversationAttachmentStat')return conversation.conversationAttachmentStat({ref,target,attachmentIndex,signal});
     if(operation==='conversationAttachmentRead')return conversation.conversationAttachmentRead({ref,target,attachmentIndex,offset,limit,signal});
-    if(operation!=='command'||!command||!(MANAGEMENT_COMMANDS.has(command.type)||INPUT_COMMANDS.has(command.type)||HISTORY_COMMANDS.has(command.type)||WORK_COMMANDS.has(command.type)))throw new BridgeError('management-command-unavailable');
+    if(operation!=='command'||!command||!(MANAGEMENT_COMMANDS.has(command.type)||INPUT_COMMANDS.has(command.type)||HISTORY_COMMANDS.has(command.type)||WORK_COMMANDS.has(command.type)||WORKFLOW_COMMANDS.has(command.type)))throw new BridgeError('management-command-unavailable');
     if(HISTORY_COMMANDS.has(command.type)&&command.payload?.target&&(command.baseRevision===undefined||command.baseLogEpoch===undefined))throw new BridgeError('history-target-unconfirmed');
     const result=await conversation.submit(command,{signal});
     await this.#acceptLifecycle(conversation,result);return result;

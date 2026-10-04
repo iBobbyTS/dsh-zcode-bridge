@@ -36,13 +36,13 @@ export class RemoteConversation {
     catch(error){this.#publish({...this.state,status:'error',error:error.code??error.message,managementAdmission:{allowed:false,reason:'projection-unconfirmed'}})}
     finally{this.#polling=false;this.#schedule()}
   }
-  async submit(command){
+  async submit(command,{signal}={}){
     if(this.#released||!this.#handle)throw new Error('projection-unconfirmed');
     const id=command.commandId??commandId();if(this.#commands.has(id))throw new Error('command-already-tracked');
     if(this.#commands.size>=128){const terminal=[...this.#commands].find(([,r])=>['failed','stale','noop','rejected','not-sent'].includes(r.state));if(!terminal)throw new Error('command-pending-limit');this.#commands.delete(terminal[0])}
     this.#commands.set(id,{commandId:id,type:command.type,state:'sent-unconfirmed'});this.#publish(this.state);
     let result;
-    try{result=await this.#call({operation:'command',handle:this.#handle,command:{...command,commandId:id}})}
+    try{result=await this.#call({operation:'command',handle:this.#handle,command:{...command,commandId:id}},signal)}
     catch(error){result={commandId:id,type:command.type,state:error.remoteRejected?'not-sent':'outcome-unknown',error:error.code??error.message}}
     this.#commands.set(id,result);this.#publish({...this.state,commands:this.state.commands.filter(r=>r.commandId!==id)});await this.refresh();return this.state.commands.find(record=>record.commandId===id)??result;
   }
@@ -65,6 +65,8 @@ export class RemoteConversation {
   attachmentRead({ref,target,attachmentIndex,offset=0,limit=512*1024},signal){if(this.#released||!this.#handle)return Promise.reject(new Error('projection-unconfirmed'));return this.#call({operation:'attachmentRead',handle:this.#handle,ref,...(target===undefined?{}:{target}),...(attachmentIndex===undefined?{}:{attachmentIndex}),offset,limit},signal)}
   conversationAttachmentStat({ref,target,attachmentIndex},signal){if(this.#released||!this.#handle)return Promise.reject(new Error('projection-unconfirmed'));return this.#call({operation:'conversationAttachmentStat',handle:this.#handle,ref,target,attachmentIndex},signal)}
   conversationAttachmentRead({ref,target,attachmentIndex,offset=0,limit=512*1024},signal){if(this.#released||!this.#handle)return Promise.reject(new Error('projection-unconfirmed'));return this.#call({operation:'conversationAttachmentRead',handle:this.#handle,ref,target,attachmentIndex,offset,limit},signal)}
+  workflowManage(kind,params={}, {signal}={}){if(this.#released||!this.#handle)return Promise.reject(new Error('projection-unconfirmed'));return this.#call({operation:'workflowManage',handle:this.#handle,kind,params},signal)}
+  workflowRead(kind,params={}, {signal}={}){if(this.#released||!this.#handle)return Promise.reject(new Error('projection-unconfirmed'));return this.#call({operation:'workflowRead',handle:this.#handle,kind,params},signal)}
   hostRegistration({signal}={}){if(this.#released||!this.#handle)return Promise.reject(new Error('projection-unconfirmed'));return this.#call({operation:'hostRegistration',handle:this.#handle},signal)}
   /** Official subagent directory (cursor-paginated ended list). Observation only, never cached here. */
   listSubagents({endedCursor,endedLimit}={},signal){if(this.#released||!this.#handle)return Promise.reject(new Error('projection-unconfirmed'));return this.#call({operation:'subagents',handle:this.#handle,...(endedCursor===undefined?{}:{endedCursor}),...(endedLimit===undefined?{}:{endedLimit})},signal)}
