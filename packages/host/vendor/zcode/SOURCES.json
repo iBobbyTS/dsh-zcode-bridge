@@ -37,7 +37,11 @@
       "v4ConversationAttachmentReadParamsSchema",
       "v4ConversationAttachmentReadResultSchema",
       "v4ConversationAttachmentStatParamsSchema",
-      "v4ConversationAttachmentStatResultSchema"
+      "v4ConversationAttachmentStatResultSchema",
+      "v4ConversationFileChangesParamsSchema",
+      "v4ConversationFileChangesResultSchema",
+      "v4ConversationFileRewindPreviewParamsSchema",
+      "v4ConversationFileRewindPreviewResultSchema"
     ],
     "attachment-ref": [
       "attachmentRefSchema"
