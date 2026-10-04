@@ -8,6 +8,7 @@ import { BridgeHost } from '../packages/host/runtime.mjs';
 import { classifyInstallation } from '../packages/host/compatibility.mjs';
 import { batchFaultChild, batchFaultInstallation } from './fixtures/batch-fault.mjs';
 import { s16Runtime, s16Installation } from './fixtures/s16-runtime.mjs';
+import { controlledStore } from './fixtures/s04-store.mjs';
 
 test('failures are graded by invariant: core decode/authority vs optional capability vs unknown', () => {
   for (const code of ['protocol-invalid', 'protocol-truncated', 'capabilities-invalid', 'sessions-invalid']) {
@@ -38,10 +39,10 @@ test('core stops new side effects but the explicit safe stop path remains', () =
   assert.equal(commandAllowed('none', 'sendText'), true);
   assert.deepEqual([...SAFE_COMMANDS].sort(), ['cancelBackgroundWork', 'stop']);
   // The operation whitelist is read/release/safe-stop only; every write surface is absent.
-  for (const write of ['attachmentStart', 'attachmentChunk', 'attachmentCommit', 'workflowManage', 'workspaceConfig', 'hostRegistration', 'command']) {
+  for (const write of ['attachmentStart', 'attachmentChunk', 'attachmentCommit', 'workflowManage', 'workspaceConfig', 'command']) {
     assert.equal(SAFE_OPERATIONS.has(write), false, `${write} must not be a safe operation`);
   }
-  for (const read of ['state', 'query', 'historyQuery', 'workflowRead', 'attachmentRead']) {
+  for (const read of ['state', 'query', 'historyQuery', 'workflowRead', 'attachmentRead', 'hostRegistration']) {
     assert.equal(SAFE_OPERATIONS.has(read), true, `${read} is an allowed operation`);
   }
 });
@@ -139,7 +140,6 @@ test('CA17-3: a core incompatibility blocks every write surface but keeps reads 
       { operation: 'attachmentCommit', handle: 'any', uploadId: 'u' },
       { operation: 'workflowManage', handle: 'any', kind: 'delete', params: {} },
       { operation: 'workspaceConfig', handle: 'any', kind: 'interaction', preferences: {} },
-      { operation: 'hostRegistration', handle: 'any' },
     ];
     for (const call of blocked) {
       await assert.rejects(host.conversationOperation(call), { code: 'runtime-incompatible' }, `${call.operation} must be refused under core`);
@@ -151,6 +151,7 @@ test('CA17-3: a core incompatibility blocks every write surface but keeps reads 
       { operation: 'workflowRead', handle: 'any', kind: 'runs', params: {} },
       { operation: 'workspaceConfig', handle: 'any', kind: 'presentation' },
       { operation: 'historyQuery', handle: 'any', kind: 'fileChanges' },
+      { operation: 'hostRegistration', handle: 'any' },
       { operation: 'command', handle: 'any', command: { type: 'stop', payload: {} } },
       { operation: 'command', handle: 'any', command: { type: 'cancelBackgroundWork', payload: { workId: 'w' } } },
     ];
@@ -158,6 +159,31 @@ test('CA17-3: a core incompatibility blocks every write surface but keeps reads 
       await assert.rejects(host.conversationOperation(call), { code: 'conversation-handle-invalid' }, `${call.operation}/${call.kind ?? call.command?.type} must pass the core gate`);
     }
   } finally { runtime.child.stdin.end(); await host.dispose(); await rm(workspacePath, { recursive: true, force: true }) }
+});
+
+test('RD17-1: host registration stays reachable on a live handle under core while write surfaces stay blocked', async () => {
+  const workspacePath = await mkdtemp(join(tmpdir(), 's16-registration-'));
+  // A valid official plugin/mcp directory payload; the session/list after the listing used for the
+  // address (call 3: connect handshake, address lookup, post-connect read) is malformed.
+  const plugin = { id: 'browser-use@zcode-plugins-official', name: 'browser-use', enabled: true, source: 'official', marketplace: 'zcode-plugins-official', skillRootCount: 0, commandRootCount: 0, mcpServerNames: [], rootPath: '/fixture/plugins/browser-use' };
+  const store = controlledStore({ count: 1, badSessionListOnCall: 3, catalog: { plugins: [plugin], mcpStatuses: {} } });
+  const host = new BridgeHost({ workspacePath, inspect: async () => s16Installation, spawnProcess: () => store.child() });
+  try {
+    await host.connect();
+    const address = (await host.listSessions()).sessions[0].address;
+    const opened = await host.openConversation(address);
+    assert.equal(host.status.failSafe.level, 'none');
+    await assert.rejects(host.listSessions({}), { code: 'sessions-invalid' });
+    assert.equal(host.status.failSafe.blocksNewSideEffects, true);
+    // Registration is a pure plugins/mcp directory read and must still reach the official carrier.
+    const registration = await host.conversationOperation({ handle: opened.handle, operation: 'hostRegistration' });
+    assert.deepEqual(registration.plugins, [{ id: plugin.id, enabled: true, hostMcpServerNames: [], mcpServerNames: [] }]);
+    assert.deepEqual(registration.mcpStatuses, {});
+    // Contrast: genuine write surfaces are refused on the same live handle.
+    await assert.rejects(host.conversationOperation({ handle: opened.handle, operation: 'attachmentStart', attachment: {} }), { code: 'runtime-incompatible' });
+    await assert.rejects(host.conversationOperation({ handle: opened.handle, operation: 'command', command: { type: 'sendText', payload: { text: 'forbidden' } } }), { code: 'runtime-incompatible' });
+    await assert.rejects(host.conversationOperation({ handle: opened.handle, operation: 'workspaceConfig', kind: 'interaction', preferences: {} }), { code: 'runtime-incompatible' });
+  } finally { await host.dispose(); await rm(workspacePath, { recursive: true, force: true }) }
 });
 
 test('CA17-2: a conversation error published as a bare string code is observed by the host', async () => {

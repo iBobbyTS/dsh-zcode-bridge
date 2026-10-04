@@ -5,9 +5,10 @@ import {readFileSync} from 'node:fs';
 const official=JSON.parse(readFileSync(fileURLToPath(import.meta.url).replace('s04-store.mjs','s03a/success.json')));
 /** Controlled store. Snapshot schema comes from official capture; title/revision, ids,
  * pagination and schedules below are explicit injections, never a GUI oracle. */
-export function controlledStore({count=1,seed,holdFrames=false,renameFailure=false,dropCommandAck=false}={}){
+export function controlledStore({count=1,seed,holdFrames=false,renameFailure=false,dropCommandAck=false,badSessionListOnCall=null,catalog=null}={}){
+  const directory=catalog??{};
   const rows=new Map(seed?seed.map(row=>[row.sessionId,{id:row.sessionId,title:row.title,seq:0,revision:0}]):Array.from({length:count},(_,i)=>['s'+i,{id:'s'+i,title:'Title '+i,seq:0,revision:0}]));
-  const requests=[],slots=new Map(),acks=new Map(),held=[];let next=0;
+  const requests=[],slots=new Map(),acks=new Map(),held=[];let next=0;let sessionListCalls=0;
   const frame=(slot,kind='online')=>{
     const row=rows.get(slot.sessionId);if(!row)return;
     const wire=structuredClone(official.initial);wire.deliveryKind=kind;wire.logicalFrameOrdinal=++slot.ordinal;wire.logicalFrameId=slot.id+'-'+slot.ordinal;
@@ -21,7 +22,12 @@ export function controlledStore({count=1,seed,holdFrames=false,renameFailure=fal
     child.stdin.on('data',data=>{for(const line of data.toString().trim().split('\n')){
       const request=JSON.parse(line);requests.push(request);const p=request.params;let result;
       if(request.method==='runtime/capabilities')result={independentPlanState:true};
-      else if(request.method==='session/list')result={sessions:[...rows.values()].filter(r=>!p.sessionIds||p.sessionIds.includes(r.id)).slice(0,p.limit??50).map(r=>({sessionId:r.id,title:r.title,status:'idle',workspace:p.workspace}))};
+      else if(request.method==='session/list'){sessionListCalls++;
+        if(badSessionListOnCall!==null&&sessionListCalls===badSessionListOnCall)result={sessions:'not-an-array'};
+        else result={sessions:[...rows.values()].filter(r=>!p.sessionIds||p.sessionIds.includes(r.id)).slice(0,p.limit??50).map(r=>({sessionId:r.id,title:r.title,status:'idle',workspace:p.workspace}))};
+      }
+      else if(request.method==='plugins/list')result={plugins:directory.plugins??[],diagnostics:directory.pluginsDiagnostics??[]};
+      else if(request.method==='mcp/list')result={statuses:directory.mcpStatuses??{}};
       else if(request.method==='v4/conversation/subscribe'){
         const sessionId=p.topic.slice('conversation/'.length);if(!rows.has(sessionId)){child.stdout.write(JSON.stringify({id:request.id,error:{code:-32004,message:'Session not found'}})+'\n');continue}
         const slot={id:'s04-sub-'+ ++next,child,sessionId,ordinal:0};slots.set(p.connectionId,slot);result={ack:{...official.ack.ack,subscriptionId:slot.id}};

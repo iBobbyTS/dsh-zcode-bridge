@@ -118,9 +118,10 @@ export class BridgeHost {
   /** Records an optional-capability failure without letting it stop already-confirmed paths. */
   #observeFailure(error){const code=error?.code??error?.protocolCode;if(code)this.#failSafe.observe(code)}
   /** Whitelist of operations allowed once a core incompatibility stopped new side effects: reads,
-   *  ownership release, explicit safe-stop commands, workflow reads and workspace presentation reads.
-   *  Every other listed write surface (attachment staging/commit, workflow-store writes, workspace
-   *  preference writes, host registration) is refused rather than relying on a peer close. */
+   *  ownership release, explicit safe-stop commands, workflow reads, workspace presentation reads and
+   *  host registration (a pure plugins/mcp directory read). Every other listed write surface
+   *  (attachment staging/commit, workflow-store writes, workspace preference writes) is refused
+   *  rather than relying on a peer close. */
   #coreOperationAllowed(operation,command,kind){
     if(operation==='command')return commandAllowed(this.#failSafe.level,command?.type);
     if(SAFE_OPERATIONS.has(operation))return true;

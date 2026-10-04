@@ -17,13 +17,14 @@
 export const SAFE_COMMANDS = Object.freeze(new Set(['stop', 'cancelBackgroundWork']));
 
 /** Conversation operations that remain safe once a core incompatibility stopped new side effects:
- *  reads/observation, ownership release, command-status query, and the upload cancel path. Everything
- *  not listed here (a fresh command, attachment staging/commit, workflow-store writes, workspace
- *  preference writes, host registration) is a new side effect and must be refused. */
+ *  reads/observation, ownership release, command-status query, the upload cancel path and host
+ *  registration (a fresh plugins/list + mcp/list directory read, not a write). Everything not listed
+ *  here (a fresh command, attachment staging/commit, workflow-store writes, workspace preference
+ *  writes) is a new side effect and must be refused. */
 export const SAFE_OPERATIONS = Object.freeze(new Set([
   'release', 'state', 'connect', 'query', 'historyQuery', 'workflowRead', 'sessionUsage',
   'subagents', 'backgroundOutput', 'attachmentRead', 'conversationAttachmentStat',
-  'conversationAttachmentRead', 'attachmentAbort',
+  'conversationAttachmentRead', 'attachmentAbort', 'hostRegistration',
 ]));
 
 /** Core decode/authority codes. Their invariant is reason-bearing, so they are listed explicitly. */
