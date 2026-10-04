@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, symlinkSync, rmSync, realpathSync, readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, symlinkSync, rmSync, realpathSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { EventEmitter } from 'node:events';
-import { createLauncherConfig, assertLandings } from '../packages/host/launcher/config.mjs';
+import { createLauncherConfig, assertLandings, sandboxProfile } from '../packages/host/launcher/config.mjs';
 import { HostChannel, encodeFrame, decodeFrame, VSBytes } from '../packages/host/launcher/channel.mjs';
 import { HostAuthority, ProviderRequestGate } from '../packages/host/launcher/authority.mjs';
 import { HostLauncher, handleLauncher } from '../packages/host/launcher/index.mjs';
@@ -106,4 +106,26 @@ test('Host-backed authority consumes lifecycle without CLI spawn or session exec
 test('launcher projection state/watch rejects caller commands and cancellation releases listener',async()=>{
   const launcher=new HostLauncher({});const state=await handleLauncher(launcher,{operation:'state'});assert.equal(state.value.phase,'idle');assert.equal((await handleLauncher(launcher,{operation:'state',rpc:'session/close'})).ok,false);
   const abort=new AbortController();const watch=handleLauncher(launcher,{operation:'watch',afterRevision:0},abort.signal);abort.abort();assert.equal((await watch).error.code,'cancelled');const pending=launcher.waitState(0);await launcher.dispose();assert.equal((await pending).phase,'stopped');
+});
+
+// Shared DB mode must preserve all other per-run landing and OS isolation boundaries.
+test('shared scratch DBs are the only outside-run landings and sandbox write grants',()=>{
+  const root=realpathSync(mkdtempSync(join(tmpdir(),'s06-shared-')));
+  try{
+    const shared=join(root,'shared-databases','fixture');mkdirSync(shared,{recursive:true});
+    for(const name of ['tasks-index.sqlite','db.sqlite'])writeFileSync(join(shared,name),'fixture');
+    const a=createLauncherConfig({...config(),scratchRoot:root,runId:'a',sharedDatabaseRoot:shared});
+    const b=createLauncherConfig({...config(),scratchRoot:root,runId:'b',sharedDatabaseRoot:shared});
+    assert.equal(assertLandings(a).tasks,assertLandings(b).tasks);assert.equal(a.paths.sessionDb,b.paths.sessionDb);
+    for(const key of Object.keys(a.paths).filter(k=>k!=='sessionDb'))assert.notEqual(a.paths[key],b.paths[key]);
+    assert.notEqual(a.hostId,b.hostId);
+    a.artifactRoot=root;const profile=sandboxProfile(a,root,root);assert.ok(profile.includes(join(shared,'tasks-index.sqlite-wal')));assert.ok(profile.includes('(deny network*)'));
+    assert.ok(!profile.includes('(subpath "'+shared+'") (require-not (subpath "/dev"))'));
+    a.paths.home=shared;assert.throws(()=>assertLandings(a),/landing-outside-scratch:home/);
+    assert.throws(()=>createLauncherConfig({...config(),scratchRoot:root,sharedDatabaseRoot:'/real/db'}),/shared-database-root-denied/);
+    writeFileSync(join(shared,'credentials.json'),'synthetic-denied-fixture');assert.throws(()=>assertLandings(b),/shared-database-extra-file/);rmSync(join(shared,'credentials.json'));
+    symlinkSync(shared,join(root,'shared-databases','linked'));assert.throws(()=>createLauncherConfig({...config(),scratchRoot:root,sharedDatabaseRoot:join(root,'shared-databases','linked')}),/landing-symlink/);
+    const link=join(b.paths.dataBase,'.zcode/v2/tasks-index.sqlite');mkdirSync(join(b.paths.dataBase,'.zcode/v2'),{recursive:true});symlinkSync(join(shared,'db.sqlite'),link);
+    assert.throws(()=>assertLandings(b),/shared-tasks-link-mismatch/);
+  }finally{rmSync(root,{recursive:true,force:true})}
 });
