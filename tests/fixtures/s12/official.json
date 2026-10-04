@@ -1,0 +1,271 @@
+{
+  "provenance": {
+    "kind": "official-runtime-capture",
+    "capturedAt": "2026-10-04T02:56:08.406Z",
+    "paidModelCalls": 0,
+    "isolation": "dedicated tmp HOME + workspace; real user storage untouched",
+    "sanitization": "tmp paths aliased; stderr counted only",
+    "note": "no script saved or engine started; formal save/graph RPC absent, empty state and unknown-id rejection only",
+    "version": "3.14.4",
+    "build": "3.14.4.7912",
+    "sha256": "fad4c35c4c36ec210d8a06d3fa0e77de23c8545e2eb6ff90aea1eb38d1e6275f",
+    "stderrBytes": 0,
+    "parentCreated": true
+  },
+  "probes": {
+    "capabilities": {
+      "independentPlanState": true
+    },
+    "conversationProjection": {
+      "method": "v4/conversation/subscribe",
+      "result": {
+        "status": "live",
+        "backgroundWorks": [],
+        "subagents": {
+          "revision": 0,
+          "childSessionIds": [],
+          "running": [],
+          "endedTotal": 0
+        },
+        "activeWorks": [],
+        "canStop": false
+      }
+    },
+    "listProject": {
+      "method": "workflows/list",
+      "result": {
+        "workflows": [],
+        "invalid": [],
+        "dir": "/fixture/s12-workspace/.zcode/workflows"
+      }
+    },
+    "listGlobal": {
+      "method": "workflows/list",
+      "result": {
+        "workflows": [],
+        "invalid": [],
+        "dir": "/fixture/s12-home/.zcode/workflows"
+      }
+    },
+    "getUnknown": {
+      "method": "workflows/get",
+      "result": {
+        "ok": false,
+        "reason": "not_found"
+      }
+    },
+    "metaUnknown": {
+      "method": "workflows/updateMeta",
+      "result": {
+        "ok": false,
+        "reason": "not_found"
+      }
+    },
+    "deleteUnknown": {
+      "method": "workflows/delete",
+      "result": {
+        "ok": false,
+        "reason": "not_found"
+      }
+    },
+    "moveUnknown": {
+      "method": "workflows/move",
+      "result": {
+        "ok": false,
+        "reason": "not_found"
+      }
+    },
+    "runsEmpty": {
+      "method": "workflows/runs",
+      "result": {
+        "runs": []
+      }
+    },
+    "saveCarrierAbsent": {
+      "method": "workflows/save",
+      "error": {
+        "code": "runtime-rejected",
+        "protocolCode": -32601,
+        "message": "runtime-rejected"
+      }
+    },
+    "graphCarrierAbsent": {
+      "method": "workflows/graph",
+      "error": {
+        "code": "runtime-rejected",
+        "protocolCode": -32601,
+        "message": "runtime-rejected"
+      }
+    },
+    "readRuns": {
+      "method": "v4/conversation/workflowRuns",
+      "result": {
+        "runs": []
+      }
+    },
+    "readRunEvents": {
+      "method": "v4/conversation/workflowRunEvents",
+      "result": {
+        "events": [],
+        "hasMore": false
+      }
+    },
+    "readRunArtifacts": {
+      "method": "v4/conversation/workflowRunArtifacts",
+      "result": {
+        "artifacts": []
+      }
+    },
+    "readRunArtifactData": {
+      "method": "v4/conversation/workflowRunArtifactData",
+      "result": {
+        "items": [],
+        "hasMore": false
+      }
+    },
+    "readRunArtifactRead": {
+      "method": "v4/conversation/workflowRunArtifactRead",
+      "error": {
+        "code": "runtime-rejected",
+        "protocolCode": -32603,
+        "message": "runtime-rejected"
+      }
+    },
+    "readRunWorkspace": {
+      "method": "v4/conversation/workflowRunWorkspace",
+      "result": {
+        "nodes": []
+      }
+    },
+    "readRunNodeResult": {
+      "method": "v4/conversation/workflowRunNodeResult",
+      "error": {
+        "code": "runtime-rejected",
+        "protocolCode": -32603,
+        "message": "runtime-rejected"
+      }
+    },
+    "startSavedWorkflow": {
+      "method": "v4/command",
+      "result": {
+        "commandId": "55b64f96-b1b6-4335-887e-afa1ad27d499",
+        "status": "failed",
+        "revisionAtDecision": 0,
+        "reasonCode": "fault.command.savedWorkflowStartRejected.not_found",
+        "message": "No project workflow named 's12-never-created'."
+      }
+    },
+    "resumeWorkflowRun": {
+      "method": "v4/command",
+      "result": {
+        "commandId": "12149e34-b1a7-461f-8899-6e2a1cd89881",
+        "status": "failed",
+        "revisionAtDecision": 0,
+        "reasonCode": "fault.command.workflowRunResumeRejected.not_found",
+        "message": "workflow run resume rejected: not_found"
+      }
+    },
+    "amendWorkflowRunSettings": {
+      "method": "v4/command",
+      "result": {
+        "commandId": "eee2d0d1-7ddc-4800-96a3-e4557cfebffc",
+        "status": "failed",
+        "revisionAtDecision": 0,
+        "reasonCode": "fault.command.workflowRunSettingsRejected.not_found",
+        "message": "workflow run settings rejected: not_found"
+      }
+    },
+    "cancelBackgroundWork": {
+      "method": "v4/command",
+      "result": {
+        "commandId": "b78381fe-b8ae-4f2a-b1d2-5614fe1f36e2",
+        "status": "failed",
+        "revisionAtDecision": 0,
+        "reasonCode": "fault.command.backgroundWorkCancelRejected.not_found",
+        "message": "background work s12-never-created was not cancelled: background_task_not_found"
+      }
+    },
+    "workflowProjection": {
+      "method": "v4/conversation/subscribe",
+      "result": {
+        "rows": {
+          "window": [],
+          "totalCount": 0,
+          "firstRowId": null
+        }
+      }
+    }
+  },
+  "errorFacts": [
+    {
+      "name": "saveCarrierAbsent",
+      "method": "workflows/save",
+      "code": "runtime-rejected",
+      "protocolCode": -32601,
+      "name2": "Error"
+    },
+    {
+      "name": "graphCarrierAbsent",
+      "method": "workflows/graph",
+      "code": "runtime-rejected",
+      "protocolCode": -32601,
+      "name2": "Error"
+    },
+    {
+      "name": "readRunArtifactRead",
+      "method": "v4/conversation/workflowRunArtifactRead",
+      "code": "runtime-rejected",
+      "protocolCode": -32603,
+      "name2": "Error"
+    },
+    {
+      "name": "readRunNodeResult",
+      "method": "v4/conversation/workflowRunNodeResult",
+      "code": "runtime-rejected",
+      "protocolCode": -32603,
+      "name2": "Error"
+    }
+  ],
+  "productionOracle": {
+    "listproject": {
+      "workflows": [],
+      "invalid": [],
+      "dir": "/fixture/s12-workspace/.zcode/workflows"
+    },
+    "listglobal": {
+      "workflows": [],
+      "invalid": [],
+      "dir": "/fixture/s12-home/.zcode/workflows"
+    },
+    "getproject": {
+      "ok": false,
+      "reason": "not_found"
+    },
+    "runsproject": {
+      "runs": []
+    },
+    "runs": {
+      "runs": []
+    },
+    "runArtifacts": {
+      "artifacts": []
+    },
+    "runEvents": {
+      "events": [],
+      "hasMore": false
+    },
+    "runWorkspace": {
+      "nodes": []
+    },
+    "startSavedWorkflow": {
+      "gated": "runtime-restricted"
+    },
+    "resumeWorkflowRun": {
+      "gated": "runtime-restricted"
+    },
+    "amendWorkflowRunSettings": {
+      "gated": "runtime-restricted"
+    }
+  },
+  "status": "PASS"
+}
