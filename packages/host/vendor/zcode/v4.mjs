@@ -12154,6 +12154,26 @@ var zcodeStoragePreparationFrameSchema2 = z51.discriminatedUnion("method", [
   z51.object({ method: z51.literal("startup/storageState"), params: zcodeStorageStartupStateSchema2 }).strict()
 ]);
 var zcodeStoragePathReadySchema2 = z51.object({ method: z51.literal("startup/storagePathReady"), reuse: z51.boolean().optional() }).strict();
+
+// ../reference/ZCode/packages/shared/src/background-bash-output.ts
+import { z as z52 } from "zod";
+var BACKGROUND_BASH_OUTPUT_MAX_BYTES2 = 8192;
+var backgroundBashOutputSchema2 = z52.strictObject({
+  kind: z52.literal("output"),
+  workId: z52.string().min(1),
+  status: z52.enum(["running", "completed", "failed", "timed_out", "cancelled", "spawn_error"]),
+  output: z52.string().max(BACKGROUND_BASH_OUTPUT_MAX_BYTES2),
+  truncated: z52.boolean(),
+  outputPath: z52.string().min(1)
+});
+var backgroundBashOutputResultSchema2 = z52.union([
+  backgroundBashOutputSchema2,
+  z52.strictObject({
+    kind: z52.enum(["unavailable", "unsupported", "read_failed"]),
+    workId: z52.string().min(1),
+    code: z52.string().optional()
+  })
+]);
 export {
   COMMANDS_REQUIRING_BASE_REVISION,
   PROTOCOL_V4_LIMITS,
@@ -12161,6 +12181,8 @@ export {
   TopicWireFrameAssembler,
   applyConversationDeltas,
   attachmentRefSchema,
+  backgroundBashOutputResultSchema2 as backgroundBashOutputResultSchema,
+  backgroundBashOutputSchema2 as backgroundBashOutputSchema,
   clientHelloSchema,
   commandAckSchema,
   commandsQueryResultSchema,
@@ -12187,6 +12209,7 @@ export {
   v4AttachmentPutResultSchema,
   v4AttachmentReadParamsSchema,
   v4AttachmentReadResultSchema,
+  v4BackgroundBashOutputParamsSchema,
   v4ConversationAttachmentReadParamsSchema,
   v4ConversationAttachmentReadResultSchema,
   v4ConversationAttachmentStatParamsSchema,
@@ -12233,6 +12256,10 @@ export {
   zcodePluginsUpdateParamsSchema2 as zcodePluginsUpdateParamsSchema,
   zcodePluginsValidateParamsSchema2 as zcodePluginsValidateParamsSchema,
   zcodePluginsValidateResultSchema2 as zcodePluginsValidateResultSchema,
+  zcodeSessionCancelBackgroundTaskParamsSchema2 as zcodeSessionCancelBackgroundTaskParamsSchema,
+  zcodeSessionCancelBackgroundTaskResultSchema2 as zcodeSessionCancelBackgroundTaskResultSchema,
+  zcodeSessionSubagentsParamsSchema2 as zcodeSessionSubagentsParamsSchema,
+  zcodeSessionSubagentsResultSchema2 as zcodeSessionSubagentsResultSchema,
   zcodeSkillsReferenceCatalogParamsSchema2 as zcodeSkillsReferenceCatalogParamsSchema,
   zcodeSkillsReferenceCatalogResultSchema2 as zcodeSkillsReferenceCatalogResultSchema,
   zcodeWorkspacePresentationSchema2 as zcodeWorkspacePresentationSchema,

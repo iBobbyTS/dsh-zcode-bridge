@@ -11,6 +11,7 @@
       "ROW_TARGETING_COMMANDS"
     ],
     "transport": [
+      "v4BackgroundBashOutputParamsSchema",
       "conversationTopicFrameSchema",
       "conversationTopicWireCandidateSchema",
       "v4ConversationSubscribeParamsSchema",
@@ -69,6 +70,10 @@
       "PROTOCOL_V4_LIMITS"
     ],
     "../zcode-protocol/index": [
+      "zcodeSessionSubagentsParamsSchema",
+      "zcodeSessionSubagentsResultSchema",
+      "zcodeSessionCancelBackgroundTaskParamsSchema",
+      "zcodeSessionCancelBackgroundTaskResultSchema",
       "zcodeWorkspaceUpdateInteractionPreferencesParamsSchema",
       "zcodeWorkspaceUpdateInteractionPreferencesResultSchema",
       "zcodeWorkspaceUpdateModelIoPreferencesParamsSchema",
@@ -110,6 +115,10 @@
       "zcodePluginsDescribeResultSchema",
       "zcodePluginOperationProgressNotificationSchema",
       "zcodePluginOperationStateSchema"
+    ],
+    "../background-bash-output": [
+      "backgroundBashOutputSchema",
+      "backgroundBashOutputResultSchema"
     ]
   },
   "sources": [
