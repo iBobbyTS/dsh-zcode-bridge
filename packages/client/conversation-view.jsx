@@ -133,6 +133,24 @@ export class ConversationController {
     return this.#conversation.conversationAttachmentRead(params, signal);
   }
 
+  /** Official subagent directory (running projection comes from the snapshot; this adds ended pages). */
+  async listSubagents(params, options) {
+    if (this.#disposed) throw new Error('Controller is disposed');
+    return this.#conversation?.listSubagents?.(params, options);
+  }
+
+  /** Official bounded background bash output read; unknown ids stay the official unavailable result. */
+  async readBackgroundBashOutput(workId, options) {
+    if (this.#disposed) throw new Error('Controller is disposed');
+    return this.#conversation?.readBackgroundBashOutput?.({ workId }, options);
+  }
+
+  /** Cancel one projected work by official workId; official ACK/reasonCode is authoritative. */
+  async cancelBackgroundWork(workId) {
+    if (this.#disposed) throw new Error('Controller is disposed');
+    return this.#conversation?.cancelBackgroundWork?.({ workId });
+  }
+
   /** Withdraw the pending official shared-context import; never deletes or rewrites the origin session. */
   async discardSharedContext(contextId) {
     if (this.#disposed) throw new Error('Controller is disposed');
@@ -2102,6 +2120,175 @@ export function ZCodePendingInteractions({
   );
 }
 
+const WORK_KINDS = new Set(['bash', 'subagent', 'workflow']);
+const SUBAGENT_RUNNING_STATUS = new Set(['running', 'waiting', 'blocked']);
+const CANCELLABLE_WORK_STATUS = new Set(['running', 'resultPending']);
+
+/**
+ * Background work and subagent observation/cancel panel.
+ *
+ * The list, status and progress come from the authoritative official conversation projection
+ * (backgroundWorks / subagents / control.activeWorks); nothing is cached or optimistically mutated.
+ * Cancellation targets the official workId and the official ACK reasonCode is what gets shown, so an
+ * expired/unknown id is reported as the official rejection instead of a fake success. No percentage
+ * is invented: only the official status enum and the bounded output tail are rendered.
+ */
+export function ZCodeWorkPanel({ state, controller }) {
+  const snapshot = state?.snapshot;
+  const works = Array.isArray(snapshot?.backgroundWorks) ? snapshot.backgroundWorks : [];
+  const subagentProjection = snapshot?.subagents;
+  const admission = state?.workAdmission ?? { allowed: false, reason: 'projection-unconfirmed' };
+  const [ended, setEnded] = useState(null);
+  const [endedError, setEndedError] = useState(null);
+  const [outputs, setOutputs] = useState({});
+  const [failures, setFailures] = useState({});
+  const [busy, setBusy] = useState(false);
+
+  const cancelRecordByWork = new Map();
+  for (const record of state?.commands ?? []) {
+    if (record?.type === 'cancelBackgroundWork' && record.workId) cancelRecordByWork.set(record.workId, record);
+  }
+
+  const loadEnded = async (cursor) => {
+    setBusy(true); setEndedError(null);
+    try {
+      const page = await controller.listSubagents(cursor === undefined ? {} : { endedCursor: cursor });
+      setEnded(previous => ({
+        items: [...(cursor === undefined ? [] : previous?.items ?? []), ...(page.ended?.items ?? [])],
+        nextCursor: page.ended?.nextCursor ?? null,
+        total: page.ended?.total ?? 0,
+      }));
+    } catch (error) { setEndedError(error.code ?? error.message); }
+    finally { setBusy(false); }
+  };
+
+  const readOutput = async (workId) => {
+    setOutputs(current => ({ ...current, [workId]: { status: 'loading' } }));
+    try {
+      const value = await controller.readBackgroundBashOutput(workId);
+      setOutputs(current => ({ ...current, [workId]: { status: 'ready', value } }));
+    } catch (error) { setOutputs(current => ({ ...current, [workId]: { status: 'error', error: error.code ?? error.message } })); }
+  };
+
+  const cancel = async (workId) => {
+    setFailures(current => { const next = { ...current }; delete next[workId]; return next; });
+    try { await controller.cancelBackgroundWork(workId); }
+    catch (error) { setFailures(current => ({ ...current, [workId]: error.code ?? error.message })); }
+  };
+
+  const cancelState = (workId, record) => {
+    if (!record) return null;
+    const reason = record.ack?.reasonCode ?? record.error;
+    return <span data-testid={`zcode-work-cancel-ack-${workId}`}>{record.state}{reason ? ` · ${reason}` : ''}</span>;
+  };
+
+  return (
+    <section
+      data-testid="zcode-work-panel"
+      aria-label="ZCode background work and subagents"
+      style={{ padding: '8px 12px', borderBottom: '1px solid var(--dsw-alias-border-secondary, #e5e7eb)', fontSize: '12px' }}
+    >
+      <h4 style={{ margin: '0 0 6px 0', fontSize: '12px' }}>Background work &amp; subagents</h4>
+      <p role="status" data-testid="zcode-work-admission">
+        {admission.allowed ? 'Official projection live' : `Work observation gated: ${admission.reason ?? 'unknown'}`}
+      </p>
+
+      {works.length === 0 ? (
+        <p data-testid="zcode-work-empty">No background work in the official projection.</p>
+      ) : (
+        <ul data-testid="zcode-work-list" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+          {works.map(work => {
+            const workId = work.workId;
+            const known = WORK_KINDS.has(work.kind);
+            const output = outputs[workId];
+            const record = cancelRecordByWork.get(workId);
+            const canCancel = admission.allowed && work.cancellable === true && CANCELLABLE_WORK_STATUS.has(work.status);
+            return (
+              <li key={workId} data-testid={`zcode-work-${workId}`} data-work-kind={known ? work.kind : 'unknown'} style={{ padding: '4px 0' }}>
+                <div>
+                  <strong>{known ? work.kind : '[unrecognized official work]'}</strong> · {work.title}
+                  {' · '}<span data-testid={`zcode-work-status-${workId}`}>{work.status}</span>
+                  {work.childSessionId && <span> · child {work.childSessionId}</span>}
+                  {work.blocked === true && <span data-testid={`zcode-work-blocked-${workId}`}> · blocked</span>}
+                </div>
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '2px' }}>
+                  {known && work.kind === 'bash' && (
+                    <button type="button" data-testid={`zcode-work-output-btn-${workId}`} disabled={!admission.allowed || output?.status === 'loading'} onClick={() => void readOutput(workId)}>
+                      Read output
+                    </button>
+                  )}
+                  {work.cancellable === true && (
+                    <button type="button" data-testid={`zcode-work-cancel-${workId}`} disabled={!canCancel || ['sent-unconfirmed', 'accepted-awaiting-terminal', 'running'].includes(record?.state)} onClick={() => void cancel(workId)}>
+                      Cancel
+                    </button>
+                  )}
+                  {cancelState(workId, record)}
+                  {failures[workId] && <span role="alert" data-testid={`zcode-work-cancel-error-${workId}`}>{failures[workId]}</span>}
+                </div>
+                {output?.status === 'ready' && output.value?.kind === 'output' && (
+                  <div>
+                    <pre data-testid={`zcode-work-output-${workId}`} style={{ maxHeight: 120, overflow: 'auto', background: '#f8fafc', margin: '4px 0', padding: '4px 6px' }}>{output.value.output}</pre>
+                    <span data-testid={`zcode-work-output-meta-${workId}`}>{output.value.status}{output.value.truncated ? ' · truncated' : ''} · {output.value.outputPath}</span>
+                  </div>
+                )}
+                {output?.status === 'ready' && output.value?.kind !== 'output' && (
+                  <div data-testid={`zcode-work-output-unavailable-${workId}`}>Official output {output.value?.kind}{output.value?.code ? ` (${output.value.code})` : ''}</div>
+                )}
+                {output?.status === 'error' && <div role="alert" data-testid={`zcode-work-output-error-${workId}`}>{output.error}</div>}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      <div data-testid="zcode-subagents" style={{ marginTop: '6px' }}>
+        {!subagentProjection && <p data-testid="zcode-subagent-projection-missing">Running subagents are not part of this (older) official projection.</p>}
+        {subagentProjection && (
+          <>
+            {(subagentProjection.running ?? []).length === 0 ? (
+              <p data-testid="zcode-subagent-empty">No subagent instance is running.</p>
+            ) : (
+              <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+                {subagentProjection.running.map(item => {
+                  // The child projection carries no workId; the cancel identity is the official
+                  // background work entry whose childSessionId matches. Without one, observe only.
+                  const work = works.find(candidate => candidate.childSessionId === item.childSessionId);
+                  const record = work ? cancelRecordByWork.get(work.workId) : undefined;
+                  const canCancel = Boolean(work) && admission.allowed && work.cancellable === true && CANCELLABLE_WORK_STATUS.has(work.status);
+                  return (
+                    <li key={item.childSessionId} data-testid={`zcode-subagent-${item.childSessionId}`}>
+                      <strong>{item.subagentType}</strong> · {item.title}
+                      {' · '}<span data-testid={`zcode-subagent-status-${item.childSessionId}`}>{SUBAGENT_RUNNING_STATUS.has(item.status) ? item.status : '[unrecognized status]'}</span>
+                      {item.agentId && <span> · agent {item.agentId}</span>}
+                      {work && (
+                        <button type="button" data-testid={`zcode-subagent-cancel-${item.childSessionId}`} disabled={!canCancel || ['sent-unconfirmed', 'accepted-awaiting-terminal', 'running'].includes(record?.state)} onClick={() => void cancel(work.workId)}>Cancel {work.workId}</button>
+                      )}
+                      {work && cancelState(work.workId, record)}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            <p data-testid="zcode-subagent-ended-total">Ended subagents: {subagentProjection.endedTotal ?? 0}</p>
+            {!ended && (
+              <button type="button" data-testid="zcode-subagent-load-ended" disabled={!admission.allowed || busy} onClick={() => void loadEnded()}>Load ended subagents</button>
+            )}
+            {ended && (
+              <ul data-testid="zcode-subagent-ended-list" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+                {ended.items.map(item => (
+                  <li key={item.childSessionId} data-testid={`zcode-subagent-ended-${item.childSessionId}`}>{item.subagentType} · {item.title} · {item.status}</li>
+                ))}
+              </ul>
+            )}
+            {ended?.nextCursor && <button type="button" data-testid="zcode-subagent-load-more" disabled={busy} onClick={() => void loadEnded(ended.nextCursor)}>Load more</button>}
+          </>
+        )}
+        {endedError && <p role="alert" data-testid="zcode-subagent-ended-error">{endedError}</p>}
+      </div>
+    </section>
+  );
+}
+
 /**
  * Command Ledger showing tracked commands separated into ACK, execution, and terminal states.
  */
@@ -2645,6 +2832,7 @@ export function ZCodeConversationView({ conversation, controller, reference, onO
       <ZCodeStatusBanner state={state} onReconnect={handleReconnect} />
       <ZCodeAlerts state={state} onReconnect={handleReconnect} />
       <ZCodeControlBar state={state} onStop={handleStop} />
+      <ZCodeWorkPanel key={`work:${sessionIdentity ?? 'default'}`} state={state} controller={activeController} />
       <ZCodePendingInteractions
         key={`interactions:${sessionIdentity ?? 'default'}`}
         state={state}

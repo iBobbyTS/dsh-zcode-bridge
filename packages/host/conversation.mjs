@@ -23,10 +23,17 @@ import {
   zcodeWorkspaceUpdateInteractionPreferencesParamsSchema, zcodeWorkspaceUpdateInteractionPreferencesResultSchema,
   zcodeWorkspaceUpdateModelIoPreferencesParamsSchema, zcodeWorkspaceUpdateModelIoPreferencesResultSchema,
   zcodeWorkspaceReadPresentationParamsSchema, zcodeWorkspacePresentationSchema,
+  zcodeSessionSubagentsParamsSchema, zcodeSessionSubagentsResultSchema,
+  v4BackgroundBashOutputParamsSchema, backgroundBashOutputResultSchema,
 } from './vendor/zcode/v4.mjs';
 const nonempty=x=>typeof x==='string'&&x.trim().length>0;
 const int=x=>Number.isSafeInteger(x)&&x>=0;
 export const MANAGEMENT_COMMANDS=new Set(['renameSession','deleteSession','discardSharedContext']);
+// Background/subagent work mutation. The official command carries the workId only; the identity is
+// bound to this conversation's sessionId by the envelope, so a workId from another session cannot be
+// addressed. Expired/unknown ids are NOT filtered locally: the official ACK is authoritative and
+// returns fault.command.backgroundWorkCancelRejected.<reason> (observed: not_found).
+export const WORK_COMMANDS=new Set(['cancelBackgroundWork']);
 export const HISTORY_COMMANDS=new Set(['forkAssistant','createSelectionSideSession','editUserQuery','retryTurn','applyFileRewind','setAssistantFeedback','compact']);
 const historyResources=new Set(['forkAssistant','createSelectionSideSession','applyFileRewind','setAssistantFeedback']);
 const historyActions={forkAssistant:'canFork',editUserQuery:'canEdit',retryTurn:'canRetry',applyFileRewind:'canRewindFiles'};
@@ -70,11 +77,15 @@ export class V4Conversation {
     this.#offNotification=peer.onNotification(m=>{if(m.method==='v4/conversation/frame')this.#wire(m.params)});
     this.#offClosed=peer.onClosed(code=>this.#disconnect(code));
   }
-  get state(){return structuredClone({...this.#state,commands:[...this.#commands.values()],observerErrors:this.#observerErrors,profile:this.clientMode==='desktop-continuous'?'continuous':'replayable',admission:this.admission,managementAdmission:this.managementAdmission,attachmentAdmission:this.attachmentAdmission})}
+  get state(){return structuredClone({...this.#state,commands:[...this.#commands.values()],observerErrors:this.#observerErrors,profile:this.clientMode==='desktop-continuous'?'continuous':'replayable',admission:this.admission,managementAdmission:this.managementAdmission,attachmentAdmission:this.attachmentAdmission,workAdmission:this.workAdmission})}
   get admission(){return {allowed:!this.#closed&&this.runnable&&this.#state.status==='live'&&!!this.#state.snapshot,reason:this.#closed?'closed':!this.runnable?'runtime-restricted':this.#state.status!=='live'?'projection-unconfirmed':null}}
   get managementAdmission(){return {allowed:!this.#closed&&this.managementAllowed&&this.#state.status==='live'&&!!this.#state.snapshot,reason:this.#closed?'closed':!this.managementAllowed?'management-unverified':this.#state.status!=='live'?'projection-unconfirmed':null}}
   /** Attachment resource calls follow the official session-scoped wire, not model admission. */
   get attachmentAdmission(){return {allowed:!this.#closed&&this.#state.status==='live'&&!!this.#state.snapshot,reason:this.#closed?'closed':this.#state.status!=='live'?'projection-unconfirmed':null}}
+  /** Observing/cancelling already-running background work and subagents follows the session projection,
+   *  not the model-execution admission: a restricted runtime with no new model admission can still carry
+   *  real background work, and the official carrier rejects unsupported/expired targets itself. */
+  get workAdmission(){return {allowed:!this.#closed&&this.#state.status==='live'&&!!this.#state.snapshot,reason:this.#closed?'closed':this.#state.status!=='live'?'projection-unconfirmed':null}}
   get assemblyStats(){return this.#assembler.getStats()}
   get listenerCount(){return this.#listeners.size}
   subscribe(listener){if(this.#closed)return ()=>{};this.#listeners.add(listener);return ()=>this.#listeners.delete(listener)}
@@ -324,6 +335,34 @@ export class V4Conversation {
     if(!parsed.success)throw new BridgeError('attachment-invalid');
     return v4ConversationAttachmentReadResultSchema.parse(await this.peer.request('v4/conversation/attachmentRead',parsed.data,{signal}));
   }
+  /** Official subagent instance directory for this parent session (legacy session/subagents).
+   *  Observation only: the running projection also arrives in the v4 snapshot; this carrier adds the
+   *  cursor-paginated ended list. Unknown parents are the official rejection, never a fabricated empty. */
+  async listSubagents({endedCursor,endedLimit}={}, {signal}={}){
+    const admission=this.workAdmission;
+    if(!admission.allowed)throw new BridgeError(admission.reason);
+    const parsed=zcodeSessionSubagentsParamsSchema.safeParse({sessionId:this.address.sessionId,...(endedCursor===undefined?{}:{endedCursor}),...(endedLimit===undefined?{}:{endedLimit})});
+    if(!parsed.success)throw new BridgeError('subagents-params-invalid');
+    const result=zcodeSessionSubagentsResultSchema.safeParse(await this.peer.request('session/subagents',parsed.data,{signal}));
+    if(!result.success)throw new BridgeError('subagents-result-invalid');
+    return result.data;
+  }
+  /** Official bounded background bash output read (v4/conversation/backgroundBashOutput).
+   *  Unknown/expired workIds are the official {kind:'unavailable'}; no local tail is invented. */
+  async readBackgroundBashOutput({workId}={}, {signal}={}){
+    const admission=this.workAdmission;
+    if(!admission.allowed)throw new BridgeError(admission.reason);
+    const parsed=v4BackgroundBashOutputParamsSchema.safeParse({sessionId:this.address.sessionId,workId});
+    if(!parsed.success)throw new BridgeError('background-output-params-invalid');
+    const result=backgroundBashOutputResultSchema.safeParse(await this.peer.request('v4/conversation/backgroundBashOutput',parsed.data,{signal}));
+    if(!result.success)throw new BridgeError('background-output-result-invalid');
+    return result.data;
+  }
+  /** Cancel one work by official workId. The official ACK is authoritative: expired/unknown ids come
+   *  back rejected with their official reasonCode, and a late id never cancels a later unrelated work. */
+  async cancelBackgroundWork({workId}={}, {signal}={}){
+    return this.submit({type:'cancelBackgroundWork',payload:{workId}},{signal});
+  }
   /** Queries are pinned to the row's observed revision/epoch; late responses cannot authorize an apply. */
   async historyQuery({kind,target,baseRevision,baseLogEpoch}={}, {signal}={}){
     this.#projectionAdmission();
@@ -345,7 +384,7 @@ export class V4Conversation {
   }
   async submit({type,payload,commandId=newCommandId(),baseRevision,baseLogEpoch}={}, {signal}={}){
     const resource=historyResources.has(type)&&!(type==='createSelectionSideSession'&&payload?.firstInput);
-    const admission=managementCommands.has(type)||resource?this.managementAdmission:this.admission;
+    const admission=WORK_COMMANDS.has(type)?this.workAdmission:managementCommands.has(type)||resource?this.managementAdmission:this.admission;
     if(!admission.allowed)throw new BridgeError(admission.reason);
     if(baseRevision!==undefined&&!int(baseRevision))throw new BridgeError('command-invalid');
     if(!nonempty(commandId))throw new BridgeError('command-invalid');
@@ -372,6 +411,9 @@ export class V4Conversation {
       const executionId=payload?.expectedForegroundExecutionId;
       if(!snapshot.control.canStop||!executionId||!snapshot.control.activeWorks.some(x=>x.foregroundExecutionId===executionId))throw new BridgeError('stop-target-unconfirmed');
     }
+    // Identity is the official workId bound to this session. It is deliberately not snapshot-filtered:
+    // an expired id must reach the official runtime and be rejected there, not silently redirected.
+    if(type==='cancelBackgroundWork'&&!nonempty(payload?.workId))throw new BridgeError('command-invalid');
     if((type==='resolveInteraction'||type==='snoozeInteractionAutoResolution'||type==='respondWorkspaceHookReview'||type==='toggleWorkspaceHookReviewItem')&&!snapshot.pendingInteractions.some(x=>x.interactionId===payload?.interactionId))throw new BridgeError('interaction-unconfirmed');
     if(type==='revokeWorkspaceHookTrust'&&payload?.interactionId&&!snapshot.pendingInteractions.some(x=>x.interactionId===payload.interactionId))throw new BridgeError('interaction-unconfirmed');
     if(['sendText','editUserQuery'].includes(type)&&payload?.attachments!==undefined){
@@ -400,7 +442,7 @@ export class V4Conversation {
     this.#reserveCommand();
     const controller=new AbortController(),abort=()=>controller.abort();signal?.addEventListener('abort',abort,{once:true});
     this.#commandControllers.set(commandId,controller);
-    const record={commandId,type,sessionId:envelope.sessionId,logEpoch:snapshot.logEpoch,revision:snapshot.revision,state:'sent-unconfirmed'};
+    const record={commandId,type,sessionId:envelope.sessionId,logEpoch:snapshot.logEpoch,revision:snapshot.revision,state:'sent-unconfirmed',...(WORK_COMMANDS.has(type)?{workId:payload.workId}:{})};
     this.#commands.set(commandId,record);this.#publish();
     try{
       await this.peer.request('v4/command',parsed.envelope,{signal:controller.signal,onResult:raw=>{this.#ack(record,raw);return raw}});
@@ -443,6 +485,13 @@ export class V4Conversation {
       if(terminal.has(record.state))continue;
       const rerun=['editUserQuery','retryTurn'].includes(record.type)&&['accepted','duplicate'].includes(record.ack?.status);
       if(record.logEpoch!==snapshot.logEpoch&&!rerun)continue;
+      // A cancel has no turnHeader. Its terminal is the authoritative work projection: once the work
+      // leaves running (or disappears), the accepted cancellation is settled.
+      if(record.type==='cancelBackgroundWork'&&['accepted','duplicate'].includes(record.ack?.status)){
+        const work=(snapshot.backgroundWorks??[]).find(w=>w.workId===record.workId);
+        record.state=!(work&&work.status==='running')?'completed':'running';
+        continue;
+      }
       const header=snapshot.rows.window.find(row=>row.kind==='turnHeader'&&row.sourceCommandId===record.commandId);
       if(!header)continue;
       record.turnId=header.turnId;record.resultLogEpoch=snapshot.logEpoch;

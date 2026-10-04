@@ -36,6 +36,8 @@ export function apply(ctx,config={}) {
           const operationKeys={
             open:['operation','address'],
             historyQuery:['operation','handle','kind','target','baseRevision','baseLogEpoch'],
+            subagents:['operation','handle','endedCursor','endedLimit'],
+            backgroundOutput:['operation','handle','workId'],
             workspaceConfig:['operation','handle','kind','preferences'],
             attachmentStart:['operation','handle','attachment'],
             attachmentChunk:['operation','handle','uploadId','chunkIndex','dataBase64'],

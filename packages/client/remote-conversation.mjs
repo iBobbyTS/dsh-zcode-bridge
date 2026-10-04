@@ -65,6 +65,12 @@ export class RemoteConversation {
   attachmentRead({ref,target,attachmentIndex,offset=0,limit=512*1024},signal){if(this.#released||!this.#handle)return Promise.reject(new Error('projection-unconfirmed'));return this.#call({operation:'attachmentRead',handle:this.#handle,ref,...(target===undefined?{}:{target}),...(attachmentIndex===undefined?{}:{attachmentIndex}),offset,limit},signal)}
   conversationAttachmentStat({ref,target,attachmentIndex},signal){if(this.#released||!this.#handle)return Promise.reject(new Error('projection-unconfirmed'));return this.#call({operation:'conversationAttachmentStat',handle:this.#handle,ref,target,attachmentIndex},signal)}
   conversationAttachmentRead({ref,target,attachmentIndex,offset=0,limit=512*1024},signal){if(this.#released||!this.#handle)return Promise.reject(new Error('projection-unconfirmed'));return this.#call({operation:'conversationAttachmentRead',handle:this.#handle,ref,target,attachmentIndex,offset,limit},signal)}
+  /** Official subagent directory (cursor-paginated ended list). Observation only, never cached here. */
+  listSubagents({endedCursor,endedLimit}={},signal){if(this.#released||!this.#handle)return Promise.reject(new Error('projection-unconfirmed'));return this.#call({operation:'subagents',handle:this.#handle,...(endedCursor===undefined?{}:{endedCursor}),...(endedLimit===undefined?{}:{endedLimit})},signal)}
+  /** Official bounded background bash output tail; unknown/expired workIds are the official unavailable result. */
+  readBackgroundBashOutput({workId}={},signal){if(this.#released||!this.#handle)return Promise.reject(new Error('projection-unconfirmed'));return this.#call({operation:'backgroundOutput',handle:this.#handle,workId},signal)}
+  /** Cancel a projected work by its official workId; the official ACK/reasonCode is authoritative. */
+  cancelBackgroundWork({workId}={}){if(this.#released||!this.#handle)return Promise.reject(new Error('projection-unconfirmed'));return this.submit({type:'cancelBackgroundWork',payload:{workId}})}
   /** Web path: chunks over scoped RPC; never a full-data request and never a caller-supplied session. */
   uploadAttachment({fileName,mime,bytes},{signal,onProgress}={}){
     if(this.#released||!this.#handle)return Promise.reject(new Error('projection-unconfirmed'));
