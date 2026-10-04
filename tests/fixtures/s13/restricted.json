@@ -1,0 +1,51 @@
+{
+  "provenance": {
+    "kind": "injected-semantic-fixture",
+    "note": "Account/off-peak entitlement are Host-service facts with no app-server carrier; reverse-callback records cannot be produced under 0-model isolation and are injected here as official-shaped observations. UNKNOWN is never resolved by guessing.",
+    "injectedFields": [
+      "account",
+      "offPeakEntitlement",
+      "reverse"
+    ]
+  },
+  "account": {
+    "state": "unknown",
+    "reason": "official-account-carrier-not-exposed",
+    "auth": "unavailable"
+  },
+  "offPeakEntitlement": {
+    "state": "unknown",
+    "reason": "off-peak-entitlement-is-host-service-only"
+  },
+  "offPeakSupportUnsupported": {
+    "supported": false,
+    "reason": "start_plan_not_supported"
+  },
+  "reverse": {
+    "allowed": true,
+    "reason": "official-host-consumed-reverse-carrier",
+    "records": [
+      {
+        "id": "fixture-reverse-1",
+        "method": "automation/list",
+        "identity": null,
+        "status": "rejected",
+        "outcome": "rejected",
+        "protocolCode": -32601,
+        "reason": "official-host-consumed-reverse-carrier"
+      },
+      {
+        "id": "fixture-reverse-2",
+        "method": "automation/delete",
+        "identity": {
+          "key": "automationId",
+          "value": "s13-expired-automation"
+        },
+        "status": "rejected",
+        "outcome": "rejected",
+        "protocolCode": -32601,
+        "reason": "official-host-consumed-reverse-carrier"
+      }
+    ]
+  }
+}
