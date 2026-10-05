@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { CommandLifecycle } from './command-lifecycle.mjs';
 import { installMirrorHistory } from './mirror-history.mjs';
 import { installMirrorGuards } from './mirror-guards.mjs';
+import { installZCodeLlm } from './zcode-llm.mjs';
 import { LauncherPeer } from './launcher/execution.mjs';
 import { ZCodeAgent, SHARED_GUI_HINT } from './zcode-agent.mjs';
 import { negotiatedClientHello, newCommandId } from './conversation.mjs';
@@ -22,7 +23,10 @@ export class RuntimeStore {
 
 export class ZCodeRuntime {
   agents=new Map();disposers=new Map();creating=new Map();disposed=false;persistError=null;historyListeners=new Map();
-  constructor(ctx,host,{store=new RuntimeStore(process.env.DSH_HOME??join(homedir(),'.dsh')),createScope,agentEvents,peerFactory=launcher=>new LauncherPeer(launcher)}={}){Object.assign(this,{ctx,host,store,createScope,agentEvents,peerFactory})}
+  constructor(ctx,host,{store=new RuntimeStore(process.env.DSH_HOME??join(homedir(),'.dsh')),createScope,agentEvents,peerFactory=launcher=>new LauncherPeer(launcher),discoverModels}={}){Object.assign(this,{ctx,host,store,createScope,agentEvents,peerFactory,discoverModels:discoverModels??(async()=>[])})}
+  /** Discovered official account provider/model groups. Empty until a discovery seam is wired;
+   * the structural home of later real account model discovery. */
+  modelProviders(){return this.discoverModels()}
   persist(){const promise=this.store.save();void promise.catch(()=>{this.persistError='runtime-persistence-failed'});return promise}
   async start(){await this.store.load();for(const record of this.store.records.values()){if(record.officialId)await this.register(record);else record.error='create-outcome-unknown'}this.offRecovery=this.host.launcher?.subscribe(state=>{if(state.phase==='ready')void this.recoverAll().catch(()=>{})});if(this.host.launcher?.state.phase==='ready')await this.recoverAll()}
   async ensurePeer(){
@@ -111,5 +115,5 @@ export async function installZCodeRuntime(ctx,host,options={}){
   const {createScope}=options.createScope?options:await import('@deepseek-ai/dsh-scope');
   const {agentEvents}=options.agentEvents?options:await import('@deepseek-ai/dsh-agent');
   const runtime=new ZCodeRuntime(ctx,host,{...options,createScope,agentEvents});
-  await runtime.start();installMirrorGuards(ctx,runtime);installMirrorHistory(ctx,runtime);return runtime;
+  await runtime.start();installMirrorGuards(ctx,runtime);installMirrorHistory(ctx,runtime);installZCodeLlm(ctx,{discover:()=>runtime.modelProviders()});return runtime;
 }

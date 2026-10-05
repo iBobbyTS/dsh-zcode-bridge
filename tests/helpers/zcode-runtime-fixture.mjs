@@ -1,9 +1,21 @@
 import {readFileSync} from 'node:fs';
 const captured=JSON.parse(readFileSync(new URL('../fixtures/s03a/success.json',import.meta.url)));
 export const tick=()=>new Promise(resolve=>setImmediate(resolve));
+/** Sample official account discovery. Real account discovery plugs into the same shape later. */
+export function sampleProviders(){return [
+  {id:'A',name:'Provider A',models:[
+    {id:'model_a',reasoningLevels:['low','medium','high','xhigh','max'],defaultReasoningLevel:'medium'},
+    {id:'model_b',reasoningLevels:['low','medium','high','xhigh','max'],defaultReasoningLevel:'high'},
+  ]},
+  {id:'B',name:'Provider B',models:[
+    {id:'model_c',reasoningLevels:['low','medium','high','xhigh','max'],defaultReasoningLevel:'low'},
+  ]},
+]}
 export function baseSnapshot(id='official-session'){const snapshot=structuredClone(captured.initial.frame.payload.snapshot);snapshot.sessionId=id;return snapshot}
 export class MockPeer {
-  closed=false;connectionId='mock-connection';notifications=new Set();closers=new Set();calls=[];acks=new Map();ordinal=0;subscriptions=new Map();snapshot=baseSnapshot();loseAck=false;
+  closed=false;connectionId='mock-connection';notifications=new Set();closers=new Set();calls=[];acks=new Map();ordinal=0;subscriptions=new Map();snapshot=baseSnapshot();loseAck=false;providers=sampleProviders();
+  /** Discovery seam consumed by the Zcode LLM adapter; returns detached provider groups. */
+  async listProviders(){return structuredClone(this.providers)}
   onNotification(listener){this.notifications.add(listener);return ()=>this.notifications.delete(listener)}
   onClosed(listener){this.closers.add(listener);return ()=>this.closers.delete(listener)}
   async request(method,params,{onResult}={}){
