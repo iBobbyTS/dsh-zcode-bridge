@@ -109,3 +109,18 @@ writeFileSync(join(outDir, 'dom-probe.json'), JSON.stringify(report, null, 2));
 await page.screenshot({ path: join(outDir, 's01-spike.png'), fullPage: false }).catch(() => {});
 await browser.close();
 console.log(JSON.stringify(report, null, 2));
+
+// Success predicate: every observation this probe is cited for must be present,
+// otherwise exit non-zero — an absent probe must never read as evidence.
+const missing = [];
+if (before.mounted !== '1') missing.push('client half not mounted (data-s01-spike-mounted)');
+if (before.overlay < 1) missing.push('shell.overlay entry missing');
+if (before.runtimeSeat < 1) missing.push('runtime seat not rendered (conversation.input.model)');
+if (before.runtimeSelectValue !== 'zcode') missing.push('runtime select missing or not defaulting to zcode');
+if (before.mockApproval < 1) missing.push('mock approval panel not rendered (conversation.composer)');
+if (mockApprovalAfterClick !== 'allowed-once') missing.push('approve click did not record allowed-once');
+if (settingsProbe.section < 1) missing.push('Zcode Bridge settings.section not rendered');
+if (missing.length > 0) {
+  console.error('dom-probe FAILED: ' + missing.join('; '));
+  process.exitCode = 1;
+}

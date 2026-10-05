@@ -98,3 +98,16 @@ writeFileSync(join(outDir, 'dom-probe.json'), JSON.stringify(report, null, 2));
 await page.screenshot({ path: join(outDir, 's01b-spike.png'), fullPage: false }).catch(() => {});
 await browser.close();
 console.log(JSON.stringify(report, null, 2));
+
+// Success predicate: the coexistence + seat claims are only evidence when every
+// expected observation is present. Exit non-zero on any absence.
+const missing = [];
+if (report.mounted !== '1') missing.push('client half not mounted (data-s01b-spike-mounted)');
+if (!hasZcode) missing.push('zcode-mock-0001 session row missing from sidebar');
+if (!hasNative) missing.push('native-mock-0001 session row missing from sidebar');
+if (!report.coexistInSidebar) missing.push('native + zcode rows did not coexist');
+if (!seat.stubVisible) missing.push('zcode stub transcript not visible in the official session seat');
+if (missing.length > 0) {
+  console.error('dom-probe FAILED: ' + missing.join('; '));
+  process.exitCode = 1;
+}

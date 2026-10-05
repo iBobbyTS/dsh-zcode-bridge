@@ -45,31 +45,55 @@ export function toZcodeAnswer(outcome, interaction) {
 
 /**
  * Mock the ZCode broker: deliver one answer with first-come-first-served
- * semantics (interaction-background.ts:36). A second delivery is an idempotent
- * no-op returning { delivered: false }.
+ * semantics (interaction-background.ts:36).
+ *
+ * `deliver` models the REAL resolveInteraction command response: the handler
+ * consumes its internal `delivered` boolean and returns `undefined` for BOTH a
+ * first (winning) answer and an already-resolved late answer
+ * (interaction-background.ts:49-62). The only difference is internal broker
+ * state, exposed here through `observation()` — explicitly mock-only, never a
+ * field the wire response carries.
  */
 export function createMockInteractionBroker(interaction) {
-  let answered = false;
+  let resolved = false;
+  let resolveCount = 0;
   return {
     deliver(answer) {
-      if (answered) return { delivered: false };
-      answered = true;
-      interaction.answers.push(answer);
-      return { delivered: true };
+      const claimed = !resolved;
+      if (claimed) {
+        resolved = true;
+        interaction.answers.push(answer);
+      }
+      resolveCount += 1;
+      // Same shape for a win and a no-op: the command response is not a signal.
+      return undefined;
     },
-    get answered() { return answered; },
+    /** Mock-only view of broker state; NOT part of the wire command response. */
+    observation() {
+      return { resolved, resolveCount, deliveredCount: interaction.answers.length };
+    },
   };
 }
 
 /**
- * One full mock round trip: a DSH outcome becomes a ZCode answer, the broker
- * reports delivery, and the DSH-side settlement is derived.
- * Returns { answer, delivered, dshOutcome }.
+ * One full mock round trip: a DSH outcome becomes a ZCode answer and the broker
+ * returns the real command response.
+ *
+ * Returns { answer, commandResult, dshOutcome, settlement }.
+ *
+ * `settlement` deliberately does NOT claim that this client won: because the
+ * command response is `undefined` whether or not another client already
+ * resolved the interaction, the DSH side cannot detect a competing answerer
+ * from it. Detecting "another client already resolved" requires an
+ * authoritative event source and is UNPROVEN. `dshOutcome` is therefore only
+ * this client's own decision, and 'superseded' is intentionally NOT one of the
+ * DSH four-value ApprovalOutcome.
  */
 export function roundTrip(interaction, outcome, broker) {
   const answer = toZcodeAnswer(outcome, interaction);
-  if (answer === null) return { answer: null, delivered: false, dshOutcome: 'unavailable' };
-  const { delivered } = broker.deliver(answer);
-  if (!delivered) return { answer, delivered: false, dshOutcome: 'superseded' };
-  return { answer, delivered: true, dshOutcome: outcome };
+  if (answer === null) {
+    return { answer: null, commandResult: undefined, dshOutcome: 'unavailable', settlement: 'fail-closed' };
+  }
+  const commandResult = broker.deliver(answer);
+  return { answer, commandResult, dshOutcome: outcome, settlement: 'assumed-single-answerer' };
 }

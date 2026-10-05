@@ -84,8 +84,15 @@ function makeMockAgent(ctx, session) {
     session,
     inbox,
     status: 'idle',
-    // A real Cordis Context: agent/created listeners (file-reference-local,
-    // goal, tool-subagent) call agent.ctx.inject(...) / scopeOf(agent.ctx).
+    // A real Cordis Context, but NOT an Agent-scoped one: this is the plugin's
+    // own shared context passed through. The official contract types agent.ctx
+    // as the agent-local context whose contributions unwind on disposal
+    // (core/agent/src/runtime-types.ts:173); native agents receive theirs from
+    // the factory's createScope. agent/created listeners that call
+    // agent.ctx.inject(...) / scopeOf(agent.ctx) therefore see this plugin's
+    // scope here — harmless for this display-only probe, but S02 MUST mint a
+    // real Agent scope for a production adapter (otherwise contributions do not
+    // unwind per agent and scopeOf does not identify the agent).
     ctx,
     cancel() {},
     whenIdle() { return Promise.resolve(); },
@@ -129,18 +136,31 @@ export function apply(ctx) {
 
     // ── Stage B: publish a pre-constructed mock Agent via register ────────
     const mockAgent = makeMockAgent(ctx, zSession);
+    // The official contract requires awaiting register() before using the
+    // agent: register enters, then announces through the serial `agent/created`
+    // dispatch, and a failing listener rolls the entry back (agent/src/index.ts:426).
+    // Awaiting inside the catch boundary surfaces an async rejection here.
+    let disposeHandle = null;
     try {
+      // Keep the exact disposer function, and await it to observe the
+      // `agent/created` announce (a serial listener failure rejects here).
       const dispose = ctx.agents.register(mockAgent);
+      await dispose;
+      disposeHandle = dispose;
       result.stages.register = {
-        outcome: 'call-returned',
+        outcome: 'announced',
         returnType: typeof dispose,
+        disposerRetained: true,
       };
     } catch (error) {
       result.stages.register = { outcome: 'threw', error: String(error?.stack ?? error) };
     }
-    // register() enters synchronously then announces asynchronously; a failing
-    // serial `agent/created` listener rolls the entry back. Give it a tick.
-    await new Promise(resolve => setTimeout(resolve, 50));
+    if (disposeHandle === null) {
+      // Nothing was published; do not pretend the coexistence stages can run.
+      result.stages.registryAfterRegister = snapshot(ctx.agents, ctx.sessions);
+      flush();
+      return;
+    }
     const live = ctx.agents.get(ZCODE_ID);
     result.stages.register = {
       ...result.stages.register,
@@ -211,9 +231,19 @@ export function apply(ctx) {
       flush();
     }
 
-    // Answer the selection question with the observed seam: create() has no
-    // runtime selector; every create goes through the one native factory.
+    // Answer the selection question with the seam as DECLARED BY SOURCE. This
+    // stage is a static transcription of the official type declarations, not a
+    // runtime observation: create() has no runtime selector and every create
+    // goes through the one native factory (agent-loop/index.ts:330,369;
+    // CreateAgentOptions in core/agent/src/index.ts:63 declares the key set and
+    // the meta shape).
     result.stages.runtimeSelection = {
+      source: 'static-transcription',
+      sourceRefs: [
+        'packages/core/agent/src/index.ts:63 CreateAgentOptions',
+        'packages/core/agent-loop/src/index.ts:330,369 single factory',
+      ],
+      observedAtRuntime: false,
       createAgentOptionsKeys: ['sessionId', 'parentAgent', 'meta', 'inheritedEventCount', 'seed', 'agentOptions', 'signal', 'setup'],
       metaKeys: ['cwd', 'parentSession', 'isSeeded', 'origin', 'delegationDepth', 'agentPreset'],
       runtimeFieldPresent: false,
