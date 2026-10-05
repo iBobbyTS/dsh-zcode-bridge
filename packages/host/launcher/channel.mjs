@@ -39,9 +39,9 @@ export class HostChannel {
   get available(){return this.#ready&&!this.#closed}
   #send(h,b){if(this.#closed)throw fault('channel-closed');try{this.#port.postMessage(encodeFrame(h,b))}catch{this.close('channel-send-failed');throw fault('channel-send-failed')}}
   call(channel,method,args=[],{signal,timeoutMs=15000}={}){
-    if(!this.allowCalls.has(channel+'.'+method))return Promise.reject(fault('status-rpc-denied'));
-    if(this.#closed||signal?.aborted)return Promise.reject(fault(this.#closed?'channel-closed':'cancelled'));
-    if(this.#pending.size>=128)return Promise.reject(fault('channel-pending-limit'));
+    if(!this.allowCalls.has(channel+'.'+method))return Promise.reject(Object.assign(fault('status-rpc-denied'),{sent:false}));
+    if(this.#closed||signal?.aborted)return Promise.reject(Object.assign(fault(this.#closed?'channel-closed':'cancelled'),{sent:false}));
+    if(this.#pending.size>=128)return Promise.reject(Object.assign(fault('channel-pending-limit'),{sent:false}));
     const id=this.#seq++;
     return new Promise((resolve,reject)=>{let sent=false;const cleanup=()=>{clearTimeout(timer);signal?.removeEventListener('abort',cancel);this.#pending.delete(id)};
       const cancel=()=>{cleanup();if(sent)try{this.#send([101,id])}catch{}reject(fault('cancelled'))};

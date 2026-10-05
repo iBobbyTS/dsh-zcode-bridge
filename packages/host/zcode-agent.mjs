@@ -141,10 +141,10 @@ export class ZCodeAgent {
     const task=this.persist().then(async()=>{
       if(this.disposed)throw fault('agent-disposed');
       if(!this.record.officialId){
-        if(this.firstInputFlight)await this.firstInputFlight;
+        if(this.firstInputFlight){await this.firstInputFlight;if(!this.record.officialId)throw fault('first-input-not-created')}
         else {
           if(this.record.createCommandId)throw fault('create-outcome-unknown');
-          operation.type='createSession';this.record.createCommandId=commandId;
+          operation.type='createSession';
           this.firstInputFlight=this.onFirstInput(this,operation,text);
           try{return await this.firstInputFlight}finally{this.firstInputFlight=null}
         }
@@ -153,7 +153,7 @@ export class ZCodeAgent {
       this.commands.mark(commandId,'dispatching');
       return this.conversation.submit({type:'sendText',commandId,payload:{text,...(this.record.selection?{modelSelection:this.record.selection}:{}),requestedDelivery:target==='next-step'?'guide':'queue',mode:this.record.mode??'build'}});
     }).then(result=>{this.commands.receipt(commandId,result);return this.persist()},error=>{
-      this.commands.mark(commandId,(this.record.createCommandId===commandId||this.conversation?.command(commandId))?'outcome-unknown':'not-sent',{error:error.code??'send-failed'});this.record.error=error.code??'send-failed';return this.persist();
+      this.commands.mark(commandId,error.sent===false?'not-sent':(this.record.createCommandId===commandId||this.conversation?.command(commandId))?'outcome-unknown':'not-sent',{error:error.code??'send-failed'});this.record.error=error.code??'send-failed';return this.persist();
     });
     this.dispatches.add(task);void task.finally(()=>this.dispatches.delete(task)).catch(()=>{});
   }
@@ -180,6 +180,7 @@ export class ZCodeAgent {
    * what the user sees, so a failed/outcome-unknown ACK never looks like a success. */
   async select(official){
     if(!this.record.officialId&&!this.record.createCommandId){this.record.selection=clean(official);await this.persist();return {outcome:'confirmed',state:'staged'}}
+    if(!this.record.officialId)throw fault('create-outcome-unknown');
     await this.whenProjectionReady();
     const result=await this.conversation.submit({type:'switchModelConfig',payload:{provider:official.providerId,model:official.modelId,thought:official.options?.reasoningLevel??''}});
     const outcome=selectionOutcome(result);

@@ -38,7 +38,7 @@ export class HostLauncher {
       this.#publish({phase:'starting',channelAvailable:false,landings:config.landing,routeB:config.routeB??null,services:[],login:'disabled-s03',sharedOfficialMain:'NO-GO'});
       const child=this.#child=this.spawnProcess('/usr/bin/sandbox-exec',['-f',profile,config.electronPath,realpathSync(fileURLToPath(new URL('./bootstrap.cjs',import.meta.url))),join(config.runRoot,'launcher.json')],{cwd:config.cwd,env:config.env,stdio:['pipe','pipe','pipe'],detached:true});
       let tail='';
-      child.stdout.on('data',data=>{tail+=data.toString();if(tail.length>9*1024*1024){tail='';this.#publish({phase:'failed',reason:'launcher-output-limit',channelAvailable:false});void this.stop();return}let i;while((i=tail.indexOf('\n'))>=0){const line=tail.slice(0,i);tail=tail.slice(i+1);try{const m=JSON.parse(line);if(m.type==='launcher-event'&&m.nonce===this.#executionNonce){this.#events.emit('execution',m.event)}if(m.type==='launcher-read'){const p=this.#reads.get(m.id);if(p){this.#reads.delete(m.id);clearTimeout(p.timer);if(m.ok)p.resolve(m.value);else p.reject(fault(m.code??'route-b-read-failed'));}}if(m.type==='launcher-state'&&m.state&&typeof m.state.phase==='string')this.#publish(m.state)}catch{/* Electron informational stdout is discarded. */}}});
+      child.stdout.on('data',data=>{tail+=data.toString();if(tail.length>9*1024*1024){tail='';this.#publish({phase:'failed',reason:'launcher-output-limit',channelAvailable:false});void this.stop();return}let i;while((i=tail.indexOf('\n'))>=0){const line=tail.slice(0,i);tail=tail.slice(i+1);try{const m=JSON.parse(line);if(m.type==='launcher-event'&&m.nonce===this.#executionNonce){this.#events.emit('execution',m.event)}if(m.type==='launcher-read'){const p=this.#reads.get(m.id);if(p){this.#reads.delete(m.id);clearTimeout(p.timer);if(m.ok)p.resolve(m.value);else p.reject(Object.assign(fault(m.code??'route-b-read-failed'),typeof m.sent==='boolean'?{sent:m.sent}:{}));}}if(m.type==='launcher-state'&&m.state&&typeof m.state.phase==='string')this.#publish(m.state)}catch{/* Electron informational stdout is discarded. */}}});
       // Only error categories from Electron bootstrap are retained. Arbitrary diagnostic text,
       // file contents and Host output are never forwarded into DSH state.
       child.stderr.on('data',data=>{const categories=[...new Set(data.toString().match(/\b(?:ERR_[A-Z_]+|EACCES|EPERM|ENOENT|FATAL)\b/g)??[])];if(categories.length)this.#publish({...this.#state,bootstrapErrors:categories})});
@@ -62,9 +62,9 @@ export class HostLauncher {
   }
   onExecutionEvent(listener){this.#events.on('execution',listener);return ()=>this.#events.off('execution',listener)}
   execution(method,params,{signal}={}){
-    if(this.#state.phase!=='ready'||this.#state.auth!=='authenticated'||!this.#child||this.#disposed)return Promise.reject(fault('execution-unavailable'));
-    if(signal?.aborted)return Promise.reject(fault('cancelled'));
-    if(this.#reads.size>=32)return Promise.reject(fault('execution-pending-limit'));
+    if(this.#state.phase!=='ready'||this.#state.auth!=='authenticated'||!this.#child||this.#disposed)return Promise.reject(Object.assign(fault('execution-unavailable'),{sent:false}));
+    if(signal?.aborted)return Promise.reject(Object.assign(fault('cancelled'),{sent:false}));
+    if(this.#reads.size>=32)return Promise.reject(Object.assign(fault('execution-pending-limit'),{sent:false}));
     const id=++this.#readSeq;
     return new Promise((resolve,reject)=>{
       const cleanup=()=>{clearTimeout(timer);signal?.removeEventListener('abort',cancel);this.#reads.delete(id)};
@@ -73,7 +73,7 @@ export class HostLauncher {
       this.#reads.set(id,{timer,resolve:value=>{cleanup();resolve(value)},reject:error=>{cleanup();reject(error)}});
       signal?.addEventListener('abort',cancel,{once:true});
       const line=JSON.stringify({id,operation:'execution',nonce:this.#executionNonce,method,params})+'\n';
-      if(Buffer.byteLength(line)>1024*1024){cleanup();reject(fault('execution-size-limit'));return}
+      if(Buffer.byteLength(line)>1024*1024){cleanup();reject(Object.assign(fault('execution-size-limit'),{sent:false}));return}
       this.#child.stdin.write(line,error=>{if(error){cleanup();reject(fault('execution-outcome-unknown'))}});
     });
   }

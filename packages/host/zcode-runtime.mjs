@@ -42,14 +42,14 @@ export class ZCodeRuntime {
   /** Discovered executable official account provider/model groups, projected by launcher Main. */
   modelProviders(){return this.discoverModels()}
   persist(){const promise=this.store.save();void promise.catch(()=>{this.persistError='runtime-persistence-failed'});return promise}
-  async start(){await this.store.load();for(const record of this.store.records.values()){if(record.catalogSeen&&this.host.listSessions)continue;if(record.officialId||record.localDraft)await this.register(record);else record.error='create-outcome-unknown'}this.offRecovery=this.host.launcher?.subscribe(state=>{if(state.phase==='ready')void this.recoverAll().catch(()=>{})});if(this.host.launcher?.state.phase==='ready')await this.recoverAll();if(this.host.listSessions){await this.refreshDirectory();this.directoryTimer=setInterval(()=>{void this.refreshDirectory().catch(()=>{})},5000);this.directoryTimer.unref?.()}}
+  async start(){await this.store.load();for(const record of this.store.records.values())for(const retired of record.retiredMirrors??[])this.absent.add(retired.id);for(const record of this.store.records.values()){if(record.catalogSeen&&this.host.listSessions)continue;if(record.officialId||record.localDraft)await this.register(record);else record.error='create-outcome-unknown'}this.offRecovery=this.host.launcher?.subscribe(state=>{if(state.phase==='ready')void this.recoverAll().catch(()=>{})});if(this.host.launcher?.state.phase==='ready')await this.recoverAll();if(this.host.listSessions){await this.refreshDirectory();this.directoryTimer=setInterval(()=>{void this.refreshDirectory().catch(()=>{})},5000);this.directoryTimer.unref?.()}}
   async ensurePeer(){
     await this.host.connect();const state=this.host.launcher?.state;
     if(state?.phase!=='ready'||state.auth!=='authenticated'||!state.executionWorkspace)throw fault('execution-unavailable');
     this.peer??=this.peerFactory(this.host.launcher);
     this.handshake??=(async()=>{const hello=await this.peer.request('hello');await this.peer.request('initialize',negotiatedClientHello(hello,{clientId:'dsh-zcode-bridge',appVersion:'0.1.0'}))})();await this.handshake;
     const execution=await this.ensureExecutionWorkspace(state.executionWorkspace);
-    return {peer:this.peer,workspace:execution.path??state.executionWorkspace,workspaceId:execution.id,authority:'official-host'};
+    return {peer:this.peer,workspace:state.executionWorkspace,cwd:execution.path??state.executionWorkspace,workspaceId:execution.id,authority:'official-host'};
   }
   async recoverAll(){
     if(this.recovering)return this.recovering;
@@ -62,8 +62,11 @@ export class ZCodeRuntime {
         const result=response.results?.[0];if(!result||result.key.commandId!==commandId||result.key.sessionId!==(operation.type==='createSession'||commandId===record.createCommandId?null:record.officialId||null))throw fault('command-query-mismatch');
         if(result.result==='unknown'){record.error=record.officialId?'send-outcome-unknown':'create-outcome-unknown';continue}
         const ack=commandAckSchema.parse(result.result);if(ack.commandId!==commandId)throw fault('command-query-mismatch');
-        if(!record.officialId&&['accepted','duplicate'].includes(ack.status)&&ack.result?.sessionId){record.officialId=ack.result.sessionId;record.createAck=ack;record.error=null;record.localDraft=false;commands.receipt(commandId,{commandId,ack,state:ack.status});await this.store.save();const agent=await this.register(record);if(!agent.conversation){agent.bindConversation();await agent.connect()}}
-        else if(record.officialId){commands.receipt(commandId,{commandId,ack,state:ack.status});record.error=null}
+        if(!record.officialId){
+          if(['accepted','duplicate'].includes(ack.status)&&ack.result?.sessionId){const agent=await this.adoptCreate(record,commandId,ack);if(!agent.conversation)agent.bindConversation();await agent.connect()}
+          else if(!['accepted','duplicate'].includes(ack.status))await this.terminalCreate(record,commandId,ack);
+          else record.error='create-outcome-unknown';
+        }else{commands.receipt(commandId,{commandId,ack,state:ack.status});record.error=null}
       }
     }await this.store.save()})().finally(()=>this.recovering=null);return this.recovering;
   }
@@ -98,7 +101,7 @@ export class ZCodeRuntime {
     try{workspace=await this.ctx.workspaceRegistry.resolveByPath(record.workspace);workspace??=await this.ctx.workspaceRegistry.create(record.workspace,record.imported?undefined:'ZCode');}
     catch(error){if(!record.imported)throw error;record.cwd=record.workspace;record.workspaceId=undefined;record.workspaceUnavailable=true;record.error='session/workspace-unavailable';record.bindingHint='The official workspace directory is unavailable. Restore it before opening this session.';await this.store.save();return null;}
     if(record.workspaceUnavailable){delete record.workspaceUnavailable;record.error=null;record.bindingHint=null;}
-    record.workspace=workspace.path??record.workspace;record.cwd=record.workspace;record.workspaceId=workspace.id;
+    record.cwd=workspace.path??record.workspace;record.workspaceId=workspace.id;
     await this.store.save();return workspace;
   }
   projectTitle(record,title){
@@ -109,18 +112,72 @@ export class ZCodeRuntime {
     if([...events].reverse().find(event=>event.type==='session/title')?.data.title!==text)agent.append('session/title',{title:text,messageSeqs:[],source:{kind:'user'}});
     return text;
   }
+  publishIdentity(action){
+    const result=this.directoryTail.then(action);this.directoryTail=result.catch(()=>{});return result;
+  }
+  async withdrawMirror(record){
+    // Missing native directories have no membership to detach. They must not prevent native
+    // Agent/Session disposal or publication of a confirmed official absence.
+    try{
+      const registry=this.ctx.workspaceRegistry;
+      const workspace=registry.get?.(record.workspaceId)??(record.workspaceUnavailable?null:await registry.resolveByPath(record.cwd??record.workspace));
+      await workspace?.detachSession?.(record.id);
+    }catch(error){record.detachError=error.code??'mirror-detach-unavailable'}
+    finally{await this.disposers.get(record.id)?.();this.disposers.delete(record.id);this.absent.add(record.id)}
+  }
+  async adoptCreate(record,commandId,ack){
+    return this.publishIdentity(async()=>{
+      const officialId=ack.result.sessionId;
+      if(record.officialId&&record.officialId!==officialId)throw fault('create-identity-mismatch');
+      const duplicates=[...this.store.records.values()].filter(other=>other.id!==record.id&&other.officialId===officialId&&other.workspace===record.workspace);
+      for(const duplicate of duplicates){
+        // Keep the original native request owner. Retain the withdrawn projection as audit data,
+        // merge its command receipts, and remove only its local row, never an official task.
+        await this.withdrawMirror(duplicate);
+        record.operations??={};for(const [id,operation] of Object.entries(duplicate.operations??{}))record.operations[id]??=structuredClone(operation);
+        record.retiredMirrors??=[];record.retiredMirrors.push(structuredClone(duplicate));
+        record.catalogSeen||=duplicate.catalogSeen;
+        this.store.records.delete(duplicate.id);
+      }
+      record.officialId=officialId;record.createAck=ack;record.createState=ack.status;record.localDraft=false;record.error=null;
+      new CommandLifecycle(record).receipt(commandId,{commandId,ack,state:ack.status});
+      await this.store.save();const agent=await this.register(record);await this.publishDirectory?.();return agent;
+    });
+  }
+  async terminalCreate(record,commandId,ack){
+    return this.publishIdentity(async()=>{
+      new CommandLifecycle(record).receipt(commandId,{commandId,ack,state:ack.status});
+      if(record.createCommandId===commandId)delete record.createCommandId;
+      record.createState=ack.status;record.createAck=ack;record.localDraft=true;record.error=ack.reasonCode??'create-rejected';
+      await this.store.save();if(!this.agents.has(record.id))await this.register(record);
+      return {commandId,ack,state:ack.status};
+    });
+  }
   async firstInput(agent,operation,text){
-    const record=agent.record;
-    await this.ensurePeer();operation.type='createSession';agent.commands.mark(operation.commandId,'dispatching');await this.store.save();
-    let ack;
-    try{ack=commandAckSchema.parse(await this.peer.request('v4/command',{commandId:operation.commandId,clientId:'dsh-zcode-bridge',sessionId:null,type:'createSession',issuedAt:Date.now(),workspace:{workspacePath:record.workspace,workspaceKey:record.workspace},payload:{workspaceId:record.workspace,firstInput:{text,...(record.selection?{modelSelection:record.selection}:{}),mode:record.mode??'build'},config:{...(record.selection?{modelSelection:record.selection}:{}),mode:record.mode??'build'}}}));}
-    catch(error){record.error='create-outcome-unknown';await this.store.save();throw fault('create-outcome-unknown')}
-    if(ack.commandId!==operation.commandId)throw fault('command-receipt-mismatch');
-    agent.commands.receipt(operation.commandId,{commandId:operation.commandId,ack,state:ack.status});
-    if(!['accepted','duplicate'].includes(ack.status)||!ack.result?.sessionId){record.error=ack.reasonCode??'create-rejected';await this.store.save();return {commandId:operation.commandId,ack,state:ack.status};}
-    record.officialId=ack.result.sessionId;record.localDraft=false;record.createAck=ack;record.error=null;
-    await this.store.save();agent.bindConversation();await agent.connect();
-    return {commandId:operation.commandId,ack,state:ack.status};
+    const record=agent.record;let issued=false;
+    try{
+      await this.ensurePeer();
+      const envelope={commandId:operation.commandId,clientId:'dsh-zcode-bridge',sessionId:null,type:'createSession',issuedAt:Date.now(),workspace:{workspacePath:record.workspace,workspaceKey:record.workspace},payload:{workspaceId:record.workspace,firstInput:{text,...(record.selection?{modelSelection:record.selection}:{}),mode:record.mode??'build'},config:{...(record.selection?{modelSelection:record.selection}:{}),mode:record.mode??'build'}}};
+      this.peer.prepareCommand?.(envelope);
+      // Write-ahead association only after the peer and local command shape can dispatch.
+      // Explicit relay not-sent failures can subsequently clear this attempt pointer safely.
+      operation.type='createSession';record.createCommandId=operation.commandId;record.createState='dispatching';agent.commands.mark(operation.commandId,'dispatching');await this.store.save();
+      issued=true;const ack=commandAckSchema.parse(await this.peer.request('v4/command',envelope));
+      if(ack.commandId!==operation.commandId)throw fault('command-receipt-mismatch');
+      if(!['accepted','duplicate'].includes(ack.status))return await this.terminalCreate(record,operation.commandId,ack);
+      if(!ack.result?.sessionId)throw fault('create-result-unconfirmed');
+      const owner=await this.adoptCreate(record,operation.commandId,ack);
+      // A confirmed creation remains confirmed even if the subsequent read subscription fails.
+      try{if(!owner.conversation)owner.bindConversation();await owner.connect()}catch(error){record.error=error.code??'execution-unavailable';await this.store.save()}
+      return {commandId:operation.commandId,ack,state:ack.status};
+    }catch(error){
+      if(record.officialId)throw error;
+      const uncertain=issued&&error.sent!==false;
+      if(!uncertain&&record.createCommandId===operation.commandId)delete record.createCommandId;
+      record.createState=uncertain?'outcome-unknown':'not-sent';record.error=uncertain?'create-outcome-unknown':error.code??'create-not-sent';
+      agent.commands.mark(operation.commandId,record.createState,{error:record.error});await this.store.save();
+      throw uncertain?fault('create-outcome-unknown'):Object.assign(error,{sent:false});
+    }
   }
   async refreshDirectory(){
     if(!this.host.listSessions)return;
@@ -129,7 +186,7 @@ export class ZCodeRuntime {
     if(response.catalog?.complete!==true)throw fault('catalog-incomplete');
     const rows=response.sessions.map(row=>({...row,sessionId:JSON.stringify([row.address.workspace,row.address.sessionId])}));
     // Serialize publication, but leave reads concurrent: a delayed older read cannot revive a row.
-    const apply=this.directoryTail.then(async()=>{
+    const apply=this.publishIdentity(async()=>{
       if(this.disposed||!this.directory.acceptDirectory(generation,rows))return;
       for(const row of rows){
         let record=[...this.store.records.values()].find(record=>record.workspace===row.address.workspace&&record.officialId===row.address.sessionId);
@@ -138,11 +195,10 @@ export class ZCodeRuntime {
       }
       for(const record of this.store.records.values())if(record.catalogSeen&&!this.directory.hasSession(JSON.stringify([record.workspace,record.officialId]))){
         this.absent.add(record.id);
-        const workspace=await this.ctx.workspaceRegistry.resolveByPath(record.workspace);await workspace?.detachSession?.(record.id);
-        await this.disposers.get(record.id)?.();this.disposers.delete(record.id);
+        await this.withdrawMirror(record);
       }
       await this.store.save();await this.publishDirectory?.();
-    });this.directoryTail=apply.catch(()=>{});await apply;
+    });await apply;
   }
   async open(id){
     let record=this.store.records.get(id);if(!record)throw fault('runtime-identity-locked');
@@ -164,25 +220,25 @@ export class ZCodeRuntime {
   subscribeHistory(id,listener){let listeners=this.historyListeners.get(id);if(!listeners)this.historyListeners.set(id,listeners=new Set());listeners.add(listener);return ()=>{listeners.delete(listener);if(!listeners.size)this.historyListeners.delete(id)}}
   replace(record,snapshot){const agent=this.agents.get(record.id);if(!agent)throw fault('mirror-agent-unavailable');agent.reconcile(snapshot);for(const listener of this.historyListeners.get(record.id)??[])listener();return this.persist()}
   async create({sessionId,workspaceId,cwd,selection,mode='build'}={}){
-    const id=sessionId??'zcode-'+randomUUID();if(this.agents.has(id)){const record=this.store.records.get(id);await this.normalizeRecord(record);return {sessionId:id,runtime:'zcode',workspaceId:record.workspaceId,workspacePath:record.workspace};}
+    const id=sessionId??'zcode-'+randomUUID();if(this.absent.has(id))throw fault('session/not-found');if(this.agents.has(id)){const record=this.store.records.get(id);await this.normalizeRecord(record);return {sessionId:id,runtime:'zcode',workspaceId:record.workspaceId,workspacePath:record.cwd};}
     if(this.ctx.agents.get(id)||this.ctx.sessions.get(id))throw fault('runtime-identity-locked');
     if(this.creating.has(id))return this.creating.get(id);
-    if(this.store.records.has(id)){await this.recoverAll();if(this.agents.has(id)){const record=this.store.records.get(id);await this.normalizeRecord(record);return {sessionId:id,runtime:'zcode',workspaceId:record.workspaceId,workspacePath:record.workspace};}throw fault('create-outcome-unknown')}
+    if(this.store.records.has(id)){await this.recoverAll();if(this.agents.has(id)){const record=this.store.records.get(id);await this.normalizeRecord(record);return {sessionId:id,runtime:'zcode',workspaceId:record.workspaceId,workspacePath:record.cwd};}throw fault('create-outcome-unknown')}
     const task=this.createOwned(id,{workspaceId,cwd,selection,mode}).finally(()=>this.creating.delete(id));this.creating.set(id,task);return task;
   }
   async createOwned(id,{workspaceId,cwd,selection,mode}){
-    const {peer,workspace,workspaceId:executionWorkspaceId,authority}=await this.ensurePeer();
+    const {workspace,cwd:executionCwd,workspaceId:executionWorkspaceId,authority}=await this.ensurePeer();
     // The official session is always created in the launcher execution workspace. A picker choice
     // only governs native sessions; a mismatch is surfaced as an inline hint, never a conflict.
     const mismatch=(workspaceId!==undefined&&executionWorkspaceId!==undefined&&workspaceId!==executionWorkspaceId)||(workspaceId===undefined&&cwd!==undefined&&cwd!==workspace);
     const providers=await this.modelProviders();const first=providers[0]?.models?.[0];
     const resolved=selection?resolveDiscovered(selection,providers):first?resolveDiscovered({provider:'zcode',model:`${providers[0].id}/${first.id}`,reasoningEffort:first.defaultReasoningLevel},providers):null;
     selection=resolved?officialSelection(resolved.official):undefined;
-    const pending={id,workspace,authority,cwd:workspace,workspaceId:executionWorkspaceId,selection,mode,officialId:'',localDraft:true,bindingHint:mismatch?'Session created in the ZCode execution workspace; the picked workspace applies to native sessions only.':null};
+    const pending={id,workspace,authority,cwd:executionCwd,workspaceId:executionWorkspaceId,selection,mode,officialId:'',localDraft:true,bindingHint:mismatch?'Session created in the ZCode execution workspace; the picked workspace applies to native sessions only.':null};
     this.store.records.set(id,pending);await this.store.save();const agent=await this.register(pending);if(resolved)agent.confirmSelection(resolved);await this.publishDirectory?.();
-    return {sessionId:id,runtime:'zcode',workspaceId:pending.workspaceId,workspacePath:pending.workspace,hint:pending.bindingHint};
+    return {sessionId:id,runtime:'zcode',workspaceId:pending.workspaceId,workspacePath:pending.cwd,hint:pending.bindingHint};
   }
-  info(id){const record=this.store.records.get(id);return record?{runtime:'zcode',locked:true,historyGeneration:record.historyGeneration??0,selection:record.selection??null,mode:record.mode,error:record.error??this.persistError,hint:SHARED_GUI_HINT,bindingHint:record.bindingHint??null,officialAddress:{runtime:'zcode',authority:this.host.status?.sessionAuthority??record.authority,workspace:record.workspace,sessionId:record.officialId},approval:record.approval??null,lastCommand:record.lastCommand??null}: {runtime:'native',locked:true}}
+  info(id){const record=this.store.records.get(id);return record?{runtime:'zcode',locked:true,historyGeneration:record.historyGeneration??0,selection:record.selection??null,mode:record.mode,error:record.error??this.persistError,hint:SHARED_GUI_HINT,bindingHint:record.bindingHint??null,officialAddress:{runtime:'zcode',authority:this.host.status?.sessionAuthority??record.authority,workspace:record.workspace,sessionId:record.officialId},approval:record.approval??null,lastCommand:record.lastCommand??null}: this.absent.has(id)?{runtime:'zcode',locked:true,error:'session/not-found'}:{runtime:'native',locked:true}}
   async handle(payload){
     if(!payload||typeof payload!=='object'||Array.isArray(payload))throw fault('invalid-payload');
     const keys={create:['operation','sessionId','workspaceId','cwd','selection','mode'],info:['operation','sessionId'],select:['operation','sessionId','selection'],cancel:['operation','sessionId'],usage:['operation','sessionId'],open:['operation','sessionId']};

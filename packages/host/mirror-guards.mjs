@@ -1,7 +1,7 @@
 import { officialSelection, resolveMirrorSelection, selectionFailure } from './model-selection.mjs';
 const unavailable=method=>Object.assign(new Error(`Official ZCode route unavailable for ${method}`),{code:'session/official-route-unavailable',details:{operation:method}});
 function isMirrorRequest(runtime,request){
-  if(runtime?.store?.records?.has(request?.sessionId))return true;
+  if(runtime?.store?.records?.has(request?.sessionId)||runtime?.absent?.has(request?.sessionId))return true;
   const workspaceId=request?.workspaceId;
   if(!workspaceId)return false;
   const sessionIds=runtime?.ctx?.workspaceRegistry?.get(workspaceId)?.sessionIds??[];
@@ -47,7 +47,7 @@ export function installMirrorGuards(ctx,runtime){
     runtime.publishDirectory=async()=>{if(!list)return;const value=await controller.list({},new AbortController().signal);for(const item of value.items)if(runtime.store.records.has(item.sessionId)&&!runtime.absent?.has(item.sessionId))ctx.emit?.('api-session/added',item)};
     scope.effect(()=>()=>{if(list)controller.list=list;if(search)controller.search=search;delete runtime.publishDirectory},'zcode-bridge: native catalog projection');
     void runtime.publishDirectory?.().catch(()=>{});
-    const restore=guardController(scope.sessionController,runtime,['rename','fork','selectModel','attachment','updateQueue'],{selectModel,rename:(_original,request)=>runtime.rename(request.sessionId,request.title)});
+    const restore=guardController(scope.sessionController,runtime,['create','rename','fork','selectModel','attachment','updateQueue'],{create:function(original,request,...args){if(runtime.absent?.has(request.sessionId))throw unavailable('create');return original.call(this,request,...args)},selectModel,rename:(_original,request)=>runtime.rename(request.sessionId,request.title)});
     scope.effect(()=>restore,'zcode-bridge: official session write guards');
   });
   ctx.inject(['workspaceController'],scope=>{const restore=guardController(scope.workspaceController,runtime,['archiveSession','unarchiveSession','pinSession','unpinSession','rename','delete','insertBefore','insertSessionBefore']);scope.effect(()=>restore,'zcode-bridge: official workspace write guards')});

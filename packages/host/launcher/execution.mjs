@@ -23,8 +23,8 @@ export function createExecutionRelay({channel,workspacePath,workspaceIdentity,em
   const target={workspacePath,...(workspaceIdentity?{workspaceIdentity}:{})};
   return {
     async request(method,params) {
-      if(disposed||pending>=maxPending)throw fault(disposed?'execution-disposed':'execution-pending-limit');
-      pending++;
+      if(disposed||pending>=maxPending)throw Object.assign(fault(disposed?'execution-disposed':'execution-pending-limit'),{sent:false});
+      pending++;let rpcIssued=false;
       try {
         if(method==='hello')return await channel.call('zcode-agent','helloConversationV4',[]);
         if(method==='initialize')return await channel.call('zcode-agent','initializeConversationV4',[params]);
@@ -48,11 +48,11 @@ export function createExecutionRelay({channel,workspacePath,workspaceIdentity,em
           // Subscribe to the frame event before the initial request: the official ACK and initial
           // frame may arrive in one turn of the event loop.
           const eventTarget={workspacePath:payload.workspacePath,workspaceIdentity:payload.workspaceIdentity};
-          if(!eventOffs.has(payload.workspacePath))eventOffs.set(payload.workspacePath,channel.listen('zcode-agent','onDynamicConversationFrame',frame=>emit({method:'v4/conversation/frame',params:frame}),[eventTarget]));subscriptions.set(params.topic,true);
+          if(!eventOffs.has(payload.workspacePath))eventOffs.set(payload.workspacePath,channel.listen('zcode-agent','onDynamicConversationFrame',frame=>emit({method:'v4/conversation/frame',params:frame}),eventTarget));subscriptions.set(params.topic,true);
         } else if(method==='v4/commands/query')payload.commands=params.commands;
         else payload={...payload,subscriptionId:params.subscriptionId,...(method.includes('resync')?{base:params.base??null,forceSnapshot:params.forceSnapshot===true}:{})};
-        const result=await channel.call('zcode-agent',name,[payload],{timeoutMs:25000});if(method==='v4/conversation/subscribe')subscriptions.set(params.topic,result.ack?.subscriptionId);if(method==='v4/conversation/unsubscribe')for(const [topic,id] of subscriptions)if(id===params.subscriptionId)subscriptions.delete(topic);return result;
-      } finally {pending--;}
+        rpcIssued=true;const result=await channel.call('zcode-agent',name,[payload],{timeoutMs:25000});if(method==='v4/conversation/subscribe')subscriptions.set(params.topic,result.ack?.subscriptionId);if(method==='v4/conversation/unsubscribe')for(const [topic,id] of subscriptions)if(id===params.subscriptionId)subscriptions.delete(topic);return result;
+      } catch(error){if(!rpcIssued)error.sent=false;throw error}finally {pending--;}
     },
     dispose(){disposed=true;for(const off of eventOffs.values())off();eventOffs.clear();subscriptions.clear()},
   };
@@ -61,10 +61,37 @@ export function createExecutionRelay({channel,workspacePath,workspaceIdentity,em
 /** ProtocolPeer face over the authenticated launcher carrier, consumed by the unchanged V4
  * projection owner. Delivery is deferred until onResult establishes the ACK reservation. */
 export class LauncherPeer {
-  closed=false;
-  constructor(launcher){this.launcher=launcher;this.connectionId='bridge-'+randomUUID();this.listeners=new Set();this.closers=new Set();this.off=launcher.onExecutionEvent(event=>{setImmediate(()=>{if(!this.closed)for(const listener of this.listeners)listener(event)})});this.offState=launcher.subscribe(state=>{if(state.phase!=='ready')for(const listener of this.closers)listener('execution-disconnected')})}
-  async request(method,params,{onResult,signal}={}){if(this.closed)throw fault('execution-disposed');const result=await this.launcher.execution(method,params,{signal});return onResult?onResult(result):result}
+  closed=false;reservations=new Set();bufferedBytes=0;
+  constructor(launcher){this.launcher=launcher;this.connectionId='bridge-'+randomUUID();this.listeners=new Set();this.closers=new Set();this.off=launcher.onExecutionEvent(event=>this.receive(event));this.offState=launcher.subscribe(state=>{if(state.phase!=='ready')for(const listener of this.closers)listener('execution-disconnected')})}
+  deliver(event){if(!this.closed)for(const listener of this.listeners)listener(event)}
+  receive(event){
+    if(this.closed)return;
+    const reservation=[...this.reservations].find(entry=>entry.topic===event.params?.topic&&(!entry.subscriptionId||entry.subscriptionId===event.params?.subscriptionId));
+    if(!reservation){this.deliver(event);return}
+    const bytes=Buffer.byteLength(JSON.stringify(event));
+    if(reservation.events.length>=128||this.bufferedBytes+bytes>8*1024*1024){reservation.error=fault('execution-reservation-limit');return}
+    reservation.events.push({event,bytes});this.bufferedBytes+=bytes;
+  }
+  prepareCommand(params){
+    if(this.closed||this.launcher.state?.phase!=='ready'||this.launcher.state?.auth!=='authenticated')throw Object.assign(fault('execution-unavailable'),{sent:false});
+    const {workspace:_workspace,...envelope}=params;const parsed=parseCommandEnvelope(envelope);
+    if(!parsed.ok||!EXECUTION_COMMANDS.has(params.type))throw Object.assign(fault('execution-command-denied'),{sent:false});
+  }
+  async request(method,params,{onResult,signal}={}){
+    if(this.closed)throw Object.assign(fault('execution-disposed'),{sent:false});
+    // Frames can precede the ACK over separate Host/launcher messages, even across event-loop
+    // turns. Release only after the consumer's reservation callback, never after a timing delay.
+    const reservation=['v4/conversation/subscribe','v4/conversation/resync'].includes(method)?{topic:params.topic,subscriptionId:params.subscriptionId,events:[]}:null;
+    if(reservation)this.reservations.add(reservation);
+    try{
+      const result=await this.launcher.execution(method,params,{signal});
+      if(reservation?.error)throw reservation.error;
+      const handled=onResult?await onResult(result):result;
+      if(reservation){this.reservations.delete(reservation);const held=reservation.events;reservation.events=[];this.bufferedBytes-=held.reduce((sum,item)=>sum+item.bytes,0);for(const {event} of held)if(event.params?.subscriptionId===result.ack?.subscriptionId)this.deliver(event);}
+      return handled;
+    }finally{if(reservation){this.reservations.delete(reservation);for(const {bytes} of reservation.events)this.bufferedBytes-=bytes;reservation.events=[];}}
+  }
   onNotification(listener){this.listeners.add(listener);return ()=>this.listeners.delete(listener)}
   onClosed(listener){this.closers.add(listener);return ()=>this.closers.delete(listener)}
-  close(){this.closed=true;this.off();this.offState();this.listeners.clear();this.closers.clear()}
+  close(){this.closed=true;this.off();this.offState();this.listeners.clear();this.closers.clear();for(const reservation of this.reservations)reservation.events=[];this.reservations.clear();this.bufferedBytes=0}
 }
