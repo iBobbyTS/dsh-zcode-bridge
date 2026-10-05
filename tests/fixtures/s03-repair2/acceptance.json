@@ -1,0 +1,442 @@
+{
+  "source": {
+    "recordId": "zcode-42f38e38-aa60-4a1c-8460-c0de7349d7db",
+    "description": "Exact accepted snapshot and legacy rendering/receipt state; workspace/address metadata omitted."
+  },
+  "snapshot": {
+    "protocolVersion": 1,
+    "sessionId": "sess_1f8b1f7f-06fc-4c88-b00d-99f3a3f446e9",
+    "logEpoch": "muuyuz7p-6ndyfy96",
+    "seq": 33,
+    "revision": 8,
+    "control": {
+      "phase": "completedSuccess",
+      "sessionEnded": true,
+      "canStop": false,
+      "stopState": "idle",
+      "stopTargetKind": "unknown",
+      "activeWorks": [],
+      "lastError": null,
+      "apiRetry": null
+    },
+    "availability": {
+      "fork": {
+        "allowed": true
+      },
+      "compact": {
+        "allowed": true
+      },
+      "switchModelConfig": {
+        "allowed": true
+      },
+      "setFollowupMode": {
+        "allowed": true
+      },
+      "queueEdit": {
+        "allowed": true
+      },
+      "sendQueuedNow": {
+        "allowed": false,
+        "reasonCode": "sendQueuedNowRequiresRunning"
+      },
+      "pauseGoal": {
+        "allowed": false,
+        "reasonCode": "noGoalToPause"
+      },
+      "resumeGoal": {
+        "allowed": false,
+        "reasonCode": "noGoalToResume"
+      }
+    },
+    "inputRouting": {
+      "mode": "startNow"
+    },
+    "meta": {
+      "title": "Request for exact reply ok",
+      "titleSource": "generated"
+    },
+    "config": {
+      "modelSelection": {
+        "providerId": "account:zai-individual-coding-plan",
+        "modelId": "GLM-5.3",
+        "options": {
+          "reasoningLevel": "max"
+        }
+      },
+      "provider": "account:zai-individual-coding-plan",
+      "model": "GLM-5.3",
+      "thought": "max",
+      "thoughtLevels": [
+        "low",
+        "high",
+        "max"
+      ],
+      "followupMode": "queue",
+      "mode": "build",
+      "planEnabled": false
+    },
+    "modelTransition": null,
+    "usage": {
+      "contextWindow": {
+        "usedTokens": 26339,
+        "maxTokens": 1000000,
+        "autoCompactThresholdTokens": null,
+        "cache": {
+          "inputTokens": 26325,
+          "cacheReadTokens": 17152,
+          "cacheWriteTokens": 0,
+          "latestHitRate": 0.6515479582146249,
+          "hitRateRequestCount": 1,
+          "totalInputTokens": 26325,
+          "totalCacheReadTokens": 17152,
+          "totalCacheWriteTokens": 0,
+          "hitRate": 0.6515479582146249
+        },
+        "breakdown": [
+          {
+            "source": "system_prompt",
+            "chars": 7811
+          },
+          {
+            "source": "meta_user_context",
+            "chars": 5557
+          },
+          {
+            "source": "skills",
+            "chars": 19434
+          },
+          {
+            "source": "system_tool_schemas",
+            "chars": 143736
+          },
+          {
+            "source": "mcp_tool_schemas",
+            "chars": 8104
+          },
+          {
+            "source": "messages",
+            "chars": 50
+          }
+        ]
+      },
+      "cumulative": {
+        "inputTokens": 26325,
+        "outputTokens": 14,
+        "cacheReadTokens": 17152,
+        "cacheWriteTokens": 0
+      }
+    },
+    "queue": {
+      "items": [],
+      "autoDrain": true
+    },
+    "pendingInteractions": [],
+    "pendingCommands": [],
+    "backgroundWorks": [],
+    "subagents": {
+      "revision": 0,
+      "childSessionIds": [],
+      "running": [],
+      "endedTotal": 0
+    },
+    "goal": null,
+    "plan": null,
+    "workspaceHookAdmission": null,
+    "rows": {
+      "window": [
+        {
+          "rowId": 1,
+          "turnId": "msg_muuyuz9y_06d2d9a5-c607-49a9-9bcd-6547ea9d16e0",
+          "entityId": "msg_muuyuz9y_06d2d9a5-c607-49a9-9bcd-6547ea9d16e0",
+          "productTurnId": "msg_muuyuz9y_06d2d9a5-c607-49a9-9bcd-6547ea9d16e0",
+          "visibility": "visible",
+          "createdAt": 1791187617814,
+          "createdAtSeq": 3,
+          "kind": "turnHeader",
+          "origin": "userInput",
+          "executionKind": "agent",
+          "sourceCommandId": "01a10b1a-03cb-788b-8d62-68056178a065",
+          "historyRoundCount": 1,
+          "state": "completedSuccess",
+          "startedAt": 1791187617814,
+          "endedAt": 1791187659051,
+          "activeMs": 41298
+        },
+        {
+          "rowId": 2,
+          "turnId": "msg_muuyuz9y_06d2d9a5-c607-49a9-9bcd-6547ea9d16e0",
+          "entityId": "msg_muuyuz9y_06d2d9a5-c607-49a9-9bcd-6547ea9d16e0",
+          "productTurnId": "msg_muuyuz9y_06d2d9a5-c607-49a9-9bcd-6547ea9d16e0",
+          "visibility": "visible",
+          "createdAt": 1791187617814,
+          "createdAtSeq": 3,
+          "actions": {
+            "canEdit": true,
+            "editDisposition": "rewind"
+          },
+          "kind": "userInput",
+          "text": "Reply with exactly: ok",
+          "origin": "realUser",
+          "sourceCommandId": "01a10b1a-03cb-788b-8d62-68056178a065",
+          "rootSourceCommandId": "01a10b1a-03cb-788b-8d62-68056178a065",
+          "clientId": "dsh-zcode-bridge"
+        },
+        {
+          "rowId": 3,
+          "turnId": "msg_muuyuz9y_06d2d9a5-c607-49a9-9bcd-6547ea9d16e0",
+          "entityId": "msg_muuyvarr_88cdf004-78bc-41c1-b0b9-b73fca8b6d7a",
+          "productTurnId": "msg_muuyuz9y_06d2d9a5-c607-49a9-9bcd-6547ea9d16e0",
+          "visibility": "visible",
+          "createdAt": 1791187659021,
+          "createdAtSeq": 8,
+          "kind": "reasoning",
+          "assistantResponseId": "msg_muuyvarr_88cdf004-78bc-41c1-b0b9-b73fca8b6d7a",
+          "text": "The user asked me to reply with exactly \"ok\".",
+          "state": "complete"
+        },
+        {
+          "rowId": 4,
+          "turnId": "msg_muuyuz9y_06d2d9a5-c607-49a9-9bcd-6547ea9d16e0",
+          "entityId": "msg_muuyvarr_88cdf004-78bc-41c1-b0b9-b73fca8b6d7a",
+          "productTurnId": "msg_muuyuz9y_06d2d9a5-c607-49a9-9bcd-6547ea9d16e0",
+          "visibility": "visible",
+          "createdAt": 1791187659027,
+          "createdAtSeq": 22,
+          "actions": {
+            "canFork": true,
+            "canRetry": true
+          },
+          "kind": "assistantText",
+          "assistantResponseId": "msg_muuyvarr_88cdf004-78bc-41c1-b0b9-b73fca8b6d7a",
+          "text": "好的",
+          "state": "complete"
+        }
+      ],
+      "totalCount": 4,
+      "firstRowId": 1
+    }
+  },
+  "legacy": {
+    "events": [
+      {
+        "type": "session/end-seed",
+        "seq": 0,
+        "time": 1791187579522,
+        "data": {}
+      },
+      {
+        "type": "model/selection",
+        "seq": 1,
+        "time": 1791187579522,
+        "data": {
+          "provider": "zcode",
+          "model": "account:zai-individual-coding-plan/GLM-5.3",
+          "reasoningEffort": "max"
+        }
+      },
+      {
+        "type": "permission/preset",
+        "seq": 2,
+        "time": 1791187579522,
+        "data": {
+          "preset": "workspace-write"
+        }
+      },
+      {
+        "type": "sandbox/mode",
+        "seq": 3,
+        "time": 1791187579522,
+        "data": {
+          "mode": "workspace-write"
+        }
+      },
+      {
+        "type": "approval/policy",
+        "seq": 4,
+        "time": 1791187579522,
+        "data": {
+          "policy": "ask"
+        }
+      },
+      {
+        "type": "session/title",
+        "seq": 5,
+        "time": 1791187579547,
+        "data": {
+          "title": "🅩 New session",
+          "messageSeqs": [],
+          "source": {
+            "kind": "user"
+          }
+        }
+      },
+      {
+        "type": "turn/start",
+        "seq": 6,
+        "time": 1791187617841,
+        "data": {
+          "turn": 1
+        }
+      },
+      {
+        "type": "step/start",
+        "seq": 7,
+        "time": 1791187617843,
+        "data": {
+          "turn": 1,
+          "step": 1
+        }
+      },
+      {
+        "type": "session/title",
+        "seq": 8,
+        "time": 1791187618647,
+        "data": {
+          "title": "🅩 Reply with exactly: ok",
+          "messageSeqs": [],
+          "source": {
+            "kind": "user"
+          }
+        }
+      },
+      {
+        "type": "assistant/message",
+        "seq": 9,
+        "time": 1791187659187,
+        "data": {
+          "turn": 1,
+          "step": 1,
+          "message": {
+            "id": "zcode-msg_muuyvarr_88cdf004-78bc-41c1-b0b9-b73fca8b6d7a",
+            "role": "assistant",
+            "source": {
+              "kind": "model",
+              "provider": "zcode",
+              "model": "account:zai-individual-coding-plan/GLM-5.3"
+            },
+            "content": [
+              {
+                "type": "reasoning",
+                "text": "The user asked me to reply with exactly \"ok\"."
+              }
+            ]
+          },
+          "stream": [
+            {
+              "type": "chunk",
+              "time": 1791187659186,
+              "chunk": {
+                "type": "block-start",
+                "index": 0,
+                "blockType": "reasoning"
+              }
+            },
+            {
+              "type": "chunk",
+              "time": 1791187659186,
+              "chunk": {
+                "type": "reasoning-delta",
+                "index": 0,
+                "text": "The user asked me to reply with exactly \"ok\"."
+              }
+            },
+            {
+              "type": "chunk",
+              "time": 1791187659187,
+              "chunk": {
+                "type": "block-end",
+                "index": 0,
+                "block": {
+                  "type": "reasoning",
+                  "text": "The user asked me to reply with exactly \"ok\"."
+                }
+              }
+            }
+          ]
+        },
+        "surfaceOp": "append"
+      },
+      {
+        "type": "step/end",
+        "seq": 10,
+        "time": 1791187659187,
+        "data": {
+          "turn": 1,
+          "step": 1
+        }
+      },
+      {
+        "type": "turn/end",
+        "seq": 11,
+        "time": 1791187659188,
+        "data": {
+          "turn": 1,
+          "reason": {
+            "kind": "completed"
+          }
+        }
+      },
+      {
+        "type": "session/title",
+        "seq": 12,
+        "time": 1791187663635,
+        "data": {
+          "title": "🅩 Request for exact reply ok",
+          "messageSeqs": [],
+          "source": {
+            "kind": "user"
+          }
+        }
+      }
+    ],
+    "projected": [
+      "msg_muuyuz9y_06d2d9a5-c607-49a9-9bcd-6547ea9d16e0",
+      "msg_muuyvarr_88cdf004-78bc-41c1-b0b9-b73fca8b6d7a",
+      "msg_muuyuz9y_06d2d9a5-c607-49a9-9bcd-6547ea9d16e0:end"
+    ],
+    "operations": {
+      "01a10b1a-03cb-788b-8d62-68056178a065": {
+        "commandId": "01a10b1a-03cb-788b-8d62-68056178a065",
+        "type": "createSession",
+        "state": "accepted",
+        "target": "next-turn",
+        "message": {
+          "content": [
+            {
+              "type": "text",
+              "text": "Reply with exactly: ok"
+            }
+          ],
+          "source": {
+            "kind": "user",
+            "rpcId": "7c78ce9e-8855-4ddf-802a-d5c35c02fd08",
+            "clientTimeZone": "America/Edmonton"
+          },
+          "role": "user",
+          "id": "2863ac05-576e-42c0-8f8a-7df3777fa1af"
+        },
+        "requestId": "7c78ce9e-8855-4ddf-802a-d5c35c02fd08",
+        "ack": {
+          "memoryEnabled": false,
+          "commandId": "01a10b1a-03cb-788b-8d62-68056178a065",
+          "status": "accepted",
+          "revisionAtDecision": 0,
+          "result": {
+            "type": "createSession",
+            "sessionId": "sess_1f8b1f7f-06fc-4c88-b00d-99f3a3f446e9",
+            "input": {
+              "delivery": "startNow",
+              "inputId": "01a10b1a-03cb-788b-8d62-68056178a065"
+            }
+          }
+        }
+      }
+    },
+    "turns": [
+      [
+        "msg_muuyuz9y_06d2d9a5-c607-49a9-9bcd-6547ea9d16e0",
+        1
+      ]
+    ]
+  }
+}

@@ -4,6 +4,8 @@ import { MirrorState } from './mirror-state.mjs';
 import { displayProjection, officialSelection, sameSelection, selectionOutcome } from './model-selection.mjs';
 const fault=code=>Object.assign(new Error(code),{code});
 const clean=value=>JSON.parse(JSON.stringify(value));
+// Persistent entities can own multiple rows. Rendering identity belongs to the epoch + rowId.
+export const projectionRowKey=(logEpoch,rowId)=>'row:'+JSON.stringify([logEpoch,rowId]);
 export const SHARED_GUI_HINT='官方 GUI 可能正在运行本会话';
 
 export function approvalAnswer(interaction,outcome){
@@ -21,8 +23,8 @@ export function approvalAnswer(interaction,outcome){
  * not a parallel implementation. Inbox mutation without an official route fails explicitly. */
 export class ZCodeAgent {
   status='idle';disposed=false;mirror=new MirrorState();streams=new Map();projected=new Set();turns=new Map();pendingApprovals=new Map();revision=0;idleWaiters=[];dispatches=new Set();
-  constructor(ctx,session,record,{peer,createScope,agentEvents,onPersist=()=>{},onReplacement=()=>{},onFirstInput,approval}={}){
-    Object.assign(this,{id:session.id,session,record,peer,onPersist,onReplacement,onFirstInput,approval});
+  constructor(ctx,session,record,{peer,createScope,agentEvents,onPersist=()=>{},onReplacement,onFirstInput,approval}={}){
+    Object.assign(this,{id:session.id,session,record,peer,onPersist,onReplacement:onReplacement??(snapshot=>this.reconcile(snapshot)),onFirstInput,approval});
     this.turns=new Map(record.turns??[]);
     if(!record.turns&&record.snapshot){const ids=[...new Set(record.snapshot.rows.window.map(row=>row.turnId))];const starts=(record.events??[]).filter(event=>event.type==='turn/start'&&event.seq>=(record.historyStartSeq??0));ids.forEach((id,index)=>{if(starts[index])this.turns.set(id,starts[index].data.turn)})}
     this.nextTurn=Math.max(0,...(record.events??[]).filter(event=>event.type==='turn/start').map(event=>event.data.turn))+1;
@@ -50,26 +52,30 @@ export class ZCodeAgent {
     if(state.error){this.record.error=state.error;this.flushStreams(true);this.setStatus('idle');this.persist();return}
     const snapshot=state.snapshot;if(!snapshot)return;
     const decision=this.mirror.accept(snapshot);if(!decision.accepted)return;
-    if(decision.replaced){this.onReplacement(snapshot);return}
+    const migrate=this.record.projectionIdentityVersion!==2&&(this.projected.size>0||(this.record.projected?.length??0)>0||Object.keys(this.record.prefixes??{}).length>0||(this.record.events??[]).some(event=>event.seq>=(this.record.historyStartSeq??0)&&(event.type==='turn/start'||['user/message','assistant/message'].includes(event.type)&&(event.data.id??event.data.message?.id??'').startsWith('zcode-'))));
+    // Legacy entity keys cannot distinguish omitted rows. Replay the authoritative window behind
+    // the existing native replay cut so repaired messages precede their turn end, with audit intact.
+    if(decision.replaced||migrate){this.onReplacement(snapshot);return}
+    this.record.projectionIdentityVersion=2;
     this.record.snapshot=snapshot;this.record.error=null;
     const groups=new Map();for(const row of snapshot.rows.window){if(!groups.has(row.turnId))groups.set(row.turnId,[]);groups.get(row.turnId).push(row)}
     for(const rows of groups.values()){
     for(const sourceRow of rows){
-      const row={...sourceRow,...(sourceRow.kind==='userInput'&&!sourceRow.sourceCommandId?{sourceCommandId:rows.find(item=>item.kind==='turnHeader')?.sourceCommandId}:{}),entityId:sourceRow.entityId??snapshot.logEpoch+':row:'+sourceRow.rowId};
+      const row={...sourceRow,...(sourceRow.kind==='userInput'&&!sourceRow.sourceCommandId?{sourceCommandId:rows.find(item=>item.kind==='turnHeader')?.sourceCommandId}:{}),projectionKey:projectionRowKey(snapshot.logEpoch,sourceRow.rowId)};
       const turn=this.turnFor(row.turnId);
-      if(row.kind==='turnHeader'&&!this.projected.has(row.entityId)){this.append('turn/start',{turn});this.append('step/start',{turn,step:1});this.projected.add(row.entityId)}
-      if(row.kind==='userInput'&&!this.projected.has(row.entityId)){
-        this.append('user/message',{id:'zcode-'+row.entityId,role:'user',source:{kind:'user',...(row.sourceCommandId?{rpcId:this.commands.project(row.sourceCommandId)}:{})},content:[{type:'text',text:row.text}]},{surfaceOp:'append'});this.projected.add(row.entityId);
+      if(row.kind==='turnHeader'&&!this.projected.has(row.projectionKey)){this.append('turn/start',{turn});this.append('step/start',{turn,step:1});this.projected.add(row.projectionKey)}
+      if(row.kind==='userInput'&&!this.projected.has(row.projectionKey)){
+        this.append('user/message',{id:'zcode-'+row.projectionKey,role:'user',source:{kind:'user',...(row.sourceCommandId?{rpcId:this.commands.project(row.sourceCommandId)}:{})},content:[{type:'text',text:row.text}]},{surfaceOp:'append'});this.projected.add(row.projectionKey);
       }
       if(['assistantText','reasoning','toolCall'].includes(row.kind))this.projectAssistant(row,turn);
-      if(row.kind==='toolCall'&&['success','error','cancelled'].includes(row.status)&&!this.projected.has(row.entityId+':result')){
-        const call=this.projected.has(row.entityId+':call');if(!call)this.commitTool(row,turn);
-        this.append('tool/result',{turn,step:1,message:{id:'zcode-result-'+row.entityId,role:'tool',source:{kind:'tool',callId:row.toolCallId},toolCallId:row.toolCallId,content:[{type:'text',text:row.output?.text??row.error?.message??row.status}],...(row.status==='error'?{isError:true}:{})}},{surfaceOp:'append'});
-        this.projected.add(row.entityId+':result');
+      if(row.kind==='toolCall'&&['success','error','cancelled'].includes(row.status)&&!this.projected.has(row.projectionKey+':result')){
+        const call=this.projected.has(row.projectionKey+':call');if(!call)this.commitTool(row,turn);
+        this.append('tool/result',{turn,step:1,message:{id:'zcode-result-'+row.projectionKey,role:'tool',source:{kind:'tool',callId:row.toolCallId},toolCallId:row.toolCallId,content:[{type:'text',text:row.output?.text??row.error?.message??row.status}],...(row.status==='error'?{isError:true}:{})}},{surfaceOp:'append'});
+        this.projected.add(row.projectionKey+':result');
       }
     }
-    for(const sourceRow of rows.filter(row=>row.kind==='turnHeader'&&row.state!=='running')){const row={...sourceRow,entityId:sourceRow.entityId??snapshot.logEpoch+':row:'+sourceRow.rowId};if(!this.projected.has(row.entityId+':end')){
-      this.flushStreams(row.state!=='completedSuccess',this.turnFor(row.turnId));this.append('step/end',{turn:this.turnFor(row.turnId),step:1});this.append('turn/end',{turn:this.turnFor(row.turnId),reason:row.state==='completedSuccess'?{kind:'completed'}:row.state==='failed'?{kind:'error',error:{code:'UNKNOWN',message:'Official ZCode turn failed'}}:{kind:'interrupted'}});this.projected.add(row.entityId+':end');
+    for(const sourceRow of rows.filter(row=>row.kind==='turnHeader'&&row.state!=='running')){const row={...sourceRow,projectionKey:projectionRowKey(snapshot.logEpoch,sourceRow.rowId)};if(!this.projected.has(row.projectionKey+':end')){
+      this.flushStreams(row.state!=='completedSuccess',this.turnFor(row.turnId));this.append('step/end',{turn:this.turnFor(row.turnId),step:1});this.append('turn/end',{turn:this.turnFor(row.turnId),reason:row.state==='completedSuccess'?{kind:'completed'}:row.state==='failed'?{kind:'error',error:{code:'UNKNOWN',message:'Official ZCode turn failed'}}:{kind:'interrupted'}});this.projected.add(row.projectionKey+':end');
     }
     }
     }
@@ -107,18 +113,18 @@ export class ZCodeAgent {
     this.project({snapshot});
   }
   projectAssistant(row,turn){
-    if(this.projected.has(row.entityId))return;
-    if(row.kind==='toolCall'){if(!this.projected.has(row.entityId+':call')&&row.status!=='inputStreaming')this.commitTool(row,turn);return}
-    let stream=this.streams.get(row.entityId);
-    if(!stream){stream={attemptId:this.id+':'+(this.record.historyGeneration??0)+':'+row.entityId,turn,step:1,index:0,text:this.record.prefixes?.[row.entityId]??'',baseline:this.record.prefixes?.[row.entityId]??'',records:[],row};this.streams.set(row.entityId,stream);this.dispatch.emit('agent/assistant-stream',{frame:{type:'start',attemptId:stream.attemptId,revision:++this.revision,turn,step:1}});this.chunk(stream,{type:'block-start',index:0,blockType:row.kind==='reasoning'?'reasoning':'text'})}
+    if(this.projected.has(row.projectionKey))return;
+    if(row.kind==='toolCall'){if(!this.projected.has(row.projectionKey+':call')&&row.status!=='inputStreaming')this.commitTool(row,turn);return}
+    let stream=this.streams.get(row.projectionKey);
+    if(!stream){stream={attemptId:this.id+':'+(this.record.historyGeneration??0)+':'+row.projectionKey,turn,step:1,index:0,text:this.record.prefixes?.[row.projectionKey]??'',baseline:this.record.prefixes?.[row.projectionKey]??'',records:[],row};this.streams.set(row.projectionKey,stream);this.dispatch.emit('agent/assistant-stream',{frame:{type:'start',attemptId:stream.attemptId,revision:++this.revision,turn,step:1}});this.chunk(stream,{type:'block-start',index:0,blockType:row.kind==='reasoning'?'reasoning':'text'})}
     if(!row.text.startsWith(stream.text)){this.record.error='official-stream-replaced';return}
     const suffix=row.text.slice(stream.text.length);if(suffix)this.chunk(stream,{type:row.kind==='reasoning'?'reasoning-delta':'text-delta',index:0,text:suffix});stream.text=row.text;stream.row=row;
-    if(row.state!=='streaming')this.commitStream(row.entityId,row.state!=='complete');
+    if(row.state!=='streaming')this.commitStream(row.projectionKey,row.state!=='complete');
   }
   chunk(stream,chunk){const time=Date.now();stream.records.push({type:'chunk',time,chunk});this.dispatch.emit('agent/assistant-stream',{frame:{type:'chunk',attemptId:stream.attemptId,revision:++this.revision,index:stream.index++,time,chunk}})}
   commitStream(id,interrupted){const stream=this.streams.get(id);if(!stream)return;const block={type:stream.row.kind==='reasoning'?'reasoning':'text',text:stream.text.slice(stream.baseline.length)};this.chunk(stream,{type:'block-end',index:0,block});const event=this.append('assistant/message',{turn:stream.turn,step:1,message:{id:'zcode-'+id,role:'assistant',source:{kind:'model',provider:'zcode',model:stream.row.model??this.options.model},content:[block]},stream:stream.records,...(interrupted?{interrupted:true}:{})},{surfaceOp:'append'});this.dispatch.emit('agent/assistant-stream',{frame:{type:'end',attemptId:stream.attemptId,revision:++this.revision,index:stream.index,outcome:{kind:'committed',eventType:'assistant/message',seq:event.seq}}});this.streams.delete(id);if(interrupted){this.record.prefixes??={};this.record.prefixes[id]=stream.text}else{delete this.record.prefixes?.[id];this.projected.add(id)}}
   flushStreams(interrupted,turn){for(const [id,stream] of [...this.streams])if(turn===undefined||turn===stream.turn)this.commitStream(id,interrupted)}
-  commitTool(row,turn){this.append('assistant/message',{turn,step:1,message:{id:'zcode-tool-'+row.entityId,role:'assistant',source:{kind:'model',provider:'zcode',model:this.options.model},content:[{type:'tool-call',id:row.toolCallId,name:row.toolName,arguments:row.inputText}]},stream:[]},{surfaceOp:'append'});this.append('tool/call',{turn,step:1,callId:row.toolCallId,name:row.toolName,arguments:row.inputText});this.projected.add(row.entityId+':call');this.projected.add(row.entityId)}
+  commitTool(row,turn){this.append('assistant/message',{turn,step:1,message:{id:'zcode-tool-'+row.projectionKey,role:'assistant',source:{kind:'model',provider:'zcode',model:this.options.model},content:[{type:'tool-call',id:row.toolCallId,name:row.toolName,arguments:row.inputText}]},stream:[]},{surfaceOp:'append'});this.append('tool/call',{turn,step:1,callId:row.toolCallId,name:row.toolName,arguments:row.inputText});this.projected.add(row.projectionKey+':call');this.projected.add(row.projectionKey)}
   async ask(interaction,controller){
     if(interaction.kind!=='permission'){this.record.error='interaction-mapping-unavailable:'+interaction.kind;this.persist();return}
     const request={agent:this,toolName:interaction.payload?.toolName??'ZCode',...(interaction.payload?.toolCallId?{callId:interaction.payload.toolCallId}:{}),reason:interaction.payload?.reason??interaction.payload?.summary??interaction.payload?.message??'Official ZCode permission request',signal:controller.signal};
