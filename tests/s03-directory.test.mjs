@@ -14,3 +14,9 @@ test('S03 native catalog projects imported empty-history rows visible and filter
  w.store.records.set('mirror',{id:'mirror',officialId:'official'});w.store.records.set('gone',{id:'gone'});w.runtime.absent.add('gone');const scope={sessionController:controller,effect(){},get(){}};installMirrorGuards({inject:(keys,apply)=>apply(keys.includes('workspaceController')?{workspaceController:{},effect(){}}:scope),emit:(name,item)=>emitted.push({name,item})},w.runtime);
  assert.deepEqual((await controller.list()).items,[{sessionId:'mirror',blank:false},{sessionId:'native',blank:true}]);await w.runtime.publishDirectory();assert.ok(emitted.some(value=>value.item.sessionId==='mirror'&&!value.item.blank));assert.ok(!emitted.some(value=>value.item.sessionId==='gone'));await w.runtime.dispose();
 });
+test('S03 missing official workspace keeps a native ungrouped title row and fails open without a command',async()=>{
+ const w=await world({catalog:async()=>directory([catalogRow('gone-dir','Still official','/missing')])});const resolve=w.ctx.workspaceRegistry.resolveByPath;w.ctx.workspaceRegistry.resolveByPath=async path=>{if(path==='/missing')throw Object.assign(new Error('missing'),{code:'ENOENT'});return resolve(path)};
+ try{await w.runtime.refreshDirectory();const record=[...w.store.records.values()][0];assert.ok(w.runtime.agents.has(record.id));assert.equal(record.events.findLast(event=>event.type==='session/title').data.title,'🅩 Still official');assert.equal(record.workspaceUnavailable,true);await assert.rejects(w.runtime.open(record.id),{code:'session/workspace-unavailable'});assert.equal(w.peer.calls.filter(call=>call.method==='v4/command').length,0);
+ w.ctx.workspaceRegistry.resolveByPath=resolve;await w.runtime.open(record.id);assert.equal(record.workspaceUnavailable,undefined);assert.ok(w.workspaces.get(record.workspaceId).sessionIds.includes(record.id));
+ }finally{await w.runtime.dispose()}
+});

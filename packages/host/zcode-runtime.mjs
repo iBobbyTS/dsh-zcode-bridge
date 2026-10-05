@@ -86,7 +86,7 @@ export class ZCodeRuntime {
       if(record.snapshot){agent.mirror.accept(record.snapshot);for(const row of record.snapshot.rows.window)agent.turnFor(row.turnId)}
       releaseAgent=await this.ctx.agents.register(agent);
       this.agents.set(record.id,agent);this.disposers.set(record.id,async()=>{await agent.dispose();await releaseAgent();releaseSession();this.agents.delete(record.id)});
-      await workspace.attachSession(record.id);
+      await workspace?.attachSession(record.id);
       if(record.officialId&&!record.imported)void agent.connect().catch(error=>{record.error=error.code??'execution-unavailable';this.persist()});
       if(record.title!==undefined||record.localDraft)this.projectTitle(record,record.title??'New session');
       return agent;
@@ -94,8 +94,10 @@ export class ZCodeRuntime {
   }
   async normalizeRecord(record){
     // Resolve the path, never the persisted ID, before native Session construction.
-    let workspace=await this.ctx.workspaceRegistry.resolveByPath(record.workspace);
-    workspace??=await this.ctx.workspaceRegistry.create(record.workspace,record.imported?undefined:'ZCode');
+    let workspace;
+    try{workspace=await this.ctx.workspaceRegistry.resolveByPath(record.workspace);workspace??=await this.ctx.workspaceRegistry.create(record.workspace,record.imported?undefined:'ZCode');}
+    catch(error){if(!record.imported)throw error;record.cwd=record.workspace;record.workspaceId=undefined;record.workspaceUnavailable=true;record.error='session/workspace-unavailable';record.bindingHint='The official workspace directory is unavailable. Restore it before opening this session.';await this.store.save();return null;}
+    if(record.workspaceUnavailable){delete record.workspaceUnavailable;record.error=null;record.bindingHint=null;}
     record.workspace=workspace.path??record.workspace;record.cwd=record.workspace;record.workspaceId=workspace.id;
     await this.store.save();return workspace;
   }
@@ -146,7 +148,8 @@ export class ZCodeRuntime {
     let record=this.store.records.get(id);if(!record)throw fault('runtime-identity-locked');
     if(record.officialId&&this.host.listSessions){await this.refreshDirectory();if(!this.directory.hasSession(JSON.stringify([record.workspace,record.officialId])))throw fault('session/not-found')}
     if(this.absent.has(record.id))throw fault('session/not-found');
-    const agent=await this.register(record);await agent.connect();return this.info(id);
+    const workspace=await this.normalizeRecord(record);if(!workspace)throw Object.assign(fault('session/workspace-unavailable'),{isDSHRemoteError:true});
+    const agent=await this.register(record);await workspace.attachSession(record.id);await agent.connect();return this.info(id);
   }
   async rename(id,title){
     const record=this.store.records.get(id);if(!record?.officialId)throw fault('session/official-route-unavailable');

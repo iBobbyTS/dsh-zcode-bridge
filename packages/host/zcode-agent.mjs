@@ -33,16 +33,17 @@ export class ZCodeAgent {
     const commands=this.commands;
     this.inbox={get nextTurn(){return commands.pending('next-turn')},get nextStep(){return commands.pending('next-step')},clear:unavailable,replace:unavailable,remove:unavailable,splice:unavailable,append:(target,message)=>this.send(message,target,true),prepend:unavailable};
     this.conversation=null;
-    if(record.officialId)this.bindConversation();
-    this.offState=peer.launcher?.subscribe(state=>{if(state.phase==='ready'&&this.conversation?.state.status==='error'&&!this.disposed)void this.reconnect().catch(()=>{})});
+    if(record.officialId&&!record.imported)this.bindConversation();
+
   }
   persist(){const promise=Promise.resolve().then(()=>this.onPersist());void promise.catch(()=>{});return promise}
   append(type,data,opts){const event=this.session.append(type,clean(data),opts);this.record.events??=[];this.record.events=this.session.snapshotEvents?clean(this.session.snapshotEvents()):[...this.record.events,clean(event)];this.persist();return event}
   setStatus(status){if(this.status===status)return;this.status=status;this.dispatch.emit('agent/status',{status});if(status==='idle')for(const resolve of this.idleWaiters.splice(0))resolve()}
   bindConversation(){
     this.conversation=new V4Conversation(this.peer,{address:{runtime:'zcode',authority:this.record.authority,workspace:this.record.workspace,sessionId:this.record.officialId},workspace:{workspacePath:this.record.workspace,workspaceKey:this.record.workspace},connectionId:this.peer.connectionId,clientId:'dsh-zcode-bridge',clientMode:'desktop-continuous',runnable:true,managementAllowed:true,reconnectable:true,onChange:state=>this.project(state)});
+    this.offState=this.peer.launcher?.subscribe(state=>{if(state.phase==='ready'&&this.conversation?.state.status==='error'&&!this.disposed)void this.reconnect().catch(()=>{})});
   }
-  async connect(){if(this.conversation)await this.conversation.connect()}
+  async connect(){if(!this.conversation&&this.record.officialId)this.bindConversation();if(this.conversation)await this.conversation.connect()}
   async reconnect(){if(!this.conversation)return;await this.conversation.connect();for(const command of this.conversation.state.commands)if(command.state==='outcome-unknown'){const result=await this.conversation.queryCommand(command.commandId);this.commands.receipt(command.commandId,result)}await this.persist()}
   project(state){
     if(this.disposed)return;
