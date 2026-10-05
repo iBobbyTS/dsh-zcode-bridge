@@ -2,6 +2,8 @@ import { mkdir, readFile, writeFile, rename } from 'node:fs/promises';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { randomUUID } from 'node:crypto';
+import { CommandLifecycle } from './command-lifecycle.mjs';
+import { installMirrorHistory } from './mirror-history.mjs';
 import { installMirrorGuards } from './mirror-guards.mjs';
 import { LauncherPeer } from './launcher/execution.mjs';
 import { ZCodeAgent, SHARED_GUI_HINT } from './zcode-agent.mjs';
@@ -19,7 +21,7 @@ export class RuntimeStore {
 }
 
 export class ZCodeRuntime {
-  agents=new Map();disposers=new Map();creating=new Map();disposed=false;persistError=null;
+  agents=new Map();disposers=new Map();creating=new Map();disposed=false;persistError=null;historyListeners=new Map();
   constructor(ctx,host,{store=new RuntimeStore(process.env.DSH_HOME??join(homedir(),'.dsh')),createScope,agentEvents,peerFactory=launcher=>new LauncherPeer(launcher)}={}){Object.assign(this,{ctx,host,store,createScope,agentEvents,peerFactory})}
   persist(){const promise=this.store.save();void promise.catch(()=>{this.persistError='runtime-persistence-failed'});return promise}
   async start(){await this.store.load();for(const record of this.store.records.values()){if(record.officialId)await this.register(record);else record.error='create-outcome-unknown'}this.offRecovery=this.host.launcher?.subscribe(state=>{if(state.phase==='ready')void this.recoverAll().catch(()=>{})});if(this.host.launcher?.state.phase==='ready')await this.recoverAll()}
@@ -33,13 +35,17 @@ export class ZCodeRuntime {
   async recoverAll(){
     if(this.recovering)return this.recovering;
     this.recovering=(async()=>{await this.ensurePeer();for(const record of this.store.records.values()){
-      const commandId=record.officialId?record.pending?.commandId:record.createCommandId;if(!commandId)continue;
-      const response=await this.peer.request('v4/commands/query',{commands:[{sessionId:record.officialId||null,commandId}]});
-      const result=response.results?.[0];if(!result||result.key.commandId!==commandId||result.key.sessionId!==(record.officialId||null))throw fault('command-query-mismatch');
-      if(result.result==='unknown'){record.error=record.officialId?'send-outcome-unknown':'create-outcome-unknown';continue}
-      const ack=commandAckSchema.parse(result.result);
-      if(!record.officialId&&['accepted','duplicate'].includes(ack.status)&&ack.result?.sessionId){record.officialId=ack.result.sessionId;record.createAck=ack;record.error=null;await this.store.save();await this.register(record)}
-      else if(record.officialId){record.lastCommand={commandId,ack,state:['accepted','duplicate'].includes(ack.status)?'accepted':ack.status};record.pending=null;record.error=null}
+      const commands=new CommandLifecycle(record);
+      const operations=record.officialId?commands.recoverable():[{commandId:record.createCommandId}];
+      for(const operation of operations){
+        const commandId=operation.commandId;if(!commandId)continue;
+        const response=await this.peer.request('v4/commands/query',{commands:[{sessionId:record.officialId||null,commandId}]});
+        const result=response.results?.[0];if(!result||result.key.commandId!==commandId||result.key.sessionId!==(record.officialId||null))throw fault('command-query-mismatch');
+        if(result.result==='unknown'){record.error=record.officialId?'send-outcome-unknown':'create-outcome-unknown';continue}
+        const ack=commandAckSchema.parse(result.result);if(ack.commandId!==commandId)throw fault('command-query-mismatch');
+        if(!record.officialId&&['accepted','duplicate'].includes(ack.status)&&ack.result?.sessionId){record.officialId=ack.result.sessionId;record.createAck=ack;record.error=null;await this.store.save();await this.register(record)}
+        else if(record.officialId){commands.receipt(commandId,{commandId,ack,state:ack.status});record.error=null}
+      }
     }await this.store.save()})().finally(()=>this.recovering=null);return this.recovering;
   }
   async register(record){
@@ -53,7 +59,7 @@ export class ZCodeRuntime {
     const releaseSession=this.ctx.sessions.enter(session);this.ctx.sessions.announce?.(session);
     let agent,releaseAgent;
     try{
-      agent=new ZCodeAgent(this.ctx,session,record,{peer,createScope:this.createScope,agentEvents:this.agentEvents,onPersist:()=>this.persist(),onReplacement:snapshot=>{void this.replace(record,snapshot).catch(()=>{record.error='mirror-replacement-failed';this.persist()})}});
+      agent=new ZCodeAgent(this.ctx,session,record,{peer,createScope:this.createScope,agentEvents:this.agentEvents,onPersist:()=>this.persist(),onReplacement:snapshot=>{this.replace(record,snapshot)}});
       agent.projected=new Set(record.projected??[]);
       if(record.snapshot){agent.mirror.accept(record.snapshot);for(const row of record.snapshot.rows.window)agent.turnFor(row.turnId)}
       releaseAgent=await this.ctx.agents.register(agent);
@@ -64,7 +70,8 @@ export class ZCodeRuntime {
       return agent;
     }catch(error){await agent?.dispose();await releaseAgent?.();releaseSession();throw error}
   }
-  async replace(record,snapshot){await this.disposers.get(record.id)?.();record.events=[];record.projected=[];delete record.snapshot;await this.register(record);this.agents.get(record.id).project({snapshot});await this.store.save()}
+  subscribeHistory(id,listener){let listeners=this.historyListeners.get(id);if(!listeners)this.historyListeners.set(id,listeners=new Set());listeners.add(listener);return ()=>{listeners.delete(listener);if(!listeners.size)this.historyListeners.delete(id)}}
+  replace(record,snapshot){const agent=this.agents.get(record.id);if(!agent)throw fault('mirror-agent-unavailable');agent.reconcile(snapshot);for(const listener of this.historyListeners.get(record.id)??[])listener();return this.persist()}
   async create({sessionId,workspaceId,cwd,selection,mode='build'}={}){
     const id=sessionId??'zcode-'+randomUUID();if(this.agents.has(id))return {sessionId:id,runtime:'zcode'};
     if(this.ctx.agents.get(id)||this.ctx.sessions.get(id))throw fault('runtime-identity-locked');
@@ -84,7 +91,7 @@ export class ZCodeRuntime {
     if(!['accepted','duplicate'].includes(ack.status)||!ack.result?.sessionId){pending.error=ack.reasonCode??'create-rejected';await this.store.save();throw fault(pending.error)}
     pending.officialId=ack.result.sessionId;pending.createAck=ack;await this.store.save();await this.register(pending);return {sessionId:id,runtime:'zcode'};
   }
-  info(id){const record=this.store.records.get(id);return record?{runtime:'zcode',locked:true,selection:record.selection??null,mode:record.mode,error:record.error??this.persistError,hint:SHARED_GUI_HINT,officialAddress:{runtime:'zcode',authority:this.host.status?.sessionAuthority??record.authority,workspace:record.workspace,sessionId:record.officialId},approval:record.approval??null,lastCommand:record.lastCommand??null}: {runtime:'native',locked:true}}
+  info(id){const record=this.store.records.get(id);return record?{runtime:'zcode',locked:true,historyGeneration:record.historyGeneration??0,selection:record.selection??null,mode:record.mode,error:record.error??this.persistError,hint:SHARED_GUI_HINT,officialAddress:{runtime:'zcode',authority:this.host.status?.sessionAuthority??record.authority,workspace:record.workspace,sessionId:record.officialId},approval:record.approval??null,lastCommand:record.lastCommand??null}: {runtime:'native',locked:true}}
   async handle(payload){
     if(!payload||typeof payload!=='object'||Array.isArray(payload))throw fault('invalid-payload');
     const keys={create:['operation','sessionId','workspaceId','cwd','selection','mode'],info:['operation','sessionId'],select:['operation','sessionId','selection'],cancel:['operation','sessionId'],usage:['operation','sessionId']};
@@ -104,5 +111,5 @@ export async function installZCodeRuntime(ctx,host,options={}){
   const {createScope}=options.createScope?options:await import('@deepseek-ai/dsh-scope');
   const {agentEvents}=options.agentEvents?options:await import('@deepseek-ai/dsh-agent');
   const runtime=new ZCodeRuntime(ctx,host,{...options,createScope,agentEvents});
-  await runtime.start();installMirrorGuards(ctx,runtime);return runtime;
+  await runtime.start();installMirrorGuards(ctx,runtime);installMirrorHistory(ctx,runtime);return runtime;
 }

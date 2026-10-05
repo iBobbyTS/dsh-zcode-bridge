@@ -16,10 +16,10 @@ export class MockPeer {
     }else if(method==='v4/commands/query')result={results:params.commands.map(key=>({key,result:this.acks.get(key.commandId)??'unknown'}))};
     else if(method==='v4/conversation/subscribe'){
       const id='mock-sub-'+this.subscriptions.size;this.subscriptions.set(params.topic,id);result={ack:{subscriptionId:id,mode:'snapshot',logEpoch:this.snapshot.logEpoch}};setImmediate(()=>this.publish());
-    }else if(method==='v4/conversation/resync')result={ack:{subscriptionId:params.subscriptionId,mode:'snapshot',logEpoch:this.snapshot.logEpoch}};
+    }else if(method==='v4/conversation/resync'){result={ack:{subscriptionId:params.subscriptionId,mode:'snapshot',logEpoch:this.snapshot.logEpoch}};setImmediate(()=>this.publish(this.snapshot,'recovery'))}
     return onResult?onResult(result):result;
   }
-  publish(snapshot=this.snapshot){this.snapshot=structuredClone(snapshot);for(const [topic,subscriptionId] of this.subscriptions){const wire=structuredClone(captured.initial);Object.assign(wire,{topic,subscriptionId,logicalFrameId:'mock-'+(++this.ordinal),logicalFrameOrdinal:this.ordinal,deliveryKind:this.ordinal===1?'initial':'online'});Object.assign(wire.frame,{topic,subscriptionId,fromSeq:0,toSeq:snapshot.seq,payload:{kind:'snapshot',snapshot}});for(const listener of this.notifications)listener({method:'v4/conversation/frame',params:wire})}}
+  publish(snapshot=this.snapshot,deliveryKind){this.snapshot=structuredClone(snapshot);for(const [topic,subscriptionId] of this.subscriptions){const wire=structuredClone(captured.initial);Object.assign(wire,{topic,subscriptionId,logicalFrameId:'mock-'+(++this.ordinal),logicalFrameOrdinal:this.ordinal,deliveryKind:deliveryKind??(this.ordinal===1?'initial':'online')});Object.assign(wire.frame,{topic,subscriptionId,fromSeq:0,toSeq:snapshot.seq,payload:{kind:'snapshot',snapshot}});for(const listener of this.notifications)listener({method:'v4/conversation/frame',params:wire})}}
   disconnect(){for(const listener of this.closers)listener('execution-disconnected')}
   close(){this.closed=true;this.notifications.clear();this.closers.clear()}
 }

@@ -67,7 +67,7 @@ test('S02 execution relay validates commands and bounds concurrent official RPC 
 
 test('S02 send waits for durable operation identity; disk failure causes zero official commands',async()=>{
  let persist;const f=await opened({onPersist:()=>new Promise(resolve=>persist=resolve)});
- try{f.agent.followup({content:[{type:'text',text:'durable first'}]});await tick();assert.equal(f.peer.calls.filter(call=>call.params?.type==='sendText').length,0);persist();await tick();assert.equal(f.peer.calls.filter(call=>call.params?.type==='sendText').length,1)}finally{await f.agent.dispose()}
+ try{f.agent.followup({content:[{type:'text',text:'durable first'}]});await tick();assert.equal(f.peer.calls.filter(call=>call.params?.type==='sendText').length,0);f.agent.onPersist=()=>{};persist();await tick();assert.equal(f.peer.calls.filter(call=>call.params?.type==='sendText').length,1)}finally{await f.agent.dispose()}
  const g=await opened();try{g.agent.onPersist=()=>Promise.reject(Object.assign(new Error('disk'),{code:'disk-failed'}));g.agent.followup({content:[{type:'text',text:'never sent'}]});await tick();assert.equal(g.peer.calls.filter(call=>call.params?.type==='sendText').length,0);g.agent.onPersist=()=>{}}finally{await g.agent.dispose()}
 });
 
