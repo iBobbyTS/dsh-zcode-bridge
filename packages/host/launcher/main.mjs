@@ -4,6 +4,7 @@ import { readFileSync, appendFileSync, existsSync, writeFileSync } from 'node:fs
 import { join } from 'node:path';
 import { ROUTE_B_READ_CALLS, ROUTE_B_SEND_CALLS, authProjection, usageProjection } from './observation.mjs';
 import { SharedWriteGate, usageActivity } from './write-gate.mjs';
+import { createExecutionRelay, EXECUTION_CALLS, EXECUTION_EVENTS } from './execution.mjs';
 import { createMinimalTurn } from './minimal-turn.mjs';
 import { projectTask, projectTaskCatalog } from './task-catalog.mjs';
 import { createInterface } from 'node:readline';
@@ -27,17 +28,17 @@ const READ_CALLS=new Set(ROUTE_B_READ_CALLS);
 const safeCall=async(svc,method,args=[])=>{const name=svc+'.'+method;if(!READ_CALLS.has(name))throw fault('route-b-read-denied');lastRpc=name;rpc.push(name);return channel.call(svc,method,args)};
 // S04 write ledger. Separate from the read-only `rpc` observation so the S03 zero-request
 // whitelist evidence stays meaningful; every entry is checked against the fixed send allowlist.
-const SEND_CALLS=new Set(ROUTE_B_SEND_CALLS),writeRpc=[];
+const SEND_CALLS=new Set(ROUTE_B_SEND_CALLS),writeRpc=[],executionRpc=[];
 const safeSend=async(svc,method,args=[])=>{const name=svc+'.'+method;if(!SEND_CALLS.has(name))throw fault('route-b-write-denied');writeRpc.push(name);return channel.call(svc,method,args,{timeoutMs:110000})};
 const minimalTurnMarker=()=>join(config.runRoot,'s04-minimal-turn.json');
-let minimalTurn;
+let minimalTurn,executionRelay;
 const schedulerPolicy={spawned:false,wakeCallback:false,settlementCallback:false,dispatchMessages:false};
 const authority=new HostAuthority(),gate=new ProviderRequestGate();
 const headless=()=>({windowEvents,windows:BrowserWindow.getAllWindows().length,webContents:webContents.getAllWebContents().length});
 let state={phase:'starting',channelAvailable:false,landings:config.landing,login:'disabled-s03',databaseControl:'disabled-s02',sharedOfficialMain:'NO-GO',requestGate:gate.state,services:[],routeB:config.routeB??null,schedulerPolicy};
 const publish=change=>{state={...state,...change,revision:++revision};const line=JSON.stringify({type:'launcher-state',at:Date.now(),state:{...state,headless:headless()}})+'\n';if(routeB)appendFileSync(join(config.runRoot,'launcher-states.jsonl'),line,{mode:0o600});process.stdout.write(line)};
 export async function stop(code=0){
-  if(closing)return;closing=true;clearTimeout(deadline);disposeEvent?.();channel?.close();authority.dispose();
+  if(closing)return;closing=true;clearTimeout(deadline);disposeEvent?.();executionRelay?.dispose();channel?.close();authority.dispose();
   publish({phase:'stopping',channelAvailable:false,services:[]});
   if(child){const ended=new Promise(resolve=>child.once('exit',resolve));child.postMessage({type:'dispose'});await Promise.race([ended,new Promise(resolve=>setTimeout(resolve,1000))]);child.kill();await Promise.race([ended,new Promise(resolve=>setTimeout(resolve,2000))]);}
   publish({phase:'stopped',authority:authority.diagnostics});app.exit(code);
@@ -54,6 +55,11 @@ control.on('line',line=>{
   if(line==='stop'){void stop();return;}
   if(!routeB||closing)return;
   let m;try{m=JSON.parse(line)}catch{return;}
+  if(m.operation==='execution'){
+    if(line.length>1024*1024||Object.keys(m).some(key=>!['id','operation','nonce','method','params'].includes(key)))return;
+    if(!Number.isSafeInteger(m.id)||m.nonce!==config.executionNonce||!executionRelay||state.auth!=='authenticated')return;
+    void executionRelay.request(m.method,m.params).then(value=>process.stdout.write(JSON.stringify({type:'launcher-read',id:m.id,ok:true,value})+'\n'),error=>process.stdout.write(JSON.stringify({type:'launcher-read',id:m.id,ok:false,code:error.code??'execution-command-failed'})+'\n'));return;
+  }
   if(!Number.isSafeInteger(m.id)||!['catalog','preflight','observation','taskUsage','sendMinimalTask'].includes(m.operation)||Object.keys(m).some(k=>!['id','operation','address'].includes(k)))return;
   reading=reading.then(async()=>{
     if(closing)return;
@@ -84,7 +90,7 @@ control.on('line',line=>{
         });
         value=await gate.preflight(m.address);
       }
-      if(m.operation==='observation')value={tasks,usage:usageProjection(await safeCall('zcode-agent','getAppUsageStats',[{range:'all',timeZone:'UTC'}])),rpc:[...rpc],writeRpc:[...writeRpc],at:Date.now(),schedulerPolicy};
+      if(m.operation==='observation')value={tasks,usage:usageProjection(await safeCall('zcode-agent','getAppUsageStats',[{range:'all',timeZone:'UTC'}])),rpc:[...rpc],writeRpc:[...writeRpc],executionRpc:[...executionRpc],at:Date.now(),schedulerPolicy};
       // Per-session official usage readback (the S04 model-request accounting surface).
       if(m.operation==='taskUsage'){
         if(!m.address||typeof m.address.sessionId!=='string'||!m.address.sessionId||typeof m.address.workspace!=='string'||!m.address.workspace)throw fault('route-b-address-required');
@@ -128,7 +134,7 @@ app.whenReady().then(()=>{
   child.on('exit',code=>{if(!closing){publish({phase:'failed',channelAvailable:false,reason:'host-exited',hostExitCode:code});void stop(2)}});
   authority.onDatabase=(_id,database)=>publish({database});
   authority.register({hostId:config.hostId,child,workspaceKeys:[],deliveryKind:config.deliveryKind});
-  channel=new HostChannel(port1,{...(routeB?{allowCalls:new Set([...ROUTE_B_READ_CALLS,...ROUTE_B_SEND_CALLS])}:{}),onClose:reason=>{if(!closing){publish({phase:'failed',channelAvailable:false,reason});void stop(2)}},onReady:async()=>{
+  channel=new HostChannel(port1,{...(routeB?{allowCalls:new Set([...ROUTE_B_READ_CALLS,...ROUTE_B_SEND_CALLS,...EXECUTION_CALLS])}:{}),allowEvents:new Set([...EXECUTION_EVENTS,'provider-settings.onDidChange']),onClose:reason=>{if(!closing){publish({phase:'failed',channelAvailable:false,reason});void stop(2)}},onReady:async()=>{
     clearTimeout(deadline);
     // Availability of these state services is verified by their real RPC responses; runtime/
     // session/command names are static topology only and never advertised as runnable.
@@ -147,13 +153,14 @@ app.whenReady().then(()=>{
       if(routeB){
         const auth=authProjection(cached,active,view);
         if(auth.auth!=='authenticated')throw fault('official-provider-not-executable');
-        publish({...auth,authVerified:true,execution:'s04-minimal-dispatch',schedulerPolicy});
+        publish({...auth,authVerified:true,execution:'zcode-agent-v4',schedulerPolicy});
+        executionRelay=createExecutionRelay({channel,workspacePath:config.paths.workspace,onCommand:record=>{if(executionRpc.length>=4096)throw fault('execution-ledger-limit');executionRpc.push({...record,at:Date.now()})},emit:event=>process.stdout.write(JSON.stringify({type:'launcher-event',nonce:config.executionNonce,event})+'\n')});
         const tasks=await readTasks();
         // Read-only CLI acquisition: no initializeWorkspace/resume/stream recovery/warmup.
         const sample=tasks.find(t=>!t.workspaceIdentity?.startsWith('ssh:')&&!t.workspaceIdentity?.startsWith('wsl:'));
         const sessions=await safeCall('zcode-agent','listSessions',[{workspacePath:config.paths.workspace,workspaceIdentity:sample?.workspaceIdentity??sample?.workspacePath??config.paths.workspace,sessionIds:sample?[sample.taskId]:[],limit:1,runtimePolicy:'start-if-needed'}]);
         const usage=usageProjection(await safeCall('zcode-agent','getAppUsageStats',[{range:'all',timeZone:'UTC'}]));
-        publish({phase:'ready',channelAvailable:true,...auth,login:'cached-official-account',services:['oauth','provider-settings','setting','zcode-task','zcode-agent'],execution:'s04-minimal-dispatch',rpcCount:rpc.length,taskCount:tasks.length,sessionListCount:Array.isArray(sessions)?sessions.length:null,observationBaseline:{tasks,usage,rpc:[...rpc],at:Date.now()},schedulerPolicy});return;
+        publish({phase:'ready',channelAvailable:true,...auth,login:'cached-official-account',services:['oauth','provider-settings','setting','zcode-task','zcode-agent'],execution:'zcode-agent-v4',rpcCount:rpc.length,executionWorkspace:config.paths.workspace,taskCount:tasks.length,sessionListCount:Array.isArray(sessions)?sessions.length:null,observationBaseline:{tasks,usage,rpc:[...rpc],at:Date.now()},schedulerPolicy});return;
       }
       publish({phase:'ready',channelAvailable:true,providers:authProjection(cached,active,view).providers,auth:cached?.status==='signed-out'?'signed-out':'unconfirmed',activeProviderPresent:active!==null,providerCount:Array.isArray(providers)?providers.length:null,executableProviders:(view?.providers??[]).filter(p=>p.executable).length,services:['oauth','provider-settings','setting'],topologyServices:['zcode-agent','zcode-session','zcode-task'],execution:'disabled-s03',rpcCount:5});
     }catch(e){publish({phase:'failed',failedRpc:lastRpc,reason:typeof e?.code==='string'?e.code:'status-query-failed',errorCategory:/disposed/i.test(e?.message??'')?'runtime-disposed':/no_active_workspace/.test(e?.message??'')?'usage-runtime-unavailable':'official-status-query-failed'});void stop(2)}

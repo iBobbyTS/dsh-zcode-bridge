@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Official ZCode runtime connection and DSH status bundle",
+  "description": "Official ZCode Agent runtime and native DSH GUI bridge",
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
@@ -24,5 +24,22 @@
     "jsdom": "29.1.1",
     "react": "18.3.1",
     "react-dom": "18.3.1"
-  }
+  },
+  "files": [
+    "cordis.patch.yml",
+    "README.md",
+    "PROTOCOL-COVERAGE.md",
+    "packages/host/package.json",
+    "packages/host/*.mjs",
+    "packages/host/launcher",
+    "packages/host/vendor",
+    "packages/client/package.json",
+    "packages/client/index.mjs",
+    "packages/client/lib/client.js",
+    "packages/client/runtime.mjs",
+    "packages/client/runtime-controls.jsx",
+    "packages/client/controller.mjs",
+    "packages/client/status.mjs",
+    "packages/client/compatibility.mjs"
+  ]
 }

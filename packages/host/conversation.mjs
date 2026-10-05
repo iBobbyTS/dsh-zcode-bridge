@@ -67,7 +67,7 @@ export class V4Conversation {
   #assembler; #offHostTools; #offNotification; #offClosed; #connect; #resync; #generation=0; #closed=false;
   #observerErrors=0; #flight; #resyncAgain=null; #appliedBase=false; #orphans=[]; #frameTimer; #assemblyTimer; #commands=new Map(); #commandControllers=new Map(); #cancelPromise; #listeners=new Set();
   #uploads=new Map(); #committedUploads=new Map(); #attachmentRefs=new Map();
-  constructor(peer,{address,workspace,connectionId,clientId,clientMode='web-remote-replayable',runnable=false,managementAllowed=false,hostTools,onChange=()=>{},frameTimeoutMs=10000,assemblyOptions={},maxCommands=128}={}){
+  constructor(peer,{address,workspace,connectionId,clientId,clientMode='web-remote-replayable',runnable=false,managementAllowed=false,hostTools,onChange=()=>{},frameTimeoutMs=10000,assemblyOptions={},maxCommands=128,reconnectable=false}={}){
     if(!workspace||!address||address.runtime!=='zcode'||!nonempty(address.authority)||!nonempty(address.sessionId)||address.workspace!==workspace?.workspacePath||workspace.workspaceKey!==workspace.workspacePath||!nonempty(workspace?.workspacePath)||!nonempty(connectionId)||!nonempty(clientId)||typeof runnable!=='boolean'||typeof managementAllowed!=='boolean'||!['desktop-continuous','web-remote-replayable'].includes(clientMode)||!int(frameTimeoutMs)||frameTimeoutMs===0||!int(maxCommands)||maxCommands===0)throw new BridgeError('conversation-context-invalid');
     Object.assign(this,{peer,address:structuredClone(address),workspace:structuredClone(workspace),connectionId,clientId,clientMode,runnable,managementAllowed,onChange,frameTimeoutMs,maxCommands});
     // Caller objects cannot mutate the owned routing context after admission.
@@ -79,7 +79,7 @@ export class V4Conversation {
     Object.defineProperty(this,'topic',{writable:false});
     this.#assembler=new TopicWireFrameAssembler(conversationTopicFrameSchema,assemblyOptions);
     this.#offNotification=peer.onNotification(m=>{if(m.method==='v4/conversation/frame')this.#wire(m.params)});
-    this.#offClosed=peer.onClosed(code=>this.#disconnect(code));
+    this.#offClosed=peer.onClosed(code=>reconnectable?this.#transportLost(code):this.#disconnect(code));
   }
   get state(){return structuredClone({...this.#state,commands:[...this.#commands.values()],observerErrors:this.#observerErrors,profile:this.clientMode==='desktop-continuous'?'continuous':'replayable',admission:this.admission,managementAdmission:this.managementAdmission,attachmentAdmission:this.attachmentAdmission,workAdmission:this.workAdmission,workflowAdmission:{reads:this.workAdmission,writes:this.managementAdmission,...WORKFLOW_LIMITATIONS},...(this.hostTools?{hostTools:this.hostTools.snapshot(this.address.sessionId)}:{})})}
   get admission(){return {allowed:!this.#closed&&this.runnable&&this.#state.status==='live'&&!!this.#state.snapshot,reason:this.#closed?'closed':!this.runnable?'runtime-restricted':this.#state.status!=='live'?'projection-unconfirmed':null}}
@@ -566,6 +566,12 @@ export class V4Conversation {
     const params=v4ConversationUnsubscribeParamsSchema.parse({topic:this.topic,connectionId:this.connectionId,subscriptionId});
     try{await this.peer.request('v4/conversation/unsubscribe',params)}
     catch(e){this.#publish({cleanupError:{code:e.code??'unsubscribe-failed',...(e.protocolCode===undefined?{}:{protocolCode:e.protocolCode})}})}
+  }
+  #transportLost(code){
+    if(this.#closed)return;
+    ++this.#generation;clearTimeout(this.#frameTimer);clearTimeout(this.#assemblyTimer);this.#assembler.clear();this.#flight=null;
+    for(const [id,controller] of this.#commandControllers){controller.abort();const record=this.#commands.get(id);if(record&&!terminal.has(record.state)){record.state='outcome-unknown';record.error=code}}
+    this.#commandControllers.clear();this.#publish({status:'error',error:code,subscriptionId:null});
   }
   #disconnect(code){
     if(this.#closed)return;this.#closed=true;++this.#generation;

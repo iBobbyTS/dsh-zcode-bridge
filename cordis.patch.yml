@@ -1,4 +1,4 @@
-# Loaded as one bundle; no agent factory or native session seam is changed.
+# Loaded as one bundle; registered ZCode Agents coexist with the unchanged native factory.
 - insert:
     - id: zcode-bridge-host
       name: '@dsh-zcode/host'

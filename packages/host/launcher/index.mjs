@@ -8,7 +8,7 @@ import { createLauncherConfig, prepareLauncher, sandboxProfile, fault } from './
 /** Node/DSH-side resource owner. Status is a projection, never a command or auth transport. */
 export class HostLauncher {
   #state={phase:'idle',revision:0,channelAvailable:false,services:[],login:'disabled-s03',sharedOfficialMain:'NO-GO'};
-  #routeBAttempted=false;#reads=new Map();#readSeq=0;#events=new EventEmitter();#child;#starting;#stopping;#disposed=false;#exited;
+  #executionNonce;#routeBAttempted=false;#reads=new Map();#readSeq=0;#events=new EventEmitter();#child;#starting;#stopping;#disposed=false;#exited;
   constructor(options,{spawnProcess=spawn}={}){this.options=options;this.spawnProcess=spawnProcess}
   get state(){return structuredClone(this.#state)}
   subscribe(listener){this.#events.on('state',listener);return ()=>this.#events.off('state',listener)}
@@ -29,7 +29,7 @@ export class HostLauncher {
       if(this.#stopping)await this.#stopping;
       if(this.#disposed)throw fault('disposed');
       if(this.#routeBAttempted)throw fault('route-b-retry-disabled');
-      config=prepareLauncher(createLauncherConfig(this.options));
+      config=prepareLauncher(createLauncherConfig(this.options));this.#executionNonce=config.executionNonce;
       if(config.mode==='route-b')this.#routeBAttempted=true;
       const codeRoot=realpathSync(fileURLToPath(new URL('../',import.meta.url)));
       const dependencyRoot=dirname(fileURLToPath(import.meta.resolve('zod')));
@@ -38,11 +38,11 @@ export class HostLauncher {
       this.#publish({phase:'starting',channelAvailable:false,landings:config.landing,routeB:config.routeB??null,services:[],login:'disabled-s03',sharedOfficialMain:'NO-GO'});
       const child=this.#child=this.spawnProcess('/usr/bin/sandbox-exec',['-f',profile,config.electronPath,realpathSync(fileURLToPath(new URL('./bootstrap.cjs',import.meta.url))),join(config.runRoot,'launcher.json')],{cwd:config.cwd,env:config.env,stdio:['pipe','pipe','pipe'],detached:true});
       let tail='';
-      child.stdout.on('data',data=>{tail+=data.toString();if(tail.length>1024*1024){tail='';this.#publish({phase:'failed',reason:'launcher-output-limit',channelAvailable:false});void this.stop();return}let i;while((i=tail.indexOf('\n'))>=0){const line=tail.slice(0,i);tail=tail.slice(i+1);try{const m=JSON.parse(line);if(m.type==='launcher-read'){const p=this.#reads.get(m.id);if(p){this.#reads.delete(m.id);clearTimeout(p.timer);if(m.ok)p.resolve(m.value);else p.reject(fault(m.code??'route-b-read-failed'));}}if(m.type==='launcher-state'&&m.state&&typeof m.state.phase==='string')this.#publish(m.state)}catch{/* Electron informational stdout is discarded. */}}});
+      child.stdout.on('data',data=>{tail+=data.toString();if(tail.length>9*1024*1024){tail='';this.#publish({phase:'failed',reason:'launcher-output-limit',channelAvailable:false});void this.stop();return}let i;while((i=tail.indexOf('\n'))>=0){const line=tail.slice(0,i);tail=tail.slice(i+1);try{const m=JSON.parse(line);if(m.type==='launcher-event'&&m.nonce===this.#executionNonce){this.#events.emit('execution',m.event)}if(m.type==='launcher-read'){const p=this.#reads.get(m.id);if(p){this.#reads.delete(m.id);clearTimeout(p.timer);if(m.ok)p.resolve(m.value);else p.reject(fault(m.code??'route-b-read-failed'));}}if(m.type==='launcher-state'&&m.state&&typeof m.state.phase==='string')this.#publish(m.state)}catch{/* Electron informational stdout is discarded. */}}});
       // Only error categories from Electron bootstrap are retained. Arbitrary diagnostic text,
       // file contents and Host output are never forwarded into DSH state.
       child.stderr.on('data',data=>{const categories=[...new Set(data.toString().match(/\b(?:ERR_[A-Z_]+|EACCES|EPERM|ENOENT|FATAL)\b/g)??[])];if(categories.length)this.#publish({...this.#state,bootstrapErrors:categories})});
-      this.#exited=new Promise(resolve=>{child.once('error',()=>{this.#publish({phase:'failed',reason:'launcher-spawn-failed',channelAvailable:false});resolve()});child.once('close',(code)=>{if(this.#state.phase!=='stopped')this.#publish({phase:code===0?'stopped':'failed',reason:code===0?'launcher-stopped':'launcher-exited',channelAvailable:false,services:[]});resolve();void this.stop().catch(()=>this.#publish({...this.#state,cleanup:'owned-group-cleanup-failed'}))})});
+      this.#exited=new Promise(resolve=>{child.once('error',()=>{this.#publish({phase:'failed',reason:'launcher-spawn-failed',channelAvailable:false});resolve()});child.once('close',(code)=>{for(const p of this.#reads.values()){clearTimeout(p.timer);p.reject(fault('execution-outcome-unknown'))}this.#reads.clear();if(this.#state.phase!=='stopped')this.#publish({phase:code===0?'stopped':'failed',reason:code===0?'launcher-stopped':'launcher-exited',channelAvailable:false,services:[]});resolve();void this.stop().catch(()=>this.#publish({...this.#state,cleanup:'owned-group-cleanup-failed'}))})});
       return await new Promise(resolve=>{const off=this.subscribe(s=>{if(['ready','failed','stopped'].includes(s.phase)){clearTimeout(timer);off();resolve(s)}});const timer=setTimeout(()=>{off();this.#publish({phase:'failed',reason:'launcher-start-timeout',channelAvailable:false});void this.stop().then(()=>resolve(this.state))},35000)});
     }catch(e){this.#publish({phase:'failed',reason:e.code??'launcher-configuration-failed',channelAvailable:false,services:[],landings:{passed:false}});return this.state}
   }
@@ -58,6 +58,23 @@ export class HostLauncher {
       const timer=setTimeout(()=>{this.#reads.delete(id);reject(fault('route-b-read-timeout'));void this.stop();},timeoutMs);
       this.#reads.set(id,{resolve,reject,timer});
       this.#child.stdin.write(JSON.stringify({id,operation,...(address?{address}:{})})+'\n',e=>{if(e){clearTimeout(timer);this.#reads.delete(id);reject(fault('route-b-read-transport'));}});
+    });
+  }
+  onExecutionEvent(listener){this.#events.on('execution',listener);return ()=>this.#events.off('execution',listener)}
+  execution(method,params,{signal}={}){
+    if(this.#state.phase!=='ready'||this.#state.auth!=='authenticated'||!this.#child||this.#disposed)return Promise.reject(fault('execution-unavailable'));
+    if(signal?.aborted)return Promise.reject(fault('cancelled'));
+    if(this.#reads.size>=32)return Promise.reject(fault('execution-pending-limit'));
+    const id=++this.#readSeq;
+    return new Promise((resolve,reject)=>{
+      const cleanup=()=>{clearTimeout(timer);signal?.removeEventListener('abort',cancel);this.#reads.delete(id)};
+      const cancel=()=>{cleanup();reject(fault('execution-outcome-unknown'))};
+      const timer=setTimeout(()=>{cleanup();reject(fault('execution-outcome-unknown'))},30000);
+      this.#reads.set(id,{timer,resolve:value=>{cleanup();resolve(value)},reject:error=>{cleanup();reject(error)}});
+      signal?.addEventListener('abort',cancel,{once:true});
+      const line=JSON.stringify({id,operation:'execution',nonce:this.#executionNonce,method,params})+'\n';
+      if(Buffer.byteLength(line)>1024*1024){cleanup();reject(fault('execution-size-limit'));return}
+      this.#child.stdin.write(line,error=>{if(error){cleanup();reject(fault('execution-outcome-unknown'))}});
     });
   }
   stop(){if(this.#stopping)return this.#stopping;this.#stopping=this.#stop().finally(()=>{this.#stopping=undefined});return this.#stopping}

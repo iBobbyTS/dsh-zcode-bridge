@@ -1,3 +1,4 @@
+import { installZCodeRuntime } from './zcode-runtime.mjs';
 import { BridgeHost } from './runtime.mjs';
 import { HostLauncher, handleLauncher } from './launcher/index.mjs';
 export const inject=['connection'];
@@ -73,10 +74,18 @@ export function apply(ctx,config={}) {
   const launcher=config.launcher?new HostLauncher(config.launcher):undefined;
   const host=new BridgeHost({appPath:config.appPath,workspacePath:config.workspacePath,catalogLimit:config.catalogLimit,authorityMode:config.authorityMode,launcher});
   ctx.effect(()=>()=>host.dispose(),'zcode-bridge: owned runtime');
-  ctx.inject(['webServer'],webCtx=>{
+  let runtime;
+  ctx.inject(['agents','sessions','workspaceRegistry'],async runtimeCtx=>{
+    runtime=await installZCodeRuntime(runtimeCtx,host);
+    runtimeCtx.effect(()=>()=>runtime.dispose(),'zcode-bridge: registered agents');
+  });
+  ctx.inject(['webServer','connection'],webCtx=>{
     // Connection binds routes to the Context reading the service. The injected
     // child owns webServer access and releases the route when it disappears.
-    webCtx.effect(()=>webCtx.connection.rpc.handle(CHANNEL,async(endpoint,payload,signal)=>{
+    // Cordis' Service getter captures a shadow context. Bind the already-injected WebServer
+    // explicitly so Connection's owned route effect retains this caller's dependency.
+    webCtx.extend({webServer:webCtx.webServer}).connection.rpc.handle(CHANNEL,async(endpoint,payload,signal)=>{
+      if(endpoint==='runtime'){try{if(!runtime)throw Object.assign(new Error(),{code:'runtime-starting'});return {ok:true,value:await runtime.handle(payload)}}catch(error){return {ok:false,error:{code:error.code??'runtime-unavailable',message:'ZCode runtime operation unavailable',details:{}}}}}
       if(endpoint===sourceEndpoint){
         if(!payload||typeof payload!=='object'||Array.isArray(payload)||Object.keys(payload).some(key=>key!=='address'))return {ok:false,error:{code:'invalid-payload',message:'Only a Session address may be queried',details:{}}};
         try{return {ok:true,value:await host.listSessions({address:payload.address,signal})}}
@@ -124,6 +133,6 @@ export function apply(ctx,config={}) {
       if(payload!==null&&payload!==undefined&&!(typeof payload==='object'&&!Array.isArray(payload)&&Object.keys(payload).length===0))return {ok:false,error:{code:'invalid-payload',message:'This endpoint accepts no runtime commands',details:{}}};
       if(signal.aborted)return {ok:false,error:{code:'cancelled',message:'Cancelled',details:{}}};
       return {ok:true,value:endpoint==='connect'?await host.connect():host.status};
-    }),'zcode-bridge: status RPC');
+    });
   });
 }
