@@ -96,10 +96,26 @@ export function QueuePreferencesPanel({controller,snapshot}){
   const read=useParityRead(controller),items=snapshot?.queue?.items??[];
   const submit=(kind,params)=>read.run(()=>controller.command(kind,params,snapshot));
   return <section style={style} data-zcode-queue-preferences=""><h4>Official queue preferences</h4>
+    <label>Collaboration mode <select aria-label="ZCode collaboration mode" disabled={read.busy} value={snapshot.config.mode} onChange={e=>void submit('switchCollaborationMode',{mode:e.target.value})}>{!['build','edit','plan','yolo'].includes(snapshot.config.mode)&&<option value={snapshot.config.mode} disabled>{snapshot.config.mode??'Unknown'}</option>}{['build','edit','plan','yolo'].map(mode=><option key={mode} value={mode}>{mode}</option>)}</select></label>
     <button disabled={read.busy} onClick={()=>void submit('setAutoDrain',{autoDrain:!snapshot.queue.autoDrain})}>{snapshot.queue.autoDrain?'Pause auto drain':'Resume auto drain'}</button>
     <label>Follow-up mode <select aria-label="ZCode follow-up mode" disabled={read.busy} value={snapshot.config.followupMode??''} onChange={e=>void submit('setFollowupMode',{mode:e.target.value})}><option value="" disabled>Unknown</option><option value="queue">Queue</option><option value="guide">Guide</option></select></label>
     {items.map((item,index)=><div key={item.queueItemId}>{item.text}<button disabled={read.busy||index===0||item.dispatch.state!=='queued'} onClick={()=>void submit('reorderQueueItem',{queueItemId:item.queueItemId,beforeQueueItemId:items[index-1].queueItemId})}>Move up</button><button disabled={read.busy||index===items.length-1||item.dispatch.state!=='queued'} onClick={()=>void submit('reorderQueueItem',{queueItemId:item.queueItemId,beforeQueueItemId:items[index+2]?.queueItemId??null})}>Move down</button></div>)}
     <p>Official goal: {snapshot.goal?.objective??'none'} · {snapshot.goal?.status??'unreported'}</p><button disabled={read.busy||snapshot.availability?.pauseGoal?.allowed!==true} onClick={()=>void submit('pauseGoal',{})}>Pause goal</button><button disabled={read.busy||snapshot.availability?.resumeGoal?.allowed!==true} onClick={()=>void submit('resumeGoal',{})}>Resume goal</button><Result read={read}/>
+  </section>;
+}
+export function HistoryResourcesPanel({controller,snapshot}){
+  const read=useParityRead(controller),plans=useParityRead(controller);
+  const headers=snapshot.rows.window.filter(row=>row.kind==='turnHeader');
+  // Results belong to this exact projection, even if it is replaced while a read is in flight.
+  const stamp=`${snapshot.logEpoch}:${snapshot.revision}`;
+  const query=(kind,row)=>read.run(async signal=>({stamp,kind,value:await controller.call('history','read',kind,{target:{rowId:row.rowId,entityId:row.entityId}},{snapshot,signal})}));
+  const data=read.value?.stamp===stamp?read.value.value.result:null;
+  return <section style={style} data-zcode-history-resources=""><h4>Official plans and file history</h4>
+    <button disabled={plans.busy} onClick={()=>void plans.run(async signal=>({stamp,value:await controller.call('history','read','plans',{}, {signal})}))}>Read official plans</button><Result read={plans}/>
+    {plans.value?.stamp===stamp&&<><p>{plans.value.value.plans.length} official plans</p>{plans.value.value.plans.map(row=><article key={row.rowId}><h5>{row.toolName} · row {row.rowId}</h5><pre>{row.output?.text??row.inputText}</pre></article>)}</>}
+    {headers.map(row=><div key={row.rowId}>Turn {row.turnId} · {row.state} <button disabled={read.busy} onClick={()=>void query('fileChanges',row)}>Read file changes · {row.rowId}</button>{row.actions?.canRewindFiles===true&&<button disabled={read.busy} onClick={()=>void query('fileRewindPreview',row)}>Preview file rewind · {row.rowId}</button>}</div>)}<Result read={read}/>
+    {data&&read.value.kind==='fileChanges'&&<><p>{data.files} files · +{data.additions} / −{data.deletions} · {data.state}</p>{data.items.map(item=><article key={item.path}><h5>{item.path} · +{item.additions} / −{item.deletions}</h5>{item.patches.map((patch,index)=><pre key={index}>{patch.lines.join('\n')}</pre>)}</article>)}</>}
+    {data&&read.value.kind==='fileRewindPreview'&&<><p>Official rewind preview · {data.canApply?'safe to apply':'cannot apply'}</p>{[['safeFiles','Safe files'],['unsafeFiles','Unsafe files'],['ignoredFiles','Ignored files']].map(([key,label])=><div key={key}><h5>{label}</h5><ul>{data[key].map(item=><li key={item.path}>{item.path} · {item.reason??item.action??'ignored'}</li>)}</ul></div>)}</>}
   </section>;
 }
 export function SessionParityPanel({rpc,sessionId,controls,connectionGeneration}){
@@ -111,7 +127,7 @@ export function SessionParityPanel({rpc,sessionId,controls,connectionGeneration}
   if(info?.runtime!=='zcode')return null;
   const state=read.value,snapshot=state?.snapshot;
   return <details data-zcode-session-parity="" style={{maxHeight:420,overflow:'auto'}}><summary>Zcode Bridge · workflows, feedback and attachments</summary><button disabled={read.busy} onClick={()=>void read.run(()=>controller.call('snapshot','read'))}>Refresh session capabilities</button><Result read={read}/>
-    {state&&<><ZCodeWorkflowPanel state={state} controller={controller}/><DiagnosticsExtras controller={controller} sessionId={sessionId} snapshot={snapshot}/><FeedbackPanel controller={controller} snapshot={snapshot}/><QueuePreferencesPanel controller={controller} snapshot={snapshot}/><AttachmentPanel controller={controller} snapshot={snapshot}/></>}
+    {state&&<><ZCodeWorkflowPanel state={state} controller={controller}/><DiagnosticsExtras controller={controller} sessionId={sessionId} snapshot={snapshot}/><FeedbackPanel controller={controller} snapshot={snapshot}/><QueuePreferencesPanel controller={controller} snapshot={snapshot}/><HistoryResourcesPanel controller={controller} snapshot={snapshot}/><AttachmentPanel controller={controller} snapshot={snapshot}/></>}
     {!info.officialAddress?.sessionId&&<p>The first text input creates the official session. Session-bound resources are available after its official projection arrives.</p>}
   </details>;
 }

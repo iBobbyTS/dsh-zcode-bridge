@@ -69,12 +69,18 @@ export class ParityService {
     }
     if(domain==='preferences'&&['read','update'].includes(operation))return peer.request('bridge/preferences/'+operation,{...params,workspace},{signal});
     // Conversation resources/control stay with S04's projection, target admission and command ledger.
-    if(['command','attachment','snapshot'].includes(domain)){
+    if(['command','attachment','snapshot','history'].includes(domain)){
       const agent=this.runtime.agents.get(sessionId);if(!agent||!record?.officialId)throw fault('official-session-required');
       agent.touch();await agent.connect();if(!await agent.whenProjectionReady())throw fault('projection-unconfirmed');if(signal?.aborted)throw fault('cancelled');
       if(domain==='snapshot')return agent.conversation.state;
+      if(domain==='history'){
+        if(operation!=='read')throw fault('parity-operation-denied');
+        if(kind==='plans'&&Object.keys(params).length===0)return agent.conversation.plans({signal});
+        if(['fileChanges','fileRewindPreview'].includes(kind)&&Object.keys(params).every(key=>key==='target'))return agent.conversation.historyQuery({kind,target:params.target,baseRevision:payload.baseRevision,baseLogEpoch:payload.baseLogEpoch},{signal});
+        throw fault('parity-operation-denied');
+      }
       if(domain==='command'){
-        const allowed=new Set(['setAssistantFeedback','startSavedWorkflow','resumeWorkflowRun','amendWorkflowRunSettings','cancelBackgroundWork','sendText','sendGoalCommand','reorderQueueItem','setAutoDrain','setFollowupMode','pauseGoal','resumeGoal']);
+        const allowed=new Set(['setAssistantFeedback','startSavedWorkflow','resumeWorkflowRun','amendWorkflowRunSettings','cancelBackgroundWork','sendText','sendGoalCommand','reorderQueueItem','setAutoDrain','setFollowupMode','switchCollaborationMode','pauseGoal','resumeGoal']);
         if(operation!=='submit'||!allowed.has(kind))throw fault('parity-command-denied');
         const snapshot=agent.conversation.state.snapshot;
         if(payload.baseLogEpoch!==snapshot.logEpoch||payload.baseRevision!==snapshot.revision)throw fault('parity-projection-stale');

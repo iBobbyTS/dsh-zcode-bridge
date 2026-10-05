@@ -12290,6 +12290,8 @@ export {
   v4ConversationFileChangesResultSchema,
   v4ConversationFileRewindPreviewParamsSchema,
   v4ConversationFileRewindPreviewResultSchema,
+  v4ConversationPlansParamsSchema,
+  v4ConversationPlansResultSchema,
   v4ConversationResyncParamsSchema,
   v4ConversationResyncResultSchema,
   v4ConversationSubscribeParamsSchema,

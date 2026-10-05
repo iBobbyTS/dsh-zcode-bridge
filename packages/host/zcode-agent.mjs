@@ -85,6 +85,8 @@ export class ZCodeAgent {
     clearTimeout(this.reconnectTimer);this.reconnectTimer=null;
     const snapshot=state.snapshot;if(!snapshot)return;
     const decision=this.mirror.accept(snapshot);if(!decision.accepted)return;
+    // Mode belongs to the official projection. An ACK alone must not change later input mode.
+    this.record.mode=snapshot.config.mode;
     const migrate=this.record.projectionIdentityVersion!==2&&(this.projected.size>0||(this.record.projected?.length??0)>0||Object.keys(this.record.prefixes??{}).length>0||(this.record.events??[]).some(event=>event.seq>=(this.record.historyStartSeq??0)&&(event.type==='turn/start'||['user/message','assistant/message'].includes(event.type)&&(event.data.id??event.data.message?.id??'').startsWith('zcode-'))));
     // Legacy entity keys cannot distinguish omitted rows. Replay the authoritative window behind
     // the existing native replay cut so repaired messages precede their turn end, with audit intact.

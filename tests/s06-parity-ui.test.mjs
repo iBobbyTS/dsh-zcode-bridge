@@ -11,6 +11,7 @@ import {parityWorld,fixtures,tick,row} from './helpers/s06-parity.mjs';
 const require=createRequire(import.meta.url),{buildSync}=require('esbuild'),{JSDOM}=require('jsdom'),{createRoot}=require('react-dom/client'),{Simulate}=require('react-dom/test-utils');
 function load(path){const code=buildSync({entryPoints:[resolve(path)],bundle:true,write:false,platform:'node',format:'cjs',external:['react']}).outputFiles[0].text,mod={exports:{}};vm.runInThisContext('(function(require,module,exports){'+code+'\n})')(require,mod,mod.exports);return mod.exports}
 const ui=load('packages/client/parity-controls.jsx'),workflow=load('packages/client/workflow-view.jsx'),catalog=load('packages/client/catalog-view.jsx');
+const history=JSON.parse(require('node:fs').readFileSync(new URL('./fixtures/s08/success.json',import.meta.url)));
 async function mount(Component,props){
  const dom=new JSDOM('<div id="root"></div>');globalThis.window=dom.window;globalThis.document=dom.window.document;globalThis.IS_REACT_ACT_ENVIRONMENT=true;const root=createRoot(document.getElementById('root'));
  await React.act(async()=>{root.render(React.createElement(Component,props));for(let i=0;i<5;i++)await tick()});
@@ -77,5 +78,23 @@ test('S06 queue preference UI reorders and changes drain mode through official c
  const w=await parityWorld(),controller=new ParityController(w.rpc,{sessionId:w.id});let mounted;try{
   const s=structuredClone(w.official.snapshot);s.seq++;s.queue.autoDrain=false;s.availability.queueEdit={allowed:true};s.queue.items=['a','b'].map((id,i)=>({sourceCommandId:'command-'+id,queueItemId:id,clientId:'gui',kind:'sendText',text:'Queue '+id,attachments:[],delivery:{requested:'queue',admitted:'queue'},order:{admissionSeq:i+1},steer:{state:'notRequested'},dispatch:{state:'queued'},admittedAt:0}));w.official.publish(s);await tick();
   mounted=await mount(ui.QueuePreferencesPanel,{controller,snapshot:s});await mounted.click(mounted.button('Resume auto drain'));await mounted.click([...document.querySelectorAll('button')].find(b=>b.textContent==='Move down'&&!b.disabled));const sent=w.official.calls.find(c=>c.params?.type==='reorderQueueItem');assert.deepEqual(sent.params.payload,{queueItemId:'a',beforeQueueItemId:null});assert.equal(document.body.textContent.indexOf('Queue a')<document.body.textContent.indexOf('Queue b'),true);assert.equal(/delete|remove|uninstall/i.test(document.body.textContent),false);
+ }finally{await mounted?.close();controller.dispose();await w.close()}
+});
+
+test('S08 mode picker sends official command without optimistic mode and exposes all switchable modes',async()=>{
+ const w=await parityWorld(),controller=new ParityController(w.rpc,{sessionId:w.id});let mounted;
+ try{const snapshot=w.runtime.agents.get(w.id).conversation.state.snapshot;mounted=await mount(ui.QueuePreferencesPanel,{controller,snapshot});
+ const select=document.querySelector('[aria-label="ZCode collaboration mode"]');assert.deepEqual([...select.options].map(option=>option.value),['build','edit','plan','yolo']);
+ await mounted.change('ZCode collaboration mode','plan');assert.equal(w.official.calls.find(c=>c.params?.type==='switchCollaborationMode').params.payload.mode,'plan');assert.equal(select.value,'build');
+ }finally{await mounted?.close();controller.dispose();await w.close()}
+});
+test('S08 history panel reads plans/diffs/preview through production owners and hides replaced results',async()=>{
+ const w=await parityWorld({sessionPath:'/imported'}),controller=new ParityController(w.rpc,{sessionId:w.id});let mounted;
+ try{const snapshot=structuredClone(history.initial.frame.payload.snapshot);snapshot.sessionId='one';snapshot.seq=w.official.snapshot.seq+1;w.official.publish(snapshot);await tick();
+ w.responses.set('conversationPlansV4',{plans:[row('toolCall',10,{toolCallId:'plan-call',toolName:'ExitPlanMode',inputText:'Official plan body',status:'success'})],atSeq:snapshot.seq,atLogEpoch:snapshot.logEpoch});w.responses.set('conversationFileChangesV4',history.fileChanges);w.responses.set('conversationFileRewindPreviewV4',history.preview);
+ mounted=await mount(ui.HistoryResourcesPanel,{controller,snapshot});await mounted.click(mounted.button('Read official plans'));assert.ok(document.body.textContent.includes('Official plan body'));await mounted.click(mounted.button('Read file changes · 1'));assert.ok(document.body.textContent.includes('sample.txt'));assert.ok(document.body.textContent.includes('-version 1\n+version 2'));
+ await mounted.click(mounted.button('Preview file rewind · 1'));assert.ok(document.body.textContent.includes('safe to apply'));assert.equal(w.official.calls.some(c=>c.method==='v4/command'),false);
+ await React.act(async()=>mounted.root.render(React.createElement(ui.HistoryResourcesPanel,{controller,snapshot:{...snapshot,revision:snapshot.revision+1}})));assert.equal(document.body.textContent.includes('sample.txt'),false);assert.equal(document.body.textContent.includes('Official plan body'),false);
+ assert.equal([...document.querySelectorAll('button')].some(button=>/apply|delete|remove|uninstall/i.test(button.textContent)),false);
  }finally{await mounted?.close();controller.dispose();await w.close()}
 });

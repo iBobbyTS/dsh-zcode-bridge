@@ -11,6 +11,8 @@
       "ROW_TARGETING_COMMANDS"
     ],
     "transport": [
+      "v4ConversationPlansParamsSchema",
+      "v4ConversationPlansResultSchema",
       "v4ConversationWorkflowRunEventsParamsSchema",
       "v4ConversationWorkflowRunEventsResultSchema",
       "v4ConversationWorkflowRunsParamsSchema",

@@ -27,6 +27,7 @@ import {
   zcodeWorkspaceReadPresentationParamsSchema, zcodeWorkspacePresentationSchema,
   zcodeSessionSubagentsParamsSchema, zcodeSessionSubagentsResultSchema,
   v4BackgroundBashOutputParamsSchema, backgroundBashOutputResultSchema,
+  v4ConversationPlansParamsSchema, v4ConversationPlansResultSchema,
   zcodeTaskTokenUsageParamsSchema, zcodeTaskTokenUsageResultSchema,
 } from './vendor/zcode/v4.mjs';
 const nonempty=x=>typeof x==='string'&&x.trim().length>0;
@@ -418,6 +419,16 @@ export class V4Conversation {
     return this.submit({type:'cancelBackgroundWork',payload:{workId}},{signal});
   }
   /** Queries are pinned to the row's observed revision/epoch; late responses cannot authorize an apply. */
+  async plans({signal}={}){
+    this.#projectionAdmission();
+    const snapshot=this.#state.snapshot;
+    const params=v4ConversationPlansParamsSchema.parse({sessionId:this.address.sessionId});
+    const result=v4ConversationPlansResultSchema.parse(await this.peer.request('v4/conversation/plans',params,{signal}));
+    this.#projectionAdmission();
+    if(this.#state.snapshot.logEpoch!==snapshot.logEpoch||result.atLogEpoch!==snapshot.logEpoch)throw new BridgeError('proto.staleLogEpoch');
+    if(this.#state.snapshot.revision!==snapshot.revision)throw new BridgeError('proto.staleRevision');
+    return result;
+  }
   async historyQuery({kind,target,baseRevision,baseLogEpoch}={}, {signal}={}){
     this.#projectionAdmission();
     const carriers={fileChanges:['v4/conversation/fileChanges',v4ConversationFileChangesParamsSchema,v4ConversationFileChangesResultSchema],fileRewindPreview:['v4/conversation/fileRewindPreview',v4ConversationFileRewindPreviewParamsSchema,v4ConversationFileRewindPreviewResultSchema]};

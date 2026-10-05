@@ -41,7 +41,7 @@
 | `session/close` | 3591 | S04 | 产品生命周期；绝不能作connection dispose；内部载体随所属能力，不另造按钮 | Y | N（内部往返） | N（随所属入口） | S03 | —（随所属入口/已批准延期，保留新Owner） | 非独立必做；不作实现完成声明 |
 | `session/setModel` | 3594 | S06 | carrier/handler及UI语义按所属节核实 | Y | Y | Y | S02 | 已实现（S02） | [E03](#s07-实现证据索引)；官方模型/强度 picker→identity/effort 校验→switchModelConfig；确认后持久化 |
 | `session/setThoughtLevel` | 3598 | S06 | carrier/handler及UI语义按所属节核实 | Y | Y | Y | S02 | 已实现（S02） | [E03](#s07-实现证据索引)；官方模型/强度 picker→identity/effort 校验→switchModelConfig；确认后持久化 |
-| `session/setMode` | 3599 | S06 | carrier/handler及UI语义按所属节核实 | Y | Y | Y | S02 | 部分（S02） | [E03](#s07-实现证据索引)；create/send 携带 mode 且 relay 允许 switchCollaborationMode；当前 runtime/面板未提供切换 mode 的路由入口 |
+| `session/setMode` | 3599 | S06 | carrier/handler及UI语义按所属节核实 | Y | Y | Y | S02 | 已实现（S02；S08 收口） | [E14](#s08-收口证据)；legacy mode 功能经 v4 switchCollaborationMode 等价路由；composer dock collaboration picker→S04 durable control→active relay；仅官方 snapshot 更新持久化 mode/后续 input，无乐观改写 |
 | `workspace/readPresentation` | 3600 | S06 | D5 批准归 S06；官方 Host readWorkspacePresentation；只读工作区 mode/slash commands 入口（修正 TASK-S06 误写） | Y | Y | Y | S06 | 已实现（S06） | [E10](#s07-实现证据索引)；官方 Host 只读 presentation / setting.update→get→sync，app active workspace scope |
 | `workspace/hooks/trustGrant` | 3601 | S05 | carrier/handler及UI语义按所属节核实 | Y | Y | Y | S05 | 部分（S05） | [E09](#s07-实现证据索引)；保留严格 hook helper/旧测试；active relay 无 trustGrant 映射且拒绝 review commands，当前 UI 未接 |
 | `provider/updateAccountConfig` | 3603 | S01 | 不可据此推断提供login/token取得能力；内部载体随所属能力，不另造按钮 | Y | N（内部往返） | N（随所属入口） | S05 | —（随所属入口/已批准延期，保留新Owner） | 非独立必做；不作实现完成声明 |
@@ -121,10 +121,10 @@
 | `v4/conversation/resync` | 338 | S03 | carrier/handler及UI语义按所属节核实；内部载体随所属能力，不另造按钮 | Y | N（内部往返） | N（随所属入口） | S02 | —（随所属入口/已批准延期，保留新Owner） | 非独立必做；不作实现完成声明 |
 | `v4/conversation/unsubscribe` | 339 | S03 | carrier/handler及UI语义按所属节核实；内部载体随所属能力，不另造按钮 | Y | N（内部往返） | N（随所属入口） | S02 | —（随所属入口/已批准延期，保留新Owner） | 非独立必做；不作实现完成声明 |
 | `v4/conversation/rowsRange` | 341 | S03 | carrier/handler及UI语义按所属节核实 | Y | Y | Y | S02 | 部分（S02） | [E08](#s07-实现证据索引)；保留资源 helper/旧测试；active relay 无该查询映射，当前 native GUI 未消费 |
-| `v4/conversation/plans` | 343 | S05 | carrier/handler及UI语义按所属节核实 | Y | Y | Y | S03 | 部分（S03） | [E08](#s07-实现证据索引)；保留资源 helper/旧测试；active relay 无该查询映射，当前 native GUI 未消费 |
-| `v4/conversation/fileChanges` | 344 | S08 | carrier/handler及UI语义按所属节核实 | Y | Y | Y | S03 | 部分（S03） | [E08](#s07-实现证据索引)；保留资源 helper/旧测试；active relay 无该查询映射，当前 native GUI 未消费 |
+| `v4/conversation/plans` | 343 | S05 | carrier/handler及UI语义按所属节核实 | Y | Y | Y | S03 | 已实现（S03；S08 收口） | [E14](#s08-收口证据)；composer dock Read official plans→session-bound typed read→active relay conversationPlansV4；epoch/revision/owner 栅栏；只读 |
+| `v4/conversation/fileChanges` | 344 | S08 | carrier/handler及UI语义按所属节核实 | Y | Y | Y | S03 | 已实现（S03；S08 收口） | [E14](#s08-收口证据)；composer dock Read file changes→现有 historyQuery→active relay conversationFileChangesV4；row/revision/epoch 校验与 patch 呈现；只读 |
 | `v4/conversation/backgroundBashOutput` | 345 | S10 | carrier/handler及UI语义按所属节核实 | Y | Y | Y | S03 | 部分（S03） | [E08](#s07-实现证据索引)；保留资源 helper/旧测试；active relay 无该查询映射，当前 native GUI 未消费 |
-| `v4/conversation/fileRewindPreview` | 346 | S08 | carrier/handler及UI语义按所属节核实 | Y | Y | Y | S03 | 部分（S03） | [E08](#s07-实现证据索引)；保留资源 helper/旧测试；active relay 无该查询映射，当前 native GUI 未消费 |
+| `v4/conversation/fileRewindPreview` | 346 | S08 | carrier/handler及UI语义按所属节核实 | Y | Y | Y | S03 | 已实现（S03；S08 收口） | [E14](#s08-收口证据)；composer dock Preview file rewind→现有 historyQuery→active relay conversationFileRewindPreviewV4；官方 canRewindFiles 与 row/revision/epoch 校验；只读，不提供 apply |
 | `v4/conversation/workflowRunEvents` | 349 | S12 | carrier/handler及UI语义按所属节核实 | Y | Y | Y | S06 | 已实现（S06） | [E06](#s07-实现证据索引)；S06 workflow UI→schema 校验/官方 Host workspace 路由；run read 与 receipt 分离 |
 | `v4/conversation/workflowRuns` | 350 | S12 | carrier/handler及UI语义按所属节核实 | Y | Y | Y | S06 | 已实现（S06） | [E06](#s07-实现证据索引)；S06 workflow UI→schema 校验/官方 Host workspace 路由；run read 与 receipt 分离 |
 | `v4/conversation/workflowRunArtifacts` | 356 | S12 | carrier/handler及UI语义按所属节核实 | Y | Y | Y | S06 | 已实现（S06） | [E06](#s07-实现证据索引)；S06 workflow UI→schema 校验/官方 Host workspace 路由；run read 与 receipt 分离 |
@@ -183,7 +183,7 @@
 | `requestWorkspaceHookReview` | 203 | S05 | carrier/handler及UI语义按所属节核实 | Y | Y | Y | S05 | 部分（S05） | [E09](#s07-实现证据索引)；保留严格 hook helper/旧测试；active relay 无 trustGrant 映射且拒绝 review commands，当前 UI 未接 |
 | `snoozeInteractionAutoResolution` | 205 | S05 | carrier/handler及UI语义按所属节核实 | Y | Y | Y | S02 | 部分（S02） | [E09](#s07-实现证据索引)；保留交互 helper/旧测试；active relay 拒绝且当前 native UI 无暂停自动结束入口 |
 | `switchModelConfig` | 208 | S06 | carrier/handler及UI语义按所属节核实 | Y | Y | Y | S02 | 已实现（S02） | [E03](#s07-实现证据索引)；官方模型/强度 picker→identity/effort 校验→switchModelConfig；确认后持久化 |
-| `switchCollaborationMode` | 215 | S06 | carrier/handler及UI语义按所属节核实 | Y | Y | Y | S02 | 部分（S02） | [E03](#s07-实现证据索引)；create/send 携带 mode 且 relay 允许 switchCollaborationMode；当前 runtime/面板未提供切换 mode 的路由入口 |
+| `switchCollaborationMode` | 215 | S06 | carrier/handler及UI语义按所属节核实 | Y | Y | Y | S02 | 已实现（S02；S08 收口） | [E14](#s08-收口证据)；composer dock collaboration picker→S04 durable control→active relay；仅官方 snapshot 更新持久化 mode/后续 input，无乐观改写 |
 | `setFollowupMode` | 218 | S06 | carrier/handler及UI语义按所属节核实 | Y | Y | Y | S02 | 已实现（S02） | [E05](#s07-实现证据索引)；S06 会话 dock 消费；durable S04 control/ACK，不乐观改写官方状态 |
 | `pauseGoal` | 219 | S06 | carrier/handler及UI语义按所属节核实；S06 加法 UI 消费，保留 D5 协议 owner | Y | Y | Y | S02 | 已实现（S02） | [E05](#s07-实现证据索引)；S06 会话 dock 消费；durable S04 control/ACK，不乐观改写官方状态 |
 | `resumeGoal` | 220 | S06 | carrier/handler及UI语义按所属节核实；S06 加法 UI 消费，保留 D5 协议 owner | Y | Y | Y | S02 | 已实现（S02） | [E05](#s07-实现证据索引)；S06 会话 dock 消费；durable S04 control/ACK，不乐观改写官方状态 |
@@ -261,3 +261,9 @@ node scripts/inspect-protocol.cjs \
 安装版逐行声明核对和升级结果：[protocol-diff-3.14.4](docs/protocol-diff-3.14.4.md)。`必做=N` 行保留批准的 D3/D5 决策及内部从属语义；没有添加删除/卸载/移除入口。五表之外旧编号普查清单是历史调查面，不能作为本计划 S07 的新功能实施授权。
 
 S07 必做当前状态计数（声明行，不是协议总数/产品覆盖率）：已实现 77；部分 31；未实现 2。所有真实写验收及 npm-installed official DSH read-only browser 验收仍归 S08。
+
+## S08 收口证据
+
+- **E14**：[active parity owner](packages/host/parity.mjs)、[launcher mapping](packages/host/launcher/parity.mjs)、[typed resources](packages/host/conversation.mjs)、[official mode projection](packages/host/zcode-agent.mjs)、[session panels](packages/client/parity-controls.jsx)。[s08-integration](tests/s08-integration.test.mjs) 与 [s06-parity-ui](tests/s06-parity-ui.test.mjs) 的 S08 用例验证 active relay、官方 workspace/session、陈旧/跨 owner 结果拒绝、真实 renderer 点击、ACK 不乐观更新 mode 与后续 input；全部 mock/headless，真实写操作与 npm browser 验收未执行。
+- S07 的 33 个差距行中 **5 收口 / 28 后继计划移交**；其中余下 **26 partial / 2 unimplemented**，详见 [显式延期交接](docs/s08-gap-handoff.md)。原必做/新Owner 列均保留，移交不是静态或 live 完成声明，不擅自认定需求 AC 已通过。
+- 当前 110 必做：**82 已实现 / 26 部分 / 2 未实现**。150 行声明保持不变；本计划不宣称完整对等。npm 版本门禁/实际 seam 约束另见 [npm 环境](docs/npm-acceptance.md)。

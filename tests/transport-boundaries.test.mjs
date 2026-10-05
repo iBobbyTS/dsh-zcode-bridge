@@ -20,11 +20,15 @@ test('B01 invalid UTF-8, partial EOF and buffer limit are distinct terminal fail
   const f=fixture({maxFrameBytes:256});const p=f.peer.request('a',{});f.input.write(bytes);if(end)f.input.end();await assert.rejects(p,{code});assert.equal(f.peer.pendingCount,0);
  }
 });
-test('B01 reverse server-N and identical outbound id have independent ownership',async()=>{
+test('B01 reverse server-N and identical outbound id have independent ownership',async t=>{
+ // This checks ID ownership, not deadlines. Freeze deadlines while awaiting event-loop turns;
+ // under suite load a real 40ms timer can expire before the harness supplies either response.
+ t.mock.timers.enable({apis:['setTimeout']});
  let done;const f=fixture({onRequest:()=>new Promise(r=>done=r)});const p=f.peer.request('a',{});const id=f.sent[0].id;
  f.receive({id,method:'host/request',params:{}});await tick();assert.equal(f.peer.pendingCount,1);assert.equal(f.peer.reversePendingCount,1);
  f.receive({id,result:'outbound'});assert.equal(await p,'outbound');done('reverse');await tick();assert.deepEqual(f.sent[1],{id,result:'reverse'});
  f.receive({id:'server-2',method:'host/request',params:{}});await tick();f.peer.close();assert.equal(f.peer.reversePendingCount,0);done('too-late');await tick();assert.equal(f.sent.length,2);
+ t.mock.timers.tick(41);assert.equal(f.peer.pendingCount,0);assert.equal(f.sent.length,2);
 });
 test('B01 duplicate in-flight reverse request fails closed, callback abort and timeout clean up',async()=>{
  let signal;const f=fixture({onRequest:(_m,c)=>{signal=c.signal;return new Promise(()=>{})}});
