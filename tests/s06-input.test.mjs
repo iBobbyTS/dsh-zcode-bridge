@@ -42,7 +42,7 @@ test('S06 queue edit/reorder/delete/promote keep official item id, command linea
     for (const [type, payload] of [['editQueueItem', { newText: 'Edited BETA' }], ['deleteQueueItem', {}], ['sendQueuedNow', {}]]) {
       const record = await send(f, { type, payload: { queueItemId: 'input-b', ...payload } });
       assert.equal(f.sent.at(-1).params.baseRevision, 1);
-      assert.equal(record.state, 'accepted-awaiting-terminal');
+      assert.equal(record.state, ['editQueueItem','sendQueuedNow'].includes(type) ? 'completed' : 'accepted-awaiting-terminal');
       assert.equal(f.conversation.state.snapshot.queue.items[0].sourceCommandId, 'command-input-b');
     }
     await assert.rejects(f.conversation.submit({ type: 'deleteQueueItem', payload: { queueItemId: 'absent' } }), e => e.code === 'queue-item-unconfirmed');

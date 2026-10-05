@@ -41,6 +41,9 @@ const historyResources=new Set(['forkAssistant','createSelectionSideSession','ap
 const historyActions={forkAssistant:'canFork',editUserQuery:'canEdit',retryTurn:'canRetry',applyFileRewind:'canRewindFiles'};
 const managementCommands=MANAGEMENT_COMMANDS;
 const availabilityCommands={editQueueItem:'queueEdit',reorderQueueItem:'queueEdit',deleteQueueItem:'queueEdit',sendQueuedNow:'sendQueuedNow',switchModelConfig:'switchModelConfig',setFollowupMode:'setFollowupMode',pauseGoal:'pauseGoal',resumeGoal:'resumeGoal',compact:'compact'};
+// These ACKs settle the control application, not an input turn. Promotion runs under
+// the queued input's original sourceCommandId, so its control ID cannot await a turn header.
+const ackSettledControls=new Set(['editQueueItem','sendQueuedNow']);
 const terminal=new Set(['completed','failed','interrupted','rejected','stale','noop','not-sent']);
 export const INPUT_COMMANDS=new Set(['sendText','sendGoalCommand','stop','sendQueuedNow','editQueueItem','reorderQueueItem','deleteQueueItem','setAutoDrain','switchModelConfig','switchCollaborationMode','setFollowupMode','pauseGoal','resumeGoal']);
 const workspaceCarriers={
@@ -127,7 +130,8 @@ export class V4Conversation {
   }
   connect({forceSnapshot=false}={}){
     if(this.#closed)return Promise.reject(new BridgeError('conversation-closed'));
-    if(this.#suspending)return this.#suspending.then(()=>this.connect({forceSnapshot}));
+    if(this.#suspending)return this.#suspending.then(released=>{if(!released&&this.#state.subscriptionId)throw new BridgeError('subscription-release-uncertain');return this.connect({forceSnapshot})});
+    if(this.#state.error==='subscription-release-uncertain'&&this.#state.subscriptionId)return Promise.reject(new BridgeError('subscription-release-uncertain'));
     if(this.#connect)return this.#connect;
     const generation=++this.#generation,base=forceSnapshot?null:this.#base();
     this.#resyncAgain=null;this.#assembler.clear();clearTimeout(this.#assemblyTimer);clearTimeout(this.#frameTimer);
@@ -231,7 +235,7 @@ export class V4Conversation {
   }
   #reserveCommand(){
     if(this.#commands.size<this.maxCommands)return;
-    for(const [id,record] of this.#commands){if(terminal.has(record.state)){this.#commands.delete(id);return}}
+    for(const [id,record] of this.#commands){if(terminal.has(record.state)&&!this.#commandControllers.has(id)){this.#commands.delete(id);return}}
     throw new BridgeError('command-pending-limit');
   }
   command(commandId){const record=this.#commands.get(commandId);return record?structuredClone(record):null}
@@ -496,7 +500,7 @@ export class V4Conversation {
         record.error=e.code??'command-invalid';
       }
     }finally{signal?.removeEventListener('abort',abort);this.#commandControllers.delete(commandId);this.#publish()}
-    return this.command(commandId);
+    return structuredClone(record);
   }
   #ack(record,raw){
     const ack=commandAckSchema.parse(raw);
@@ -514,7 +518,7 @@ export class V4Conversation {
       if(ack.result.type!==record.type||!nonempty(ack.result.sessionId)||ack.result.sessionId===this.address.sessionId)throw new BridgeError('command-result-mismatch');
       record.branchAddress={...this.address,sessionId:ack.result.sessionId};
     }
-    if(!terminal.has(record.state))record.state=['accepted','duplicate'].includes(ack.status)?'accepted-awaiting-terminal':ack.status;
+    if(!terminal.has(record.state))record.state=['accepted','duplicate'].includes(ack.status)?ackSettledControls.has(record.type)?'completed':'accepted-awaiting-terminal':ack.status;
     this.#reconcileCommands();
   }
   async queryCommand(commandId,{signal}={}){
@@ -528,7 +532,7 @@ export class V4Conversation {
       if(item.result==='unknown'){if(!terminal.has(record.state))record.state='outcome-unknown';this.#reconcileCommands()}else this.#ack(record,item.result);
       return result;
     }});
-    this.#publish();return this.command(commandId);
+    this.#publish();return structuredClone(record);
   }
   #reconcileCommands(){
     const snapshot=this.#state.snapshot;if(!snapshot)return;
@@ -586,7 +590,7 @@ export class V4Conversation {
     return this.#suspending;
   }
   #transportLost(code){
-    if(this.#closed||this.#state.status==='idle'&&!this.#state.subscriptionId&&!this.#flight)return;
+    if(this.#closed||this.#state.status==='idle'&&!this.#state.subscriptionId&&!this.#flight&&!this.#suspending)return;
     ++this.#generation;clearTimeout(this.#frameTimer);clearTimeout(this.#assemblyTimer);this.#assembler.clear();this.#flight=null;
     for(const [id,controller] of this.#commandControllers){controller.abort();const record=this.#commands.get(id);if(record&&!terminal.has(record.state)){record.state='outcome-unknown';record.error=code}}
     this.#commandControllers.clear();this.#publish({status:'error',error:code,subscriptionId:null});

@@ -1,10 +1,19 @@
-import { randomUUID } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { writeFileSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { EventEmitter } from 'node:events';
 import { createLauncherConfig, prepareLauncher, sandboxProfile, fault } from './config.mjs';
+
+/** Fit fresh recovery names to the same sockaddr_un budget enforced by the real validator.
+ * The nonce remains a full independent UUID; this is only a scratch directory identifier. */
+export function recoveryRunId(scratchRoot){
+  const template=join(resolve(scratchRoot),'runs','x','tmp','znr-00000000-0000-0000-0000-000000000000.sock');
+  const budget=103-(Buffer.byteLength(template)-1);
+  if(budget<1)throw fault('route-b-temp-socket-path-too-long');
+  return randomBytes(8).toString('hex').slice(0,Math.min(16,budget));
+}
 
 /** Node/DSH-side resource owner. Status is a projection, never a command or auth transport. */
 export class HostLauncher {
@@ -32,7 +41,7 @@ export class HostLauncher {
       if(this.#routeBAttempted&&!this.#routeBReady)throw fault('route-b-retry-disabled');
       // Recovery uses the same validated configuration/profile, with a fresh owned run. Failed
       // first bootstrap remains guarded; an authenticated ready owner may recover after exit.
-      config=prepareLauncher(createLauncherConfig({...this.options,...(this.#launchCount?{runId:'recovery-'+randomUUID()}: {})}));this.#launchCount++;this.#executionNonce=config.executionNonce;
+      config=prepareLauncher(createLauncherConfig({...this.options,...(this.#launchCount?{runId:recoveryRunId(this.options.scratchRoot)}: {})}));this.#launchCount++;this.#executionNonce=config.executionNonce;
       if(config.mode==='route-b')this.#routeBAttempted=true;
       const codeRoot=realpathSync(fileURLToPath(new URL('../',import.meta.url)));
       const dependencyRoot=dirname(fileURLToPath(import.meta.resolve('zod')));

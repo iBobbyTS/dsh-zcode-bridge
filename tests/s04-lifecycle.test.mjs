@@ -1,6 +1,9 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {commandAckSchema} from '../packages/host/vendor/zcode/v4.mjs';
+import React from 'react';import {renderToStaticMarkup} from 'react-dom/server';
+import {RuntimeLifecycleDock} from '../packages/client/runtime-controls.mjs';
 import {ZCodeAgent} from '../packages/host/zcode-agent.mjs';
 import {LauncherPeer,createExecutionRelay} from '../packages/host/launcher/execution.mjs';
 import {installMirrorGuards} from '../packages/host/mirror-guards.mjs';
@@ -50,12 +53,15 @@ test('S04 subscription capacity: 32 concurrent opens through the bounded product
  }finally{await w.runtime.dispose();c.close()}
 });
 
-test('S04 idle reclaim is blocked by official queue, active work, uncertain receipts, and mounted observation lease',async()=>{
+test('S04 idle reclaim is blocked by official queue, active work, uncertain receipts, and mounted observation lease',async t=>{
+ // Advance the actual idle timer and lease clock together; host scheduling delay must not
+ // expire a 10ms test lease while the assertion assumes only 5ms have passed.
+ t.mock.timers.enable({apis:['setTimeout','Date']});
  const f=await opened({idleSubscriptionMs:10});try{
-  let s=structuredClone(f.peer.snapshot);s.seq++;s.queue.items=[queueItem()];f.peer.publish(s);await wait(25);assert.equal(f.peer.subscriptions.size,1);
-  s=structuredClone(s);s.seq++;s.queue.items=[];s.control.activeWorks=[{kind:'primaryTurn',startedAt:0,foregroundExecutionId:'work'}];f.peer.publish(s);await wait(25);assert.equal(f.peer.subscriptions.size,1);assert.equal(f.agent.status,'running');
-  s=structuredClone(s);s.seq++;s.control.activeWorks=[];f.peer.publish(s);f.agent.touch();await wait(5);f.agent.touch();await wait(5);assert.equal(f.peer.subscriptions.size,1);
-  f.peer.loseAck=true;f.agent.followup(input('uncertain'));await tick();await wait(25);assert.equal(f.peer.subscriptions.size,1);assert.equal(lifecycle(f).receipts[0].receiptClass,'outcome-unknown');
+  let s=structuredClone(f.peer.snapshot);s.seq++;s.queue.items=[queueItem()];f.peer.publish(s);t.mock.timers.tick(25);await tick();assert.equal(f.peer.subscriptions.size,1);
+  s=structuredClone(s);s.seq++;s.queue.items=[];s.control.activeWorks=[{kind:'primaryTurn',startedAt:0,foregroundExecutionId:'work'}];f.peer.publish(s);t.mock.timers.tick(25);await tick();assert.equal(f.peer.subscriptions.size,1);assert.equal(f.agent.status,'running');
+  s=structuredClone(s);s.seq++;s.control.activeWorks=[];f.peer.publish(s);f.agent.touch();t.mock.timers.tick(5);f.agent.touch();t.mock.timers.tick(5);await tick();assert.equal(f.peer.subscriptions.size,1);
+  f.peer.loseAck=true;f.agent.followup(input('uncertain'));await tick();t.mock.timers.tick(25);await tick();assert.equal(f.peer.subscriptions.size,1);assert.equal(lifecycle(f).receipts[0].receiptClass,'outcome-unknown');
  }finally{await f.agent.dispose()}
 });
 
@@ -101,7 +107,7 @@ test('TRACE S04 B05 auto reconnect reinitializes carrier, retains content, refre
   const s=structuredClone(c.official.snapshots.get('one'));s.seq=1;s.rows.window=[row('assistantText',1,{text:'displayed',state:'streaming'})];s.queue.items=[queueItem()];c.official.publish(s);
   c.change('failed','app-server-exited');assert.equal(w.runtime.info(id).lifecycle.reason,'app-server-exited');assert.equal(w.runtime.info(id).lifecycle.confirmed,false);assert.ok(agent.record.events.some(e=>e.data.message?.content[0].text==='displayed'));
   const fresh=structuredClone(s);fresh.seq=2;fresh.queue.items=[];fresh.rows.window[0].text='displayed recovery';fresh.rows.window[0].state='complete';fresh.control.canStop=true;fresh.control.activeWorks=[{kind:'primaryTurn',startedAt:0,foregroundExecutionId:'new-run'}];c.official.snapshots.set('one',fresh);
-  c.change('ready');await wait(40);assert.equal(w.runtime.info(id).lifecycle.confirmed,true);assert.equal(w.runtime.info(id).lifecycle.queue.items.length,0);assert.equal(agent.session,session);assert.equal(c.official.calls.filter(call=>call.method==='initialize').length,2);
+  c.change('ready');const deadline=Date.now()+2000;while(!w.runtime.info(id).lifecycle.confirmed&&Date.now()<deadline)await wait(5);assert.equal(w.runtime.info(id).lifecycle.confirmed,true,JSON.stringify(w.runtime.info(id).lifecycle));assert.equal(w.runtime.info(id).lifecycle.queue.items.length,0);assert.equal(agent.session,session);assert.equal(c.official.calls.filter(call=>call.method==='initialize').length,2);
   assert.deepEqual(agent.record.events.filter(e=>e.type==='assistant/message').flatMap(e=>e.data.message.content).map(p=>p.text),['displayed',' recovery']);
   const controller={cancel:()=>({native:true})},ctx={inject(deps,fn){if(deps.includes('sessionController'))fn({sessionController:controller,effect(){}})}};installMirrorGuards(ctx,w.runtime);
   assert.deepEqual(await controller.cancel({sessionId:id}),{accepted:true});const stop=c.official.calls.filter(call=>call.params?.type==='stop');assert.equal(stop.length,1);assert.equal(stop[0].params.payload.expectedForegroundExecutionId,'new-run');assert.deepEqual(controller.cancel({sessionId:'native'}),{native:true});
@@ -208,4 +214,62 @@ test('S04 disposal waits for an admitted control receipt before releasing its Ag
   f.peer.request=async(method,params,options)=>{const result=await request(method,params,options);if(params?.type==='stop')await gate.promise;return result};
   stopping=f.agent.stop();await tick();disposing=f.agent.dispose();await tick();assert.equal(f.scopeDisposals.length,0);gate.resolve();await stopping;await disposing;assert.equal(f.scopeDisposals.length,1);assert.equal(Object.values(f.record.operations)[0].ack.status,'accepted');
  }finally{gate.resolve();await stopping?.catch(()=>{});await disposing;await f.agent.dispose()}
+});
+
+
+test('S04 R1 B2 failed unsubscribe interleave rejects waiting reopen and retains ownership through production relay',async()=>{
+ const c=carrier(),f=agentFixture(),gate=Promise.withResolvers();f.record.workspace='/execution';f.agent=new ZCodeAgent({},f.session,f.record,{...f.dependencies,peer:c.peer,idleSubscriptionMs:10000,reconnectDelayMs:10000});c.official.snapshot=baseSnapshot(f.record.officialId);
+ const request=c.official.request.bind(c.official);let fail=true;
+ c.official.request=async(method,...args)=>{if(method==='v4/conversation/unsubscribe'&&fail){await gate.promise;throw Object.assign(Error('release denied'),{code:'release-denied'})}return request(method,...args)};
+ try{
+  await f.agent.connect();await tick();const id=f.agent.conversation.state.subscriptionId;
+  const releasing=f.agent.conversation.suspend();const reopening=f.agent.conversation.connect();const rejected=assert.rejects(reopening,{code:'subscription-release-uncertain'});gate.resolve();
+  assert.equal(await releasing,false);await rejected;assert.equal(f.agent.conversation.state.subscriptionId,id);assert.equal(f.agent.conversation.state.error,'subscription-release-uncertain');assert.equal(c.official.subscriptions.size,1);
+  await assert.rejects(f.agent.conversation.connect(),{code:'subscription-release-uncertain'});assert.equal(f.agent.conversation.state.subscriptionId,id);
+  fail=false;assert.equal(await f.agent.conversation.suspend(),true);await f.agent.connect();await tick();assert.equal(f.agent.conversation.state.status,'live');assert.equal(c.official.subscriptions.size,1);
+ }finally{gate.resolve();fail=false;await f.agent.dispose();c.close()}
+});
+
+function receiptMarkup(f){const info={runtime:'zcode',lifecycle:lifecycle(f)};return renderToStaticMarkup(React.createElement(RuntimeLifecycleDock,{controls:{infos:new Map([[f.agent.id,info]]),getSnapshot:()=>info,subscribe:()=>()=>{},watch:()=>()=>{}},sessionId:f.agent.id}))}
+test('S04 R1 B3 schema inputAccepted queue ACK precedes frame and survives disconnect in actual receipt dock',async()=>{
+ const f=await opened({idleSubscriptionMs:10000,reconnectDelayMs:10000}),request=f.peer.request.bind(f.peer);
+ f.peer.request=async(method,params,options)=>{if(params?.type!=='sendText')return request(method,params,options);const raw=await request(method,params);const ack=commandAckSchema.parse({...raw,result:{type:'inputAccepted',delivery:'queue',inputId:'official-input'}});f.peer.acks.set(ack.commandId,ack);return options?.onResult?options.onResult(ack):ack};
+ try{
+  f.agent.followup(input('before-frame'));await Promise.all([...f.agent.dispatches]);const operation=Object.values(f.record.operations)[0];
+  assert.equal(f.agent.conversation.state.snapshot.queue.items.length,0);assert.equal(lifecycle(f).receipts[0].receiptClass,'queued');assert.ok(receiptMarkup(f).includes('data-zcode-receipt="queued"'));
+  f.peer.disconnect();assert.equal(lifecycle(f).confirmed,false);assert.equal(lifecycle(f).receipts[0].receiptClass,'queued');assert.ok(receiptMarkup(f).includes('data-zcode-receipt="queued"'));
+  await f.agent.reconnect();await tick();const s=structuredClone(f.peer.snapshot);s.seq++;s.queue.items=[queueItem(operation.commandId)];s.rows.window=[row('turnHeader',1,{state:'running',origin:'userInput',startedAt:0,sourceCommandId:operation.commandId}),row('userInput',2,{text:'before-frame',origin:'realUser',sourceCommandId:operation.commandId})];f.peer.publish(s);
+  assert.equal(operation.state,'projected');assert.equal(lifecycle(f).receipts[0].receiptClass,'accepted');assert.ok(receiptMarkup(f).includes('data-zcode-receipt="accepted"'));
+ }finally{await f.agent.dispose()}
+});
+
+test('S04 R1 B3 queued create-input and disposition ACKs retain delivery until projection, including duplicate recovery',()=>{
+ for(const result of [{type:'inputAccepted',delivery:'queue',inputId:'input'},{type:'inputDisposition',delivery:'queue'},...['createSession','createSelectionSideSession','forkAssistant'].map(type=>({type,sessionId:'child',input:{delivery:'queue',inputId:'child-input'}}))])for(const status of ['accepted','duplicate']){
+  const ack=commandAckSchema.parse({commandId:'queued',status,revisionAtDecision:0,result});assert.equal(receiptClass({commandId:'queued',state:'accepted',ack}),'queued');assert.equal(receiptClass({commandId:'queued',state:'outcome-unknown',ack}),'queued');assert.equal(receiptClass({commandId:'queued',state:'projected',ack},[queueItem('queued')]),'accepted');
+ }
+});
+
+test('S04 R1 B4 128+ accepted queue controls settle, retain durable receipts, preserve uncertain commands and leave Stop available',async()=>{
+ const f=await opened({idleSubscriptionMs:10000,reconnectDelayMs:10000});try{
+  const s=structuredClone(f.peer.snapshot);s.seq++;s.queue.items=[queueItem('original-input')];s.availability.queueEdit={allowed:true};s.availability.sendQueuedNow={allowed:true};s.control.canStop=true;s.control.activeWorks=[{kind:'primaryTurn',startedAt:0,foregroundExecutionId:'still-stoppable'}];f.peer.publish(s);
+  let first;
+  for(let i=0;i<128;i++){const result=await f.agent.queueAction({action:'edit',queueItemId:'q-1',newText:'Edited '+i});first??=result;}
+  let edit,stop,editError=null,stopError=null;
+  try{edit=await f.agent.queueAction({action:'edit',queueItemId:'q-1',newText:'Edit 129'})}catch(error){editError=error.code}
+  try{stop=await f.agent.stop()}catch(error){stopError=error.code}
+  assert.deepEqual({editError,stopError,stopCalls:f.peer.calls.filter(call=>call.params?.type==='stop').length},{editError:null,stopError:null,stopCalls:1});
+  assert.equal(edit.state,'completed');assert.equal(stop.ack.status,'accepted');assert.equal(first.state,'completed');
+  f.peer.loseAck=true;const uncertain=await f.agent.queueAction({action:'edit',queueItemId:'q-1',newText:'Unknown edit'});assert.equal(uncertain.state,'outcome-unknown');
+  for(let i=0;i<130;i++){const result=await f.agent.queueAction({action:'sendNow',queueItemId:'q-1'});assert.equal(result.state,'completed');}
+  assert.equal(f.agent.conversation.command(uncertain.commandId).state,'outcome-unknown');assert.equal(f.record.operations[uncertain.commandId].state,'outcome-unknown');assert.equal(f.agent.conversation.command(first.commandId),null);assert.equal(f.record.operations[first.commandId].ack.status,'accepted');assert.equal(Object.keys(f.record.operations).length,261);assert.ok(f.agent.conversation.state.commands.length<=128);
+  // No turn header belongs to any edit/promote control; execution lineage remains the original input.
+  assert.equal(f.agent.conversation.state.snapshot.rows.window.length,0);assert.equal(f.agent.conversation.state.snapshot.queue.items[0].sourceCommandId,'original-input');
+  const recovered=await f.agent.conversation.queryCommand(uncertain.commandId);assert.equal(recovered.state,'completed');assert.equal(f.record.operations[uncertain.commandId].ack.status,'accepted');assert.equal(Object.keys(f.record.operations).length,261);
+ }finally{await f.agent.dispose()}
+});
+
+test('S04 R1 B2 carrier replacement invalidates a failed release instead of restoring the old subscription',async()=>{
+ const c=carrier(),f=agentFixture(),gate=Promise.withResolvers();f.record.workspace='/execution';f.agent=new ZCodeAgent({},f.session,f.record,{...f.dependencies,peer:c.peer,idleSubscriptionMs:10000,reconnectDelayMs:10000});c.official.snapshot=baseSnapshot(f.record.officialId);const request=c.official.request.bind(c.official);let blocked=true;
+ c.official.request=async(method,...args)=>{if(method==='v4/conversation/unsubscribe'&&blocked){await gate.promise;throw Object.assign(Error('old carrier gone'),{code:'release-unknown'})}return request(method,...args)};
+ try{await f.agent.connect();await tick();const old=f.agent.conversation.state.subscriptionId;const releasing=f.agent.conversation.suspend(),reopening=f.agent.conversation.connect();void reopening.catch(()=>{});await tick();c.change('failed','app-server-exited');assert.equal(f.agent.conversation.state.subscriptionId,null);c.change('ready');gate.resolve();assert.equal(await releasing,false);await reopening;await tick();assert.equal(f.agent.conversation.state.status,'live');assert.notEqual(f.agent.conversation.state.subscriptionId,old);assert.equal(c.official.subscriptions.size,1)}finally{gate.resolve();blocked=false;await f.agent.dispose();c.close()}
 });

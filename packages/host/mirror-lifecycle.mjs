@@ -1,11 +1,19 @@
 /** Official queue/ACK evidence only. Native RPC acceptance means bridge admission, not execution. */
 export function receiptClass(operation,queue=[]){
+  // Execution/projection evidence supersedes the earlier queue admission, including a queue
+  // item that has not yet disappeared from a transient promotion snapshot.
+  if(['projected','running','waiting','completed','interrupted'].includes(operation.state))return 'accepted';
   if(queue.some(item=>item.sourceCommandId===operation.commandId))return 'queued';
   const status=operation.ack?.status??operation.state;
   if(['rejected','stale','failed','noop','not-sent'].includes(status))return 'rejected';
-  if(['accepted','duplicate'].includes(operation.ack?.status))return operation.ack?.result?.type==='inputDisposition'&&operation.ack.result.delivery==='queue'&&!['projected','running','waiting','completed','interrupted'].includes(operation.state)?'queued':'accepted';
+  if(['accepted','duplicate'].includes(operation.ack?.status)){
+    const result=operation.ack.result;
+    const delivery=['inputAccepted','inputDisposition'].includes(result?.type)?result.delivery:
+      ['createSession','createSelectionSideSession','forkAssistant'].includes(result?.type)?result.input?.delivery:null;
+    return delivery==='queue'?'queued':'accepted';
+  }
   if(['outcome-unknown','sent-unconfirmed'].includes(operation.state))return 'outcome-unknown';
-  if(['accepted','duplicate','projected','running','waiting','completed','interrupted','accepted-awaiting-terminal'].includes(status))return operation.ack?.result?.type==='inputDisposition'&&operation.ack.result.delivery==='queue'&&!['projected','running','waiting','completed','interrupted'].includes(operation.state)?'queued':'accepted';
+  if(['accepted','duplicate','accepted-awaiting-terminal'].includes(status))return 'accepted';
   return 'pending';
 }
 export function mirrorLifecycle(agent,record){
