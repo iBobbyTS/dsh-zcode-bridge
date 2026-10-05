@@ -12,13 +12,16 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import vm from 'node:vm';
+import { RETIRED_TEMP_SKIP } from './helpers/legacy-retired.mjs';
 
 const require = createRequire(pathToFileURL(resolve('package.json')));
-const dshRequire = createRequire(pathToFileURL(resolve('../dsh/package.json')));
 const { buildSync } = require('esbuild');
-const { JSDOM } = dshRequire('jsdom');
 
-test('CB14-1: a late usage reply from the replaced owner never overwrites the current address view', async () => {
+// S01 ⑩: RETIRED_TEMP_SKIP — bundles packages/client/sources.mjs (fork-era foreign-source
+// layer) and resolved jsdom/tsconfig from the deleted ../dsh checkout. See
+// tests/helpers/legacy-retired.mjs for the classification and S02/S03 restore condition.
+test('CB14-1: a late usage reply from the replaced owner never overwrites the current address view', { skip: RETIRED_TEMP_SKIP }, async () => {
+  const { JSDOM } = require('jsdom');
   const dom = new JSDOM('<div id="root"></div>', { url: 'http://localhost' });
   globalThis.window = dom.window;
   globalThis.document = dom.window.document;

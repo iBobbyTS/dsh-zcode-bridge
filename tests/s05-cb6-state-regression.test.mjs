@@ -17,8 +17,10 @@ import vm from 'node:vm';
 
 const repo = process.cwd();
 const require = createRequire(pathToFileURL(resolve(repo, 'package.json')));
-const dshRequire = createRequire(pathToFileURL(resolve(repo, '../dsh/package.json')));
-const { JSDOM } = dshRequire('jsdom');
+// S01 ⑩: jsdom is this repository's own devDependency; the deleted ../dsh checkout is no
+// longer a prerequisite. This suite bundles only conversation-view.jsx (React + local
+// modules), so it is the one RESTORABLE suite of the five previously jsdom-gated files.
+const { JSDOM } = require('jsdom');
 const { buildSync, transformSync } = require('esbuild');
 
 test('CB6-1: restores free text draft, supports numeric keys, and replaces custom text without mixing old notes', async () => {

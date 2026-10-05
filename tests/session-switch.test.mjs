@@ -13,13 +13,16 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import vm from 'node:vm';
+import { RETIRED_TEMP_SKIP } from './helpers/legacy-retired.mjs';
 
 const require = createRequire(pathToFileURL(resolve('package.json')));
-const dshRequire = createRequire(pathToFileURL(resolve('../dsh/package.json')));
 const { buildSync } = require('esbuild');
-const { JSDOM } = dshRequire('jsdom');
 
-test('CB4-1: switching session A -> B at same render position displays B, targets B, and releases A observers', async () => {
+// S01 ⑩: RETIRED_TEMP_SKIP — bundles packages/client/sources.mjs (fork-era foreign-source
+// layer) plus a fork-only ../dsh UI path, and resolved jsdom/tsconfig from the deleted
+// ../dsh checkout. See tests/helpers/legacy-retired.mjs for the S02/S03 restore condition.
+test('CB4-1: switching session A -> B at same render position displays B, targets B, and releases A observers', { skip: RETIRED_TEMP_SKIP }, async () => {
+  const { JSDOM } = require('jsdom');
   const dom = new JSDOM('<div id="root"></div>', { url: 'http://localhost' });
   globalThis.window = dom.window;
   globalThis.document = dom.window.document;

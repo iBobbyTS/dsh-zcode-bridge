@@ -10,14 +10,16 @@ import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import vm from 'node:vm';
+import { RETIRED_TEMP_SKIP } from './helpers/legacy-retired.mjs';
 
 const repo = process.cwd();
 const require = createRequire(pathToFileURL(resolve(repo, 'package.json')));
-const dshRequire = createRequire(pathToFileURL(resolve(repo, '../dsh/package.json')));
-const { JSDOM } = dshRequire('jsdom');
 const { buildSync } = require('esbuild');
 
-test('CB5-1: continuous multi-character typing preserves focus, and commit migrates row to new group', async () => {
+// S01 ⑩: RETIRED_TEMP_SKIP — this suite bundles packages/client/sources.mjs (fork-era
+// foreign-source layer) and resolves jsdom/tsconfig from the deleted ../dsh checkout.
+// See tests/helpers/legacy-retired.mjs for the classification and restore condition.
+test('CB5-1: continuous multi-character typing preserves focus, and commit migrates row to new group', { skip: RETIRED_TEMP_SKIP }, async () => {
   const dom = new JSDOM('<div id="root"></div>', { url: 'http://localhost' });
   globalThis.window = dom.window;
   globalThis.document = dom.window.document;
