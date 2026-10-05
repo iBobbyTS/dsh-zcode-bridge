@@ -26,6 +26,7 @@ export function RuntimeLockedLabel({controls,sessionId}){
   return h('span',{'data-zcode-runtime-locked':'zcode',role:'group','aria-label':'ZCode runtime',style:{display:'inline-flex',gap:6,alignItems:'center'}},[
     h('span',{key:'label'},'ZCode · locked'),
     h('span',{key:'hint',role:'note',style:{color:'var(--dsw-alias-label-secondary)'}},info.hint??'官方 GUI 可能正在运行本会话'),
+    info.bindingHint?h('span',{key:'binding',role:'note','data-zcode-binding-hint':'',style:{color:'var(--dsw-alias-label-warning, var(--dsw-alias-label-secondary))'}},info.bindingHint):null,
   ]);
 }
 export function RuntimeHero({controls,create}){

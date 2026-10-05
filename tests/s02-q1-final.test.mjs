@@ -8,6 +8,7 @@ import {ZCODE_PROVIDER,ZCODE_STREAM_FAIL_CLOSED,createZCodeAdapter,installZCodeL
 import {guardController,installMirrorGuards} from '../packages/host/mirror-guards.mjs';
 import {resolveIdentity,resolveMirrorSelection,resolveDiscovered,selectionOutcome,selectionFailure,officialSelection} from '../packages/host/model-selection.mjs';
 import {ZCodeAgent} from '../packages/host/zcode-agent.mjs';
+import {ZCodeRuntime} from '../packages/host/zcode-runtime.mjs';
 import {RuntimeControls} from '../packages/client/runtime.mjs';
 import {ProviderBadge,RuntimeLockedLabel,installRuntimeControls} from '../packages/client/runtime-controls.mjs';
 import {MockPeer,sampleProviders,tick} from './helpers/zcode-runtime-fixture.mjs';
@@ -183,6 +184,41 @@ test('S02-Q1 locked-runtime display shows DSH for native and the locked hint for
  assert.match(zcode,/data-zcode-runtime-locked="zcode"/);assert.match(zcode,/官方 GUI 可能正在运行本会话/);
  const native=renderToStaticMarkup(createElement(RuntimeLockedLabel,{controls:controls('n')({runtime:'native',locked:true}),sessionId:'n'}));
  assert.match(native,/data-zcode-runtime-locked="native"/);assert.match(native,/>DSH</);assert.equal(native.includes('官方 GUI'),false);
+ const bound=renderToStaticMarkup(createElement(RuntimeLockedLabel,{controls:controls('b')({runtime:'zcode',hint:'官方 GUI 可能正在运行本会话',bindingHint:'Session created in the ZCode execution workspace; the picked workspace applies to native sessions only.'}),sessionId:'b'}));
+ assert.match(bound,/data-zcode-binding-hint/);assert.match(bound,/ZCode execution workspace/);
+});
+
+test('S02-Q1 wave4: zcode create binds the execution workspace and hints on a mismatched picker choice',async()=>{
+ const peer=new MockPeer();const registryAgents=new Map(),sessions=new Map(),workspaces=new Map(),created=[];
+ const registry={
+  resolveByPath:async path=>[...workspaces.values()].find(workspace=>workspace.path===path),
+  create:async(path,name)=>{created.push({path,name});const workspace={id:'ws-'+created.length,path,name,sessionIds:[],attachSession:async id=>{workspace.sessionIds.push(id)}};workspaces.set(workspace.id,workspace);return workspace},
+  get:id=>workspaces.get(id),
+ };
+ const ctx={
+  sessions:{prepare:(id,options)=>({id,seq:(options.seed??[]).length,snapshotEvents:()=>[],append(type,data,opts){return {type,data,...opts,seq:this.seq++,time:0}}}),enter:session=>{sessions.set(session.id,session);return ()=>sessions.delete(session.id)},get:id=>sessions.get(id)},
+  agents:{get:id=>registryAgents.get(id),register:async agent=>{registryAgents.set(agent.id,agent);return ()=>registryAgents.delete(agent.id)}},
+  workspaceRegistry:registry,
+ };
+ const store={records:new Map(),load:async()=>{},save:async()=>{},writing:Promise.resolve()};
+ const host={launcher:{state:{phase:'ready',auth:'authenticated',executionWorkspace:'/exec/workspace'},subscribe:()=>()=>{}},connect:async()=>{}};
+ const runtime=new ZCodeRuntime(ctx,host,{store,createScope:(scopeCtx,key)=>({ctx:{key,inject(){}},dispose:async()=>{}}),agentEvents:()=>({emit(){},waterfall:()=>Promise.resolve('unavailable')}),peerFactory:()=>peer});
+ try{
+  const mismatched=await runtime.create({sessionId:'z1',workspaceId:'picked-ws'});
+  assert.equal(mismatched.workspaceId,'ws-1');
+  assert.match(mismatched.hint,/execution workspace/);
+  const record=store.records.get('z1');
+  assert.equal(record.workspaceId,'ws-1');assert.equal(record.workspace,'/exec/workspace');assert.equal(record.cwd,'/exec/workspace');
+  assert.match(record.bindingHint,/execution workspace/);assert.equal(runtime.info('z1').bindingHint,record.bindingHint);
+  assert.deepEqual(workspaces.get('ws-1').sessionIds,['z1']);
+  const matched=await runtime.create({sessionId:'z2',workspaceId:'ws-1'});
+  assert.equal(matched.hint,null);assert.equal(store.records.get('z2').bindingHint,null);
+  assert.deepEqual(created,[{path:'/exec/workspace',name:'ZCode'}],'the execution workspace is registered once');
+  // A stale/picked workspaceId on a restored record cannot move the session.
+  const restored={id:'z3',officialId:'official-session',workspace:'/exec/workspace',cwd:'/exec/workspace',workspaceId:'picked-ws',authority:'official-host',events:[]};
+  store.records.set('z3',restored);await runtime.register(restored);
+  assert.deepEqual(workspaces.get('ws-1').sessionIds,['z1','z2','z3']);
+ }finally{await runtime.dispose()}
 });
 
 test('S02-Q1 installation registers additive badge/locked slots and never shadows conversation.input.model',()=>{

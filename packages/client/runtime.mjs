@@ -15,8 +15,15 @@ export class RuntimeControls {
       if(options.sessionId){const info=await controls.info(options.sessionId);if(info.runtime==='zcode')return original.call(this,options);if(this.list.getSnapshot().byId[options.sessionId])return original.call(this,options)}
       if(controls.snapshot.runtime==='native')return original.call(this,options);
       const created=await controls.call({operation:'create',...options,...(controls.snapshot.selection?{selection:controls.snapshot.selection}:{})});
-      // Original Session Controller publishes/retains the already-registered Agent identity.
-      const id=await original.call(this,{...options,sessionId:created.sessionId});await controls.info(id);
+      // A ZCode Session always binds to the launcher execution workspace; the picker's workspaceId/cwd
+      // is dropped here so the official create cwd matches the mirror Agent header (no session/conflict).
+      const {workspaceId:_pickedWorkspace,cwd:_pickedCwd,...rest}=options;
+      const attempt=extra=>original.call(this,{...rest,sessionId:created.sessionId,...extra});
+      let id;
+      if(created.workspaceId)id=await attempt({workspaceId:created.workspaceId}).catch(error=>{if(error?.code==='workspace/not-found'&&created.workspacePath)return attempt({cwd:created.workspacePath});throw error});
+      else if(created.workspacePath)id=await attempt({cwd:created.workspacePath});
+      else id=await attempt({});
+      await controls.info(id);
       // Default model binding runs after the official binding exists (the Hero opens the session
       // synchronously); a bounded wait in the callback absorbs the materialization tick.
       if(defaultSelection){const binding=Promise.resolve().then(()=>defaultSelection(id));controls.bindings.set(id,binding);void binding.catch(()=>{})}

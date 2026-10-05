@@ -24,7 +24,20 @@ export class RuntimeStore {
 
 export class ZCodeRuntime {
   agents=new Map();disposers=new Map();creating=new Map();disposed=false;persistError=null;historyListeners=new Map();
+  executionWorkspace=null;
   constructor(ctx,host,{store=new RuntimeStore(process.env.DSH_HOME??join(homedir(),'.dsh')),createScope,agentEvents,peerFactory=launcher=>new LauncherPeer(launcher),discoverModels}={}){Object.assign(this,{ctx,host,store,createScope,agentEvents,peerFactory,discoverModels:discoverModels??(async()=>[])})}
+  /** Register-or-resolve the launcher's execution workspace in DSH so a mirror Session's cwd can
+   * match the official Agent header. The official executor owns the run workspace; DSH only needs
+   * a proper workspace row to attach/present it. */
+  async ensureExecutionWorkspace(path){
+    if(this.executionWorkspace?.path===path)return this.executionWorkspace;
+    try{
+      let workspace=await this.ctx.workspaceRegistry.resolveByPath(path);
+      workspace??=await this.ctx.workspaceRegistry.create(path,'ZCode');
+      this.executionWorkspace={...workspace,path:workspace.path??path};
+    }catch(error){this.executionWorkspace={id:undefined,path,error:error.code??'workspace-unavailable'}}
+    return this.executionWorkspace;
+  }
   /** Discovered official account provider/model groups. Empty until a discovery seam is wired;
    * the structural home of later real account model discovery. */
   modelProviders(){return this.discoverModels()}
@@ -35,7 +48,8 @@ export class ZCodeRuntime {
     if(state?.phase!=='ready'||state.auth!=='authenticated'||!state.executionWorkspace)throw fault('execution-unavailable');
     this.peer??=this.peerFactory(this.host.launcher);
     this.handshake??=(async()=>{const hello=await this.peer.request('hello');await this.peer.request('initialize',negotiatedClientHello(hello,{clientId:'dsh-zcode-bridge',appVersion:'0.1.0'}))})();await this.handshake;
-    return {peer:this.peer,workspace:state.executionWorkspace,authority:'official-host'};
+    const execution=await this.ensureExecutionWorkspace(state.executionWorkspace);
+    return {peer:this.peer,workspace:execution.path??state.executionWorkspace,workspaceId:execution.id,authority:'official-host'};
   }
   async recoverAll(){
     if(this.recovering)return this.recovering;
@@ -69,8 +83,11 @@ export class ZCodeRuntime {
       if(record.snapshot){agent.mirror.accept(record.snapshot);for(const row of record.snapshot.rows.window)agent.turnFor(row.turnId)}
       releaseAgent=await this.ctx.agents.register(agent);
       this.agents.set(record.id,agent);this.disposers.set(record.id,async()=>{await agent.dispose();await releaseAgent();releaseSession();this.agents.delete(record.id)});
-      let workspace=record.workspaceId?this.ctx.workspaceRegistry.get(record.workspaceId):await this.ctx.workspaceRegistry.resolveByPath(record.cwd??record.workspace);
-      workspace??=await this.ctx.workspaceRegistry.create(record.cwd??record.workspace,'ZCode');await workspace.attachSession(record.id);
+      // A mirror Session always belongs to its official execution workspace; a stale/picked
+      // workspaceId in an older record must not move it. Self-heals restored records too.
+      const canonical=record.workspace??record.cwd;
+      let workspace=await this.ctx.workspaceRegistry.resolveByPath(canonical);
+      workspace??=await this.ctx.workspaceRegistry.create(canonical,'ZCode');await workspace.attachSession(record.id);
       void agent.connect().catch(error=>{record.error=error.code??'execution-unavailable';this.persist()});
       return agent;
     }catch(error){await agent?.dispose();await releaseAgent?.();releaseSession();throw error}
@@ -85,8 +102,12 @@ export class ZCodeRuntime {
     const task=this.createOwned(id,{workspaceId,cwd,selection,mode}).finally(()=>this.creating.delete(id));this.creating.set(id,task);return task;
   }
   async createOwned(id,{workspaceId,cwd,selection,mode}){
-    const {peer,workspace,authority}=await this.ensurePeer();
-    const commandId=newCommandId();const pending={id,workspace,authority,cwd:cwd??workspace,workspaceId,selection,mode,officialId:'',createCommandId:commandId};
+    const {peer,workspace,workspaceId:executionWorkspaceId,authority}=await this.ensurePeer();
+    // The official session is always created in the launcher execution workspace. A picker choice
+    // only governs native sessions; a mismatch is surfaced as an inline hint, never a conflict.
+    const mismatch=(workspaceId!==undefined&&executionWorkspaceId!==undefined&&workspaceId!==executionWorkspaceId)||(workspaceId===undefined&&cwd!==undefined&&cwd!==workspace);
+    const commandId=newCommandId();
+    const pending={id,workspace,authority,cwd:workspace,workspaceId:executionWorkspaceId,selection,mode,officialId:'',createCommandId:commandId,bindingHint:mismatch?'Session created in the ZCode execution workspace; the picked workspace applies to native sessions only.':null};
     // Creation ACK can be lost. The command id is durable before dispatch; callers never retry
     // with a fresh id after ambiguity.
     this.store.records.set(id,pending);await this.store.save();
@@ -94,9 +115,10 @@ export class ZCodeRuntime {
     let ack;
     try{ack=commandAckSchema.parse(await peer.request('v4/command',envelope))}catch(error){pending.error='create-outcome-unknown';await this.store.save();throw fault('create-outcome-unknown')}
     if(!['accepted','duplicate'].includes(ack.status)||!ack.result?.sessionId){pending.error=ack.reasonCode??'create-rejected';await this.store.save();throw fault(pending.error)}
-    pending.officialId=ack.result.sessionId;pending.createAck=ack;await this.store.save();await this.register(pending);return {sessionId:id,runtime:'zcode'};
+    pending.officialId=ack.result.sessionId;pending.createAck=ack;await this.store.save();await this.register(pending);
+    return {sessionId:id,runtime:'zcode',workspaceId:executionWorkspaceId,workspacePath:workspace,hint:pending.bindingHint};
   }
-  info(id){const record=this.store.records.get(id);return record?{runtime:'zcode',locked:true,historyGeneration:record.historyGeneration??0,selection:record.selection??null,mode:record.mode,error:record.error??this.persistError,hint:SHARED_GUI_HINT,officialAddress:{runtime:'zcode',authority:this.host.status?.sessionAuthority??record.authority,workspace:record.workspace,sessionId:record.officialId},approval:record.approval??null,lastCommand:record.lastCommand??null}: {runtime:'native',locked:true}}
+  info(id){const record=this.store.records.get(id);return record?{runtime:'zcode',locked:true,historyGeneration:record.historyGeneration??0,selection:record.selection??null,mode:record.mode,error:record.error??this.persistError,hint:SHARED_GUI_HINT,bindingHint:record.bindingHint??null,officialAddress:{runtime:'zcode',authority:this.host.status?.sessionAuthority??record.authority,workspace:record.workspace,sessionId:record.officialId},approval:record.approval??null,lastCommand:record.lastCommand??null}: {runtime:'native',locked:true}}
   async handle(payload){
     if(!payload||typeof payload!=='object'||Array.isArray(payload))throw fault('invalid-payload');
     const keys={create:['operation','sessionId','workspaceId','cwd','selection','mode'],info:['operation','sessionId'],select:['operation','sessionId','selection'],cancel:['operation','sessionId'],usage:['operation','sessionId']};
