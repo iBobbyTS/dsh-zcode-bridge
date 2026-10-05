@@ -11,8 +11,8 @@ const sourceError=code=>Object.assign(new Error(code),{code});
 /** Two fixed runtime routes. No Agent factory, foreign DSH scope, transcript, or plugin registry. */
 export class RuntimeSessions {
   #native;#rows=Object.freeze([]);#zcodeRows=Object.freeze([]);#availability=unavailable('not-connected');
-  #listeners=new Set();#availabilityListeners=new Set();#references=new Set();#subscriptions=[];
-  #directoryListeners=new Set();#selectionListeners=new Set();#deleted=new Set();#groups={};#settings;#settingsError=null;#catalog={complete:false,truncated:false,sharedGui:'unverified'};#directory;#query='';#page=0;#pageSize=20;#selected=null;#opened=new Map();#openVersion=0;
+  #listeners=new Set();#availabilityListeners=new Set();#references=new Set();#subscriptions=[];#healTimers=[];
+  #directoryListeners=new Set();#selectionListeners=new Set();#deleted=new Set();#groups={};#settings;#settingsError=null;#catalog={complete:false,truncated:false,sharedGui:'unverified'};#directory;#query='';#page=0;#pageSize=20;#selected=null;#opened=new Map();#openVersion=0;#transportFailures=0;
   #closed=false;#generation=0;#readVersion=0;#requests=new Set();#reads=new Set();#refresh;#scope;#disposal;#conversationResolver;
   constructor({sessions,rpc,connectionGeneration,nativeAuthority,conversationResolver,settings}){
     if(typeof nativeAuthority!=='string'||!nativeAuthority)throw sourceError('native-authority-required');
@@ -25,7 +25,10 @@ export class RuntimeSessions {
     this.#subscriptions.push(this.#native.list.subscribe(()=>this.#publish()));
     if(connectionGeneration)this.#subscriptions.push(connectionGeneration.subscribe(()=>{
       this.#generation++;this.#openVersion++;this.#refresh=undefined;for(const request of this.#requests)request.abort();
-      this.#scope=undefined;this.#catalog=Object.freeze({complete:false,truncated:false,sharedGui:'unverified'});this.#zcodeRows=Object.freeze([]);this.#availability=unavailable('host-unreachable');this.#publish();
+      this.#scope=undefined;this.#catalog=Object.freeze({complete:false,truncated:false,sharedGui:'unverified'});this.#zcodeRows=Object.freeze([]);this.#availability=unavailable('host-unreachable');this.#transportFailures=0;this.#publish();
+      // A reconnect invalidates every projection; without a fresh read the banner would stick on
+      // host-unreachable forever. Two bounded scheduled reads cover the transport re-establishing.
+      this.#scheduleHeal([300,1800]);
     }));
     this.#publish();
   }
@@ -117,6 +120,11 @@ export class RuntimeSessions {
     const operation=this.#read(address);this.#reads.add(operation);
     void operation.then(()=>this.#reads.delete(operation),()=>this.#reads.delete(operation));return operation;
   }
+  /** Bounded self-heal reads after a transport-level failure or reconnect. */
+  #scheduleHeal(delays){
+    for(const timer of this.#healTimers)clearTimeout(timer);
+    this.#healTimers=delays.map(delay=>setTimeout(()=>{this.#healTimers=[];if(!this.#closed)this.#requestRead()},delay));
+  }
   async #read(address){
     const generation=this.#generation,version=++this.#readVersion,abort=new AbortController();
     for(const request of this.#requests)request.abort();this.#requests.add(abort);
@@ -144,10 +152,13 @@ export class RuntimeSessions {
       this.#scope=Object.freeze({...value.scope});
       this.#zcodeRows=Object.freeze(address&&sameScope?[...this.#zcodeRows.filter(row=>runtimeSessionKey(address)!==row.key),...visible]:visible);
       this.#availability=Object.freeze({state:value.availability.state,reason:value.availability.reason,capabilities:Object.freeze({create:false,open:false,nativeAgent:false})});
-      this.#publish();
+      this.#transportFailures=0;this.#publish();
     }catch(error){
       if(!this.#closed&&generation===this.#generation&&version===this.#readVersion){
         this.#catalog=Object.freeze({complete:false,truncated:false,sharedGui:'unverified'});this.#zcodeRows=Object.freeze([]);this.#availability=unavailable(error.code??'host-unreachable');this.#publish();
+        // Transport-level failures (no structured code) get a few bounded retries so a read that
+        // raced the websocket handshake recovers by itself; structured host errors do not retry.
+        if(!error.code&&++this.#transportFailures<=3)this.#scheduleHeal([400*this.#transportFailures]);
         if(address)throw error;
       }
     }finally{this.#requests.delete(abort)}
@@ -193,6 +204,7 @@ export class RuntimeSessions {
   /** Withdraw subscriptions and requests; the Host plugin independently owns its child process. */
   dispose(){
     if(this.#disposal)return this.#disposal;this.#closed=true;this.#generation++;
+    for(const timer of this.#healTimers)clearTimeout(timer);this.#healTimers=[];
     for(const reference of this.#references)reference.release();
     const cleanups=[];for(const [conversation,remove] of this.#opened){remove();cleanups.push(conversation.cancel())}this.#opened.clear();this.#selected=null;this.#directoryListeners.clear();this.#selectionListeners.clear();
     for(const unsubscribe of this.#subscriptions)unsubscribe();this.#subscriptions=[];

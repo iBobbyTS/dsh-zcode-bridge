@@ -27,6 +27,10 @@ export const inject=['slots','locale','connection'];
 const zh={title:'ZCode',description:'官方安装与连接状态'},en={title:'ZCode',description:'Official installation and connection status'};
 /** A bundle-owned configuration page in the existing Plugins slot. */
 export function apply(ctx){
+  // Auto-start: the shared controller connects once per transport generation as soon as the
+  // plugin opens. There is deliberately no manual Connect gate; failures surface through status.
+  const connection=new StatusController(ctx.connection.rpc,ctx.connection.state);
+  ctx.effect(()=>{connection.start();return ()=>connection.dispose()},'zcode-bridge: auto connection');
   const remote=new RemoteStore(ctx.connection.rpc,{connectionGeneration:ctx.connection.generation});
   ctx.effect(()=>()=>remote.dispose(),'zcode-bridge: remote projection');
   ctx.effect(()=>ctx.locale.register('zcodeRemote',remoteLocales),'zcode-bridge: remote locale');
@@ -42,7 +46,7 @@ export function apply(ctx){
   ctx.effect(()=>installRuntimeSessions(ctx),'zcode-bridge: native source injection');
   ctx.inject(['runtimeSessions','layout'],scope=>{
     scope.effect(()=>scope.locale.register('zcodeDirectory',directoryLocales),'zcode-bridge: directory locale');
-    scope.slots.inject('sidebar.workspaces.runtimeDirectory',()=>scope.slots.register({name:'sidebar.workspaces.runtimeDirectory',id:'zcode-directory',locale:'zcodeDirectory',inject:()=>({sources:scope.runtimeSessions,onOpen:()=>scope.layout.selectPanel('zcode-session'),onOpenCatalog:()=>scope.layout.selectPanel('zcode-catalog'),onOpenInsights:()=>scope.layout.selectPanel('zcode-insights'),onOpenAutomation:()=>scope.layout.selectPanel('zcode-automation'),onOpenRemote:()=>scope.layout.selectPanel('zcode-remote')})},ZCodeDirectory));
+    scope.slots.inject('sidebar.workspaces.runtimeDirectory',()=>scope.slots.register({name:'sidebar.workspaces.runtimeDirectory',id:'zcode-directory',locale:'zcodeDirectory',inject:()=>({sources:scope.runtimeSessions,status:connection,onOpen:()=>scope.layout.selectPanel('zcode-session'),onOpenCatalog:()=>scope.layout.selectPanel('zcode-catalog'),onOpenInsights:()=>scope.layout.selectPanel('zcode-insights'),onOpenAutomation:()=>scope.layout.selectPanel('zcode-automation'),onOpenRemote:()=>scope.layout.selectPanel('zcode-remote')})},ZCodeDirectory));
     scope.slots.inject('main',()=>scope.slots.register({name:'main',key:'zcode-session',id:'zcode-session',locale:'zcodeDirectory',inject:()=>({sources:scope.runtimeSessions})},ZCodeSessionPanel));
     // Remote status reuses the existing main/sidebar seam and never creates a remote executor.
     scope.slots.inject('main',()=>scope.slots.register({name:'main',key:'zcode-remote',id:'zcode-remote',locale:'zcodeRemote',inject:()=>({sources:remote,onBack:()=>scope.layout.selectPanel('zcode-session')})},ZCodeRemotePanel));
@@ -55,7 +59,7 @@ export function apply(ctx){
     void scope.runtimeSessions.refresh();
   });
   ctx.effect(()=>ctx.locale.register('zcodeBridge',{zh,en}),'zcode-bridge: locale');
-  ctx.effect(()=>ctx.slots.inject('plugins.bundle.config',()=>ctx.slots.register({name:'plugins.bundle.config',id:'zcode-bridge-status',key:'@dsh-zcode/bridge',locale:'zcodeBridge',inject:()=>({rpc:ctx.connection.rpc,connectionState:ctx.connection.state})},StatusCard)),'zcode-bridge: page');
+  ctx.effect(()=>ctx.slots.inject('plugins.bundle.config',()=>ctx.slots.register({name:'plugins.bundle.config',id:'zcode-bridge-status',key:'@dsh-zcode/bridge',locale:'zcodeBridge',inject:()=>({controller:connection})},StatusCard)),'zcode-bridge: page');
 }
 /** R19 version banner and R20 fail-safe notices. Dismissal is a separate local preference and
  *  never clears the host fail-safe. */
@@ -76,11 +80,9 @@ export function ZCodeVersionBanner({compatibility,store}){
     {decision.restartRequired&&<p role="alert" data-testid="zcode-restart-required">An installed bridge update is not active; restart the host and client plugins to use the new version.</p>}
   </>;
 }
-export function StatusCard({rpc,connectionState,view}){
-  const controller=useMemo(()=>new StatusController(rpc,connectionState),[rpc,connectionState]);
-  const {status:state,busy}=useSyncExternalStore(controller.subscribe,controller.getSnapshot,controller.getSnapshot);
+export function StatusCard({controller,view}){
+  const {status:state}=useSyncExternalStore(controller.subscribe,controller.getSnapshot,controller.getSnapshot);
   const compatibilityStore=useMemo(()=>new CompatibilityStore(),[]);
-  useEffect(()=>{controller.start();return ()=>controller.dispose()},[controller]);
   useEffect(()=>()=>compatibilityStore.dispose(),[compatibilityStore]);
   if(view==='summary')return 'Official ZCode runtime connection';
   const install=state.installation;
@@ -101,6 +103,6 @@ export function StatusCard({rpc,connectionState,view}){
     {state.roundTrip&&<p>Official {state.roundTrip.method} response validated · {state.sessionCount} sessions in test workspace · {state.roundTrip.at}</p>}
     <p>{state.auth==='authenticated'?'Shared official task store · read-only':'Shared official GUI sessions: unverified (CLI default storage).'}</p>
     <p>{state.auth==='authenticated'?'Model requests are disabled for the S03 observation window.':'Model execution is unavailable until a supported official authentication path is verified.'}</p>
-    <button type="button" disabled={busy||state.connected} onClick={()=>void controller.connect()}>{busy?'Connecting…':state.connected?'Protocol connected':'Connect official runtime'}</button>
+    <p role="note">Auto-start: the official runtime connects automatically when this plugin opens; one attempt per reconnect.</p>
   </section>;
 }
