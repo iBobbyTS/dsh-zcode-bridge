@@ -26,7 +26,7 @@ test('S06 R1 A-M1 workspace presentation is admitted and read-only for execution
 });
 
 test('S06 R1 A-M1 both protocol copies assign readPresentation mandatory S06 and retain OldOwner',()=>{
- for(const file of ['PROTOCOL-COVERAGE.md','../PROTOCOL-COVERAGE.md']){const text=readFileSync(file,'utf8'),row=text.split('\n').find(line=>line.startsWith('| `workspace/readPresentation`'));assert.match(row,/\| 3600 \| S06 \|/);assert.match(row,/\| Y \| Y \| Y \| S06 \|$/);assert.equal(row.includes('延期'),false)}
+ for(const file of ['PROTOCOL-COVERAGE.md','../PROTOCOL-COVERAGE.md']){const text=readFileSync(file,'utf8'),row=text.split('\n').find(line=>line.startsWith('| `workspace/readPresentation`'));assert.match(row,/\| 3600 \| S06 \|/);assert.deepEqual(row.split('|').slice(5,9).map(cell=>cell.trim()),['Y','Y','Y','S06']);assert.equal(row.includes('延期'),false)}
 });
 
 test('S06 R1 B-M1 attachment disposition rechecks original source identity after paused persistence',async()=>{
