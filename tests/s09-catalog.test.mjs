@@ -234,7 +234,7 @@ test('S09 CatalogStore keeps a pending operation pending when the official cance
   } finally { store.dispose(); }
 });
 
-test('S09 CatalogStore refresh does not eager-read the unrendered pluginsList carrier', async () => {
+test('S06 CatalogStore refresh reads pluginsList for the rendered source status', async () => {
   const kinds = [];
   const rpc = rpcStub(payload => {
     if (payload.operation === 'read') { kinds.push(payload.kind); return { ok: true, value: {} } }
@@ -244,7 +244,7 @@ test('S09 CatalogStore refresh does not eager-read the unrendered pluginsList ca
   const store = new CatalogStore(rpc);
   try {
     await store.refresh();
-    assert.equal(kinds.includes('pluginsList'), false);
+    assert.equal(kinds.includes('pluginsList'), true);
     assert.equal(kinds.includes('mcpList'), true);
   } finally { store.dispose(); }
 });

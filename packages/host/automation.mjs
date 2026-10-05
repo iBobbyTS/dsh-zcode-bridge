@@ -1,3 +1,4 @@
+import { zcodeAutomationListResultSchema, zcodeAutomationCreateResultSchema, zcodeAutomationUpdateResultSchema, zcodeAutomationCheckTaskBindingResultSchema, zcodeOffPeakListResultSchema, zcodeOffPeakCreateResultSchema } from './vendor/zcode/v4.mjs';
 import { BridgeError } from './installation.mjs';
 import { HostCallbackError } from './protocol.mjs';
 import {
@@ -66,7 +67,8 @@ const identityOf = params => {
  */
 export class AutomationClient {
   #peer; #auth; #closed = false; #records = new Map(); #off = [];
-  constructor(peer, { auth = 'unconfirmed' } = {}) {
+  constructor(peer, { auth = 'unconfirmed', hostBacked = false } = {}) {
+    if(hostBacked){if(!peer||typeof peer.request!=='function')throw new BridgeError('automation-context-invalid');this.#peer=peer;this.#auth=auth;this.hostBacked=true;return;}
     if (!peer || typeof peer.registerRequestHandler !== 'function' || typeof peer.onReverseSettled !== 'function') throw new BridgeError('automation-context-invalid');
     this.#peer = peer; this.#auth = auth;
     for (const method of Object.keys(REVERSE_CARRIERS)) this.#off.push(peer.registerRequestHandler(method, (message, options) => this.#reverse(message, options)));
@@ -76,10 +78,20 @@ export class AutomationClient {
   get admission() {
     if (this.#closed) return { allowed: false, reason: 'closed' };
     if (this.#peer.closed) return { allowed: false, reason: 'host-unreachable' };
-    return { allowed: false, reason: AUTOMATION_MANAGEMENT_REASON };
+    return this.hostBacked ? {allowed:true,reason:null} : { allowed: false, reason: AUTOMATION_MANAGEMENT_REASON };
   }
   /** Honest projection: management/feedback unavailable, off-peak entitlement UNKNOWN, execution gated. */
+  async read(kind,params={},options={}) {return this.request(kind,params,false,options)}
+  async operate(kind,params={},options={}) {return this.request(kind,params,true,options)}
+  async request(kind,params,write,options){
+    const carriers={checkTaskBinding:['automation/checkTaskBinding',zcodeAutomationCheckTaskBindingParamsSchema,zcodeAutomationCheckTaskBindingResultSchema],list:['automation/list',zcodeAutomationListParamsSchema,zcodeAutomationListResultSchema],offPeakList:['offPeak/list',zcodeOffPeakListParamsSchema,zcodeOffPeakListResultSchema],create:['automation/create',zcodeAutomationCreateParamsSchema,zcodeAutomationCreateResultSchema],update:['automation/update',zcodeAutomationUpdateParamsSchema,zcodeAutomationUpdateResultSchema],offPeakCreate:['offPeak/create',zcodeOffPeakCreateParamsSchema,zcodeOffPeakCreateResultSchema]};
+    const carrier=Object.hasOwn(carriers,kind)?carriers[kind]:null;
+    if(!this.hostBacked||!this.admission.allowed||!carrier||write!==!['list','offPeakList','checkTaskBinding'].includes(kind))throw new BridgeError('automation-operation-denied');
+    const parsed=carrier[1].safeParse(params);if(!parsed.success)throw new BridgeError('automation-params-invalid');
+    return carrier[2].parse(await this.#peer.request(carrier[0],parsed.data,options));
+  }
   state() {
+    if(this.hostBacked)return {admission:this.admission,management:{available:this.admission.allowed,reason:this.admission.reason},offPeak:{available:this.admission.allowed,reason:this.admission.reason,entitlement:{state:'unknown',reason:OFF_PEAK_ENTITLEMENT_REASON}}};
     return structuredClone({
       management: { available: false, reason: AUTOMATION_MANAGEMENT_REASON, carriers: AUTOMATION_CARRIERS.filter(c => c.domain === 'automation') },
       offPeak: {

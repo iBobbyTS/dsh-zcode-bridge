@@ -18,7 +18,7 @@ export class InsightsStore {
   constructor(rpc,{connectionGeneration}={}){
     if(!rpc||typeof rpc.call!=='function')throw err('insights-rpc-required');
     this.#rpc=rpc;
-    if(connectionGeneration)connectionGeneration.subscribe(()=>this.#reset());
+    if(connectionGeneration)this.offGeneration=connectionGeneration.subscribe(()=>this.#reset());
   }
   getSnapshot=()=>this.#snapshot;
   subscribe=listener=>{if(this.#closed)return ()=>{};this.#listeners.add(listener);return ()=>this.#listeners.delete(listener)};
@@ -71,5 +71,5 @@ export class InsightsStore {
     return operation;
   }
   /** Scoped per-session usage is read through the session's own conversation owner, not this store. */
-  dispose(){if(this.#closed)return;this.#closed=true;for(const controller of this.#reads)controller.abort();this.#reads.clear();this.#listeners.clear();this.#publish(initial())}
+  dispose(){if(this.#closed)return;this.#closed=true;this.offGeneration?.();for(const controller of this.#reads)controller.abort();this.#reads.clear();this.#listeners.clear();this.#publish(initial())}
 }

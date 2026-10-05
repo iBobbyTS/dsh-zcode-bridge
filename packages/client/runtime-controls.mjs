@@ -59,6 +59,12 @@ export function RuntimeLifecycleDock({controls,sessionId}){
     editing?.sessionId===sessionId?h('form',{key:'editor',onSubmit:event=>{event.preventDefault();void act('queue',{action:'edit',queueItemId:editing.id,newText:editing.text})}},[
       h('input',{key:'input','aria-label':'Official queue text',value:editing.text,onChange:event=>setEditing({...editing,text:event.target.value})}),h('button',{key:'save',type:'submit',disabled:!ready},'保存'),h('button',{key:'cancel',type:'button',onClick:()=>setEditing(null)},'取消编辑'),
     ]):null,
+    ...(state.heldInputs??[]).map(input=>h('div',{key:'held-'+input.commandId,role:'dialog','aria-label':'Paused queue disposition','data-zcode-held-input':input.commandId},[
+      h('p',{key:'text'},input.text),h('p',{key:'items'},`确认官方暂停队列：${input.items.map(item=>item.queueItemId+' / '+item.sourceCommandId).join(', ')}`),
+      h('button',{key:'keep',type:'button',disabled:!ready,onClick:()=>void act('heldInput',{commandId:input.commandId,disposition:'keepQueueAndSend'})},'保留队列并发送'),
+      h('button',{key:'clear',type:'button',disabled:!ready,onClick:()=>void act('heldInput',{commandId:input.commandId,disposition:'clearQueueAndSend'})},'清空已确认队列并发送'),
+      h('button',{key:'cancel',type:'button',disabled:busy,onClick:()=>void act('heldInput',{commandId:input.commandId,disposition:'cancel'})},'取消确认'),
+    ])),
     ...receipts.map(receipt=>h('div',{key:receipt.commandId,role:receipt.receiptClass==='rejected'?'alert':'status','data-zcode-receipt':receipt.receiptClass,'data-zcode-command':receipt.commandId},`${RECEIPTS[receipt.receiptClass]??receipt.receiptClass}${receipt.reason?'：'+receipt.reason:''}`)),
     error?h('div',{key:'error',role:'alert'},error):null,
   ]);

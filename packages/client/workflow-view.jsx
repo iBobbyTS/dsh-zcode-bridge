@@ -67,8 +67,7 @@ export function ZCodeWorkflowGraph({display}){
 
 function SavedWorkflow({entry,controller,reads,writes,onClose}){
   const read=useOfficialRead(controller,reads),change=useOfficialRead(controller,writes);
-  const [description,setDescription]=useState('');
-  const [confirmDelete,setConfirmDelete]=useState(false);
+  const [description,setDescription]=useState(''),[args,setArgs]=useState('{}');
   const params={name:entry.name,scope:entry.scope};
   const open=()=>read.run(signal=>controller.workflowManage('get',params,{signal}));
   return <section style={style} data-testid="zcode-workflow-saved">
@@ -85,10 +84,9 @@ function SavedWorkflow({entry,controller,reads,writes,onClose}){
         if(result.ok)void open();return result;
       })}>Save metadata</button>
     </>}
-    <button disabled title="runtime-restricted">Run · gated</button>
+    <label>Workflow arguments (JSON) <textarea aria-label="Workflow arguments" value={args} onChange={e=>setArgs(e.target.value)}/></label>
+    <button disabled={!controller.sessionId||change.busy} onClick={()=>void change.run(()=>controller.submit({type:'startSavedWorkflow',payload:{name:entry.name,scope:entry.scope,args:JSON.parse(args)}}))}>Run saved workflow</button>
     {entry.scope==='global'&&<button disabled={!writes||change.busy} onClick={()=>void change.run(signal=>controller.workflowManage('move',{name:entry.name},{signal}))}>Move global to project</button>}
-    <label><input type="checkbox" checked={confirmDelete} onChange={e=>setConfirmDelete(e.target.checked)}/>Confirm deletion of {entry.scope}/{entry.name}</label>
-    <button disabled={!writes||change.busy||!confirmDelete} onClick={()=>void change.run(signal=>controller.workflowManage('delete',params,{signal}))}>Delete definition</button>
     <ReadStatus read={change}/>{change.value?.ok===true&&<p>Official management acknowledged. Refresh the directory to read its current state.</p>}
   </section>;
 }
@@ -115,14 +113,14 @@ function Artifact({artifact,runId,controller,allowed}){
 
 function RunDetail({run,display,controller,allowed,cancelAllowed}){
   const artifacts=useOfficialRead(controller,allowed),workspace=useOfficialRead(controller,allowed),events=useOfficialRead(controller,allowed),node=useOfficialRead(controller,allowed),cancel=useOfficialRead(controller,cancelAllowed);
-  const [cursor,setCursor]=useState(undefined);
+  const [cursor,setCursor]=useState(undefined),[model,setModel]=useState(''),[concurrency,setConcurrency]=useState(''),[defaultModel,setDefaultModel]=useState(false),[defaultLimit,setDefaultLimit]=useState(false);
   return <section data-testid="zcode-workflow-run" style={style}>
     <h4>{run.label??run.runId} · {run.status}</h4>
     <p>Run {run.runId} · {run.stopReason??run.failureCode??run.error??'no reported failure'}{run.resumedFrom?` · resumed from ${run.resumedFrom}`:''}{run.supersededBy?` · superseded by ${run.supersededBy}`:''}</p>
     {run.failureMessage&&<p role="alert">{run.failureMessage}</p>}
-    <p>Resume: {run.resumable===true?'officially resumable · execution gated':'not confirmed resumable'} · run settings gated (may start a successor run).</p>
-    <button disabled>Resume · gated</button><button disabled>Amend run settings · gated</button>
-    <button disabled={!cancelAllowed||cancel.busy||!['pending','running'].includes(run.status)} onClick={()=>void cancel.run(signal=>controller.submitWorkflowCommand({type:'cancelBackgroundWork',payload:{workId:run.runId}},{signal}))}>Cancel official run</button>
+    <p>Resume: {run.resumable===true?'officially resumable':'not confirmed resumable'}. Amending settings may start a successor run.</p>
+    <button disabled={!cancelAllowed||cancel.busy} onClick={()=>void cancel.run(()=>controller.submit({type:'resumeWorkflowRun',payload:{workId:run.runId}}))}>Resume workflow</button><label>Subagent model <input aria-label="Workflow subagent model" value={model} onChange={e=>setModel(e.target.value)}/></label><label>Concurrency <input aria-label="Workflow concurrency" type="number" min="1" value={concurrency} onChange={e=>setConcurrency(e.target.value)}/></label><label><input type="checkbox" checked={defaultModel} onChange={e=>setDefaultModel(e.target.checked)}/>Use session model</label><label><input type="checkbox" checked={defaultLimit} onChange={e=>setDefaultLimit(e.target.checked)}/>Use host concurrency limit</label><button disabled={!cancelAllowed||cancel.busy||(!model&&!concurrency&&!defaultModel&&!defaultLimit)} onClick={()=>void cancel.run(()=>controller.submit({type:'amendWorkflowRunSettings',payload:{workId:run.runId,...(defaultModel?{subagentModel:null}:model?{subagentModel:model}:{}),...(defaultLimit?{maxConcurrency:null}:concurrency?{maxConcurrency:Number(concurrency)}:{})}}))}>Amend run settings</button>
+    <button disabled={!cancelAllowed||cancel.busy||!['pending','running'].includes(run.status)} onClick={()=>void cancel.run(signal=>controller.submit({type:'cancelBackgroundWork',payload:{workId:run.runId}}))}>Cancel official run</button>
     <ReadStatus read={cancel}/>{cancel.value&&<p role="status">Cancel {cancel.value.state} · {cancel.value.ack?.reasonCode??''}. ACK does not fabricate a settled run.</p>}
     <p>Model: {run.subagentModel??'session default / unreported'} · concurrency: {run.concurrency?.limit??'unreported'} · current phase: {run.currentPhase??'unreported'}</p>
     {run.phaseNames?.map((name,i)=><p key={name}>{name}{run.phaseAlongside?.[i]?.length?` · alongside ${run.phaseAlongside[i].map(j=>run.phaseNames[j]).join(', ')}`:''}</p>)}
@@ -152,8 +150,7 @@ export function ZCodeWorkflowPanel({state,controller}){
   const tool=run?.toolCallId?state.snapshot?.rows?.window?.find(r=>r.kind==='toolCall'&&r.toolCallId===run.toolCallId):null;
   return <details data-testid="zcode-workflow-panel" style={{...style,padding:'8px 16px',borderBottom:'1px solid #d1d5db'}}>
     <summary>Workflows · official definitions, graph and published artifacts</summary>
-    <p data-testid="zcode-workflow-gate">Save definition: unavailable · SaveWorkflow tool carrier required. Run / resume / amend: gated · runtime-restricted · entitlement unknown.</p>
-    <button disabled>Save new definition · unavailable</button>
+    <p data-testid="zcode-workflow-gate">Official definitions and run receipts. Entitlement is determined by the official runtime on each request.</p>
     <label>Definition scope <select value={scope} onChange={e=>{setScope(e.target.value);setEntry(null)}}><option value="project">Project</option><option value="global">Global</option></select></label>
     <Directory key={scope} controller={controller} scope={scope} reads={reads} onOpen={setEntry}/>
     {entry&&<SavedWorkflow key={`${entry.scope}:${entry.name}`} entry={entry} controller={controller} reads={reads} writes={writes} onClose={()=>setEntry(null)}/>}

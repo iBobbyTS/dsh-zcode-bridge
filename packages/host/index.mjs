@@ -85,6 +85,7 @@ export function apply(ctx,config={}) {
     // Cordis' Service getter captures a shadow context. Bind the already-injected WebServer
     // explicitly so Connection's owned route effect retains this caller's dependency.
     webCtx.extend({webServer:webCtx.webServer}).connection.rpc.handle(CHANNEL,async(endpoint,payload,signal)=>{
+      if(endpoint==='parity'||endpoint==='bridgeSettings'){try{if(!runtime)throw Object.assign(new Error(),{code:'runtime-starting'});if(endpoint==='bridgeSettings'&&payload!==undefined&&payload!==null&&(typeof payload!=='object'||Array.isArray(payload)||Object.keys(payload).some(key=>key!=='catalogSync')))throw Object.assign(new Error(),{code:'invalid-payload'});return {ok:true,value:endpoint==='parity'?await runtime.parity.handle(payload,signal):await runtime.bridgeSettings(payload)}}catch(error){return {ok:false,error:{code:error.code??'parity-unavailable',message:'Official capability request did not complete',details:{}}}}}
       if(endpoint==='runtime'){try{if(!runtime)throw Object.assign(new Error(),{code:'runtime-starting'});return {ok:true,value:await runtime.handle(payload)}}catch(error){return {ok:false,error:{code:error.code??'runtime-unavailable',message:'ZCode runtime operation unavailable',details:{}}}}}
       if(endpoint===sourceEndpoint){
         if(!payload||typeof payload!=='object'||Array.isArray(payload)||Object.keys(payload).some(key=>key!=='address'))return {ok:false,error:{code:'invalid-payload',message:'Only a Session address may be queried',details:{}}};

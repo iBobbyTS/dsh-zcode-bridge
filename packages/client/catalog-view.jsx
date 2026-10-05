@@ -4,11 +4,11 @@ import {operationOutcome} from './catalog.mjs';
 export const catalogLocales={en:{
   catalog:'ZCode MCP, plugins and skills',restricted:'Official runtime is restricted; account state stays authoritative.',refresh:'Refresh official directory',unavailable:'Directory unavailable',authUnknown:'Official authentication is unavailable; marketplace and account-gated actions may be denied by the official runtime.',
   mcp:'MCP servers',noMcp:'No MCP server is currently configured.',pluginReference:'Plugin references',skills:'Skill references',marketplaces:'Marketplaces',installed:'Installed plugins',available:'Available plugins',diagnostics:'Official diagnostics',installedBadge:'Installed',enabled:'Enabled',disabled:'Disabled',
-  enable:'Enable',disable:'Disable',install:'Install',uninstall:'Uninstall',update:'Update',configure:'Configure',resetConfig:'Reset config',addMarketplace:'Add marketplace',updateMarketplace:'Refresh',removeMarketplace:'Remove',validate:'Validate',describe:'Describe',cancel:'Cancel',pending:'Awaiting official result',completed:'Official result',failed:'Official operation failed',cancelled:'Cancelled',verifyAndInstall:'Verify and install',pluginName:'Plugin name',marketplace:'Marketplace',scope:'Scope',source:'Marketplace source',options:'Options (JSON)',dryRun:'Dry run',unknownKind:'Unrecognized official entry',noOperations:'No management operation yet.',components:'Components',compatibility:'Compatibility',ok:'Valid',invalid:'Invalid'
+  enable:'Enable',disable:'Disable',install:'Install',uninstall:'Uninstall',update:'Update',configure:'Configure',resetConfig:'Reset config',addMarketplace:'Add marketplace',updateMarketplace:'Refresh',removeMarketplace:'Remove',validate:'Validate',describe:'Describe',restoreBuiltin:'Restore built-in',cancel:'Cancel',pending:'Awaiting official result',completed:'Official result',failed:'Official operation failed',cancelled:'Cancelled',verifyAndInstall:'Verify and install',pluginName:'Plugin name',marketplace:'Marketplace',scope:'Scope',source:'Marketplace source',options:'Options (JSON)',dryRun:'Dry run',unknownKind:'Unrecognized official entry',noOperations:'No management operation yet.',components:'Components',compatibility:'Compatibility',ok:'Valid',invalid:'Invalid'
 },zh:{
   catalog:'ZCode MCP、插件与 Skills',restricted:'官方 runtime 受限；账号状态以官方为准。',refresh:'刷新官方目录',unavailable:'目录不可用',authUnknown:'官方认证不可用；市场与账号门禁操作可能被官方运行时拒绝。',
   mcp:'MCP 服务器',noMcp:'当前没有配置 MCP 服务器。',pluginReference:'插件引用',skills:'Skill 引用',marketplaces:'插件市场',installed:'已安装插件',available:'可安装插件',diagnostics:'官方诊断',installedBadge:'已安装',enabled:'已启用',disabled:'已禁用',
-  enable:'启用',disable:'禁用',install:'安装',uninstall:'卸载',update:'更新',configure:'配置',resetConfig:'重置配置',addMarketplace:'添加市场',updateMarketplace:'刷新',removeMarketplace:'移除',validate:'校验',describe:'详情',cancel:'取消',pending:'等待官方结果',completed:'官方结果',failed:'官方操作失败',cancelled:'已取消',verifyAndInstall:'校验并安装',pluginName:'插件名',marketplace:'市场',scope:'作用域',source:'市场来源',options:'配置项（JSON）',dryRun:'试运行',unknownKind:'未识别的官方条目',noOperations:'尚无管理操作。',components:'组件',compatibility:'兼容性',ok:'有效',invalid:'无效'
+  enable:'启用',disable:'禁用',install:'安装',uninstall:'卸载',update:'更新',configure:'配置',resetConfig:'重置配置',addMarketplace:'添加市场',updateMarketplace:'刷新',removeMarketplace:'移除',validate:'校验',describe:'详情',restoreBuiltin:'恢复内置插件',cancel:'取消',pending:'等待官方结果',completed:'官方结果',failed:'官方操作失败',cancelled:'已取消',verifyAndInstall:'校验并安装',pluginName:'插件名',marketplace:'市场',scope:'作用域',source:'市场来源',options:'配置项（JSON）',dryRun:'试运行',unknownKind:'未识别的官方条目',noOperations:'尚无管理操作。',components:'组件',compatibility:'兼容性',ok:'有效',invalid:'无效'
 }};
 const fallback=key=>catalogLocales.en[key];
 const newOpId=()=>globalThis.crypto?.randomUUID?.()??`s09-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -20,7 +20,7 @@ export function ZCodeCatalogPanel({sources,onBack,t=fallback}){
   const state=useSyncExternalStore(sources.subscribe,sources.getSnapshot,sources.getSnapshot);
   const [busy,setBusy]=useState(false),[actionError,setActionError]=useState(null);
   useEffect(()=>{void sources.refresh().catch(()=>{})},[sources]);
-  const [pluginName,setPluginName]=useState(''),[marketplace,setMarketplace]=useState(''),[source,setSource]=useState(''),[options,setOptions]=useState('{}');
+  const [pluginName,setPluginName]=useState(''),[marketplace,setMarketplace]=useState(''),[source,setSource]=useState(''),[options,setOptions]=useState('{}'),[suggested,setSuggested]=useState('');
   const admission=state.admission??{reads:{allowed:false},writes:{allowed:false}};
   const run=async action=>{setBusy(true);setActionError(null);try{return await action()}catch(error){setActionError(rowText(error.code??'catalog-unavailable',error.message));return null}finally{setBusy(false)}};
   const operate=(action,params,id)=>run(()=>sources.operate(action,params,id??newOpId()));
@@ -30,7 +30,7 @@ export function ZCodeCatalogPanel({sources,onBack,t=fallback}){
     {onBack&&<button type="button" onClick={()=>onBack()}>Back</button>}
     <p role="status">{admission.reads?.allowed?`reads · ${admission.writes?.allowed?'writes':'read-only'}`:`${t('restricted')} (${admission.reads?.reason??'unknown'})`}{state.auth&&state.auth!=='confirmed'?` · ${state.auth}`:''}</p>
     {admission.reads?.allowed&&state.auth!=='confirmed'&&<p role="note">{t('authUnknown')}</p>}
-    <button type="button" disabled={busy||!admission.reads?.allowed} onClick={()=>void run(()=>sources.refresh())}>{t('refresh')}</button>
+    <button type="button" disabled={busy} onClick={()=>void run(()=>sources.refresh())}>{t('refresh')}</button>
     {state.error&&<p role="alert">{t('failed')}: {rowText(state.error.code,state.error.message)}</p>}
     {actionError&&<p role="alert">{t('failed')}: {actionError}</p>}
 
@@ -41,16 +41,17 @@ export function ZCodeCatalogPanel({sources,onBack,t=fallback}){
     {section('overview',value=><>
       {value.capability?.supported===false&&<p role="note">{t('unavailable')}: {value.capability.reason??'official'}</p>}
       <ul>{value.marketplaces.map(m=><li key={m.id} data-marketplace={m.id}>{m.name} · {m.pluginCount} plugins{m.refreshFailure&&<span role="alert"> · {rowText(m.refreshFailure.code,m.refreshFailure.message)}</span>}
-        {admission.writes?.allowed&&<><button type="button" disabled={busy} onClick={()=>void operate('marketplaceUpdate',{marketplace:m.id})}>{t('updateMarketplace')}</button><button type="button" disabled={busy} onClick={()=>void operate('marketplaceRemove',{marketplace:m.id})}>{t('removeMarketplace')}</button></>}</li>)}</ul>
+        {admission.writes?.allowed&&<><button type="button" disabled={busy} onClick={()=>void operate('marketplaceUpdate',{marketplace:m.id})}>{t('updateMarketplace')}</button></>}</li>)}</ul>
       <h5>{t('installed')}</h5>
       <ul>{value.installedPlugins.map(p=><li key={p.id} data-installed-plugin={p.id}>{p.name}@{p.marketplace} · {p.version??'—'} · {p.enabled?t('enabled'):t('disabled')}
-        {admission.writes?.allowed&&<><button type="button" disabled={busy} onClick={()=>void operate('setEnabled',{pluginId:p.id,enabled:!p.enabled,scope:'workspace'})}>{p.enabled?t('disable'):t('enable')}</button><button type="button" disabled={busy} onClick={()=>void operate('update',{pluginId:p.id})}>{t('update')}</button><button type="button" disabled={busy} onClick={()=>void operate('resetConfig',{pluginId:p.id,scope:'workspace'})}>{t('resetConfig')}</button><button type="button" disabled={busy} onClick={()=>void operate('uninstall',{pluginId:p.id,removeCache:true})}>{t('uninstall')}</button></>}</li>)}</ul>
+        {admission.writes?.allowed&&<><button type="button" disabled={busy} onClick={()=>void operate('setEnabled',{pluginId:p.id,enabled:!p.enabled,scope:'workspace'})}>{p.enabled?t('disable'):t('enable')}</button><button type="button" disabled={busy} onClick={()=>void operate('update',{pluginId:p.id})}>{t('update')}</button><button type="button" disabled={busy} onClick={()=>void operate('restoreBuiltin',{pluginId:p.id})}>{t('restoreBuiltin')}</button><button type="button" disabled={busy} onClick={()=>void operate('resetConfig',{pluginId:p.id,scope:'workspace'})}>{t('resetConfig')}</button></>}</li>)}</ul>
       <h5>{t('available')}</h5>
       <ul>{value.availablePlugins.map(p=><li key={p.id} data-available-plugin={p.id}>{p.name}@{p.marketplace} · {p.version??'—'} · {p.installed?t('installedBadge'):''}
         {admission.writes?.allowed&&!p.installed&&<button type="button" disabled={busy} onClick={()=>void operate('install',{pluginName:p.name,marketplace:p.marketplace,scope:'workspace'})}>{t('install')}</button>}</li>)}</ul>
       {value.diagnostics?.length>0&&<ul aria-label={t('diagnostics')}>{value.diagnostics.map((d,i)=><li key={i} role="alert">{rowText(d.code,d.message)}</li>)}</ul>}
     </>)}
 
+    <details><summary>{t('installed')} · source status</summary>{section('list',value=><pre style={{whiteSpace:'pre-wrap'}}>{JSON.stringify(value,null,2)}</pre>)}</details>
     <h4>{t('pluginReference')}</h4>
     {section('reference',value=><ul>{value.plugins.map(p=><li key={p.pluginId} data-reference-plugin={p.pluginId}>{p.name}@{p.marketplace} · {p.enabled?t('enabled'):t('disabled')}{p.conflictingPluginIds?.length?` · conflict: ${p.conflictingPluginIds.join(',')}`:''}</li>)}</ul>)}
 
@@ -58,6 +59,7 @@ export function ZCodeCatalogPanel({sources,onBack,t=fallback}){
     {section('skills',value=><ul>{value.skills.map(s=><li key={s.id} data-skill-id={s.id}><strong>{s.name}</strong> · {s.scope}{s.pluginName?` · ${s.pluginName}`:''}{s.enabled?'':` · ${t('disabled')}`}</li>)}</ul>)}
 
     {admission.writes?.allowed&&<>
+      <label>Official suggested plugin ID <input aria-label="Suggested plugin ID" value={suggested} onChange={e=>setSuggested(e.target.value)}/></label><button type="button" disabled={busy||!suggested.trim()} onClick={()=>void operate('resolveSuggestedReference',{stableId:suggested.trim(),operationId:newOpId(),clientMode:'desktop-continuous',deliveryKind:'desktop-continuous'})}>Resolve suggested plugin</button>
       <h4>{t('addMarketplace')}</h4>
       <label>{t('source')}<input value={source} onChange={e=>setSource(e.target.value)}/></label>
       <button type="button" disabled={busy||!source.trim()} onClick={()=>void operate('marketplaceAdd',{source:source.trim(),dryRun:true})}>{t('dryRun')}</button>

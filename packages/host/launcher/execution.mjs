@@ -1,10 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { parseCommandEnvelope } from '../vendor/zcode/v4.mjs';
+import { PARITY_METHODS, PARITY_CALLS, requestParity } from './parity.mjs';
 import { fault } from './config.mjs';
 
-export const EXECUTION_CALLS = Object.freeze(['helloConversationV4','initializeConversationV4','subscribeConversationV4','resyncConversationV4','unsubscribeConversationV4','sendConversationCommandV4','queryConversationCommandsV4'].map(name=>'zcode-agent.'+name));
-export const EXECUTION_EVENTS = new Set(['zcode-agent.onDynamicConversationFrame']);
-export const EXECUTION_COMMANDS = new Set(['createSession','sendText','stop','resolveInteraction','switchModelConfig','renameSession','editQueueItem','sendQueuedNow']);
+export const EXECUTION_CALLS = Object.freeze(['helloConversationV4','initializeConversationV4','subscribeConversationV4','resyncConversationV4','unsubscribeConversationV4','sendConversationCommandV4','queryConversationCommandsV4'].map(name=>'zcode-agent.'+name).concat(PARITY_CALLS));
+export const EXECUTION_EVENTS = new Set(['zcode-agent.onDynamicConversationFrame','zcode-agent.onDynamicPluginOperationProgress']);
+export const EXECUTION_COMMANDS = new Set(['createSession','sendText','stop','resolveInteraction','switchModelConfig','renameSession','editQueueItem','sendQueuedNow','reorderQueueItem','setAutoDrain','setFollowupMode','switchCollaborationMode','pauseGoal','resumeGoal','sendGoalCommand','setAssistantFeedback','startSavedWorkflow','resumeWorkflowRun','amendWorkflowRunSettings','cancelBackgroundWork']);
 const methods = {
   'v4/conversation/subscribe':'subscribeConversationV4',
   'v4/conversation/resync':'resyncConversationV4',
@@ -29,14 +30,18 @@ export function createExecutionRelay({channel,workspacePath,workspaceIdentity,em
       try {
         if(method==='hello')return await channel.call('zcode-agent','helloConversationV4',[]);
         if(method==='initialize')return await channel.call('zcode-agent','initializeConversationV4',[params]);
-        const name=methods[method];if(!name)throw fault('execution-method-denied');
+        const name=methods[method];
+        const parity=Object.hasOwn(PARITY_METHODS,method)||['process/childProcesses','automation/list','automation/checkTaskBinding','automation/create','automation/update','offPeak/list','offPeak/create','bridge/preferences/read','bridge/preferences/update'].includes(method);
+        if(!name&&!parity)throw fault('execution-method-denied');
         let payload={...target};
+        if(params?.workspace&&(typeof params.workspace.workspacePath!=='string'||params.workspace.workspaceKey!==params.workspace.workspacePath))throw fault('execution-workspace-denied');
         if(params?.workspace&&params.workspace.workspacePath!==workspacePath){
           const path=params.workspace.workspacePath;
           if(typeof path!=='string'||params.workspace.workspaceKey!==path||!resolveWorkspace)throw fault('execution-workspace-denied');
           const resolved=await resolveWorkspace(path);if(!resolved)throw fault('execution-workspace-denied');
           payload={workspacePath:path,workspaceIdentity:resolved.workspaceIdentity??path};
         }
+        if(parity){rpcIssued=true;return await requestParity(channel,method,params,payload,emit)}
         if(method==='v4/command') {
           const {workspace:_workspace,...envelope}=params;const parsed=parseCommandEnvelope(envelope);
           if(!parsed.ok||!EXECUTION_COMMANDS.has(params.type))throw fault('execution-command-denied');

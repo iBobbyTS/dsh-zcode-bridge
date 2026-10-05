@@ -28,6 +28,7 @@ export function mirrorLifecycle(agent,record){
     reason:state?.error??(state?.status==='live'?null:record.error??null),queue,
     control:snapshot?.control??{canStop:false,activeWorks:[],stopState:'idle'},
     inputRouting:snapshot?.inputRouting??null,availability:snapshot?.availability??null,
+    heldInputs:Object.values(record.operations??{}).filter(operation=>operation.state==='held'&&operation.held).map(operation=>({commandId:operation.commandId,text:operation.held.payload.text,...operation.held})),
     receipts:[...operations.values()].map(operation=>({commandId:operation.commandId,requestId:operation.requestId,type:operation.type,state:operation.state,receiptClass:receiptClass(operation,queue.items),reason:operation.ack?.reasonCode??operation.error??null})),
   };
 }

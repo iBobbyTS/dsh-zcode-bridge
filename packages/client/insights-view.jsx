@@ -59,8 +59,8 @@ export function ZCodeInsightsPanel({sources,onBack,t=fallback}){
       </>:<p role="status">{t('pending')}</p>}
 
     <h4>{t('generation')}</h4>
-    <p role="note">{t('generationGatedNote')}</p>
-    <ul>{['generateText','cancelGenerateText','testModelConnectivity'].map(kind=>{const entry=gated[kind];return <li key={kind} data-gated-kind={kind}>{kind} — {entry?.available===true?t('available'):`${t('unavailable')} (${entry?.reason??(state.admission?.allowed===true?t('unknownKind'):(state.admission?.reason??'not-connected'))})`}</li>})}</ul>
+    {gated.generateText&&<p role="note">{t('generationGatedNote')}</p>}
+    <ul>{Object.keys(gated).map(kind=>{const entry=gated[kind];return <li key={kind} data-gated-kind={kind}>{kind} — {entry?.available===true?t('available'):`${t('unavailable')} (${entry?.reason??(state.admission?.allowed===true?t('unknownKind'):(state.admission?.reason??'not-connected'))})`}</li>})}</ul>
   </section>;
 }
 

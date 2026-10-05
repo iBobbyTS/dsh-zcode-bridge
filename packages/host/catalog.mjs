@@ -1,6 +1,7 @@
 import { BridgeError } from './installation.mjs';
 import {
   zcodeMcpListParamsSchema, zcodeMcpListResultSchema,
+  zcodePluginsResolveSuggestedReferenceParamsSchema, zcodePluginsResolveSuggestedReferenceResultSchema,
   zcodePluginsListParamsSchema, zcodePluginsListResultSchema,
   zcodePluginsReferenceCatalogParamsSchema, zcodePluginsReferenceCatalogResultSchema,
   zcodeSkillsReferenceCatalogParamsSchema, zcodeSkillsReferenceCatalogResultSchema,
@@ -31,6 +32,8 @@ const READ_CARRIERS = Object.freeze({
     (workspace, params) => ({ workspace, ...(params.configScope === undefined ? {} : { configScope: params.configScope }) })]),
   pluginReference: Object.freeze(['plugins/referenceCatalog', zcodePluginsReferenceCatalogParamsSchema, zcodePluginsReferenceCatalogResultSchema,
     (workspace, params) => ({ workspace, ...(params.sessionId === undefined ? {} : { sessionId: params.sessionId }) })]),
+  pluginReferenceWithCategory: Object.freeze(['plugins/referenceCatalogWithCategory', zcodePluginsReferenceCatalogParamsSchema, zcodePluginsReferenceCatalogResultSchema,
+    (workspace, params) => ({ workspace, ...pick(params, ['sessionId']) })]),
   skillReference: Object.freeze(['skills/referenceCatalog', zcodeSkillsReferenceCatalogParamsSchema, zcodeSkillsReferenceCatalogResultSchema,
     (workspace, params) => ({ workspace, ...(params.sessionId === undefined ? {} : { sessionId: params.sessionId }) })]),
   pluginsOverview: Object.freeze(['plugins/overview', zcodePluginsOverviewParamsSchema, zcodePluginsOverviewResultSchema,
@@ -64,6 +67,8 @@ const WRITE_CARRIERS = Object.freeze({
     (workspace, params) => ({ workspace, pluginId: params.pluginId, ...pick(params, ['scope']) }), false]),
   setEnabled: Object.freeze(['plugins/setEnabled', zcodePluginsSetEnabledParamsSchema, zcodePluginsSetEnabledResultSchema,
     (workspace, params) => ({ workspace, pluginId: params.pluginId, enabled: params.enabled, ...pick(params, ['scope', 'operationId']) }), true]),
+  resolveSuggestedReference: Object.freeze(['plugins/resolveSuggestedReference', zcodePluginsResolveSuggestedReferenceParamsSchema, zcodePluginsResolveSuggestedReferenceResultSchema,
+    (workspace, params) => ({ workspace, ...pick(params, ['stableId','operationId','clientMode','deliveryKind']) }), true]),
   cancelOperation: Object.freeze(['plugins/cancelOperation', zcodePluginsCancelOperationParamsSchema, zcodePluginsCancelOperationResultSchema,
     (_workspace, params) => ({ operationId: params.operationId }), false]),
 });

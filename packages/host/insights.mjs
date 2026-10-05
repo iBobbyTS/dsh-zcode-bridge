@@ -1,3 +1,4 @@
+import { zcodeProviderTestModelConnectivityParamsSchema, zcodeProviderTestModelConnectivityResultSchema } from './vendor/zcode/v4.mjs';
 import { BridgeError } from './installation.mjs';
 import {
   zcodeUsageStatsParamsSchema, zcodeUsageStatsResultSchema,
@@ -40,9 +41,9 @@ const READ_CARRIERS = Object.freeze({
  *  retained value is the latest bounded process resource sample notification. */
 export class InsightsClient {
   #peer; #auth; #resourceSample = null; #offNotification; #closed = false;
-  constructor(peer, { auth = 'unconfirmed' } = {}) {
+  constructor(peer, { auth = 'unconfirmed', executionAllowed = false, workspace } = {}) {
     if (!peer || typeof peer.request !== 'function' || typeof peer.onNotification !== 'function') throw new BridgeError('insights-context-invalid');
-    this.#peer = peer; this.#auth = auth;
+    this.#peer = peer; this.#auth = auth; this.executionAllowed = executionAllowed; this.workspace = workspace ? Object.freeze({...workspace}) : undefined;
     this.#offNotification = peer.onNotification(message => this.#onNotification(message));
   }
   get admission() {
@@ -64,9 +65,18 @@ export class InsightsClient {
       login: { available: false, reason: ACCOUNT_REASON },
     };
   }
+  async operate(kind,params={}, {signal}={}) {
+    if(kind!=='testModelConnectivity'||!this.executionAllowed)throw new BridgeError('insights-operation-denied');
+    if(!this.admission.allowed)throw new BridgeError(this.admission.reason);
+    if(!params||typeof params!=='object'||Array.isArray(params)||Object.keys(params).some(key=>key!=='selection'))throw new BridgeError('insights-params-invalid');
+    const parsed=zcodeProviderTestModelConnectivityParamsSchema.safeParse({workspace:this.workspace,...params});
+    if(!parsed.success)throw new BridgeError('insights-params-invalid');
+    return zcodeProviderTestModelConnectivityResultSchema.parse(await this.#peer.request('provider/testModelConnectivity',parsed.data,{signal}));
+  }
   /** Gated model-executing surfaces: unavailable with the reason, never a fabricated result. */
   gated() {
-    return Object.fromEntries(Object.entries(GATED_CARRIERS).map(([kind, carrier]) => [kind, { available: false, reason: carrier.reason, method: carrier.method }]));
+    if(this.executionAllowed)return {testModelConnectivity:{available:this.admission.allowed,reason:this.admission.reason,method:'provider/testModelConnectivity'}};
+    return Object.fromEntries(Object.entries(GATED_CARRIERS).map(([kind, carrier]) => [kind, { available: this.executionAllowed && kind==='testModelConnectivity' && this.admission.allowed, reason: this.executionAllowed && kind==='testModelConnectivity' ? this.admission.reason : carrier.reason, method: carrier.method }]));
   }
   state() { return { account: this.account(), gated: this.gated(), resourceSample: this.resourceSample, admission: this.admission } }
   /** Read-only official query. Unknown kinds and unavailable admission fail closed. */

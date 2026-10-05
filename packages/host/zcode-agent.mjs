@@ -189,8 +189,14 @@ export class ZCodeAgent {
         }
       }
       if(!await this.whenProjectionReady())throw fault('projection-unconfirmed');
+      const payload={text,...(this.record.selection?{modelSelection:this.record.selection}:{}),requestedDelivery:target==='next-step'?'guide':'queue',mode:this.record.mode??'build'};
+      const snapshot=this.conversation.state.snapshot;
+      if(snapshot.inputRouting.mode==='choice'){
+        operation.held={logEpoch:snapshot.logEpoch,items:snapshot.queue.items.map(({queueItemId,sourceCommandId})=>({queueItemId,sourceCommandId})),payload};
+        this.commands.mark(commandId,'held');return {commandId,state:'held'};
+      }
       this.commands.mark(commandId,'dispatching');
-      return this.conversation.submit({type:'sendText',commandId,payload:{text,...(this.record.selection?{modelSelection:this.record.selection}:{}),requestedDelivery:target==='next-step'?'guide':'queue',mode:this.record.mode??'build'}});
+      return this.conversation.submit({type:'sendText',commandId,payload});
     }).then(result=>{this.commands.receipt(commandId,result);return this.persist()},error=>{
       this.commands.mark(commandId,error.sent===false?'not-sent':(this.record.createCommandId===commandId||this.conversation?.command(commandId))?'outcome-unknown':'not-sent',{error:error.code??'send-failed'});this.record.error=error.code??'send-failed';return this.persist();
     });
@@ -216,13 +222,33 @@ export class ZCodeAgent {
     const task=this.submitControlOwned(command);this.dispatches.add(task);
     void task.finally(()=>{this.dispatches.delete(task);this.scheduleIdleRelease()}).catch(()=>{});return task;
   }
-  async submitControlOwned({type,payload}){
+  async submitControlOwned({type,payload,baseRevision,baseLogEpoch}){
     clearTimeout(this.idleTimer);
     const {commandId}=this.commands.prepareControl(type,payload);
     await this.persist();
-    try{if(this.disposed)throw fault('agent-disposed');const result=await this.conversation.submit({type,payload,commandId});this.commands.receipt(commandId,result);await this.persist();return result}
+    try{if(this.disposed)throw fault('agent-disposed');const result=await this.conversation.submit({type,payload,commandId,baseRevision,baseLogEpoch});this.commands.receipt(commandId,result);await this.persist();return result}
     catch(error){this.commands.mark(commandId,this.conversation.command(commandId)?'outcome-unknown':'not-sent',{error:error.code??'command-failed'});await this.persist();throw error}
     finally{this.scheduleIdleRelease()}
+  }
+  confirmHeldInput(input){
+    if(this.disposed)throw fault('agent-disposed');
+    const task=this.confirmHeldInputOwned(input);this.dispatches.add(task);
+    void task.finally(()=>{this.dispatches.delete(task);this.scheduleIdleRelease()}).catch(()=>{});return task;
+  }
+  async confirmHeldInputOwned({commandId,disposition}){
+    const operation=this.record.operations?.[commandId];
+    if(operation?.state!=='held'||!operation.held)throw fault('held-input-unconfirmed');
+    if(disposition==='cancel'){this.commands.mark(commandId,'not-sent',{error:'held-input-cancelled'});delete operation.held;await this.persist();return {commandId,state:'not-sent'}}
+    if(!['clearQueueAndSend','keepQueueAndSend'].includes(disposition))throw fault('held-disposition-invalid');
+    await this.connect();if(!await this.whenProjectionReady())throw fault('projection-unconfirmed');
+    if(this.disposed)throw fault('agent-disposed');
+    if(operation.state!=='held'||!operation.held)throw fault('held-input-unconfirmed');
+    const snapshot=this.conversation.state.snapshot,held=operation.held;
+    if(snapshot.logEpoch!==held.logEpoch||snapshot.inputRouting.mode!=='choice'||snapshot.queue.items.length!==held.items.length||!held.items.every(item=>snapshot.queue.items.some(current=>current.queueItemId===item.queueItemId&&current.sourceCommandId===item.sourceCommandId)))throw fault('held-queue-confirmation-stale');
+    // Claim synchronously before persistence, so double confirmation cannot replay the input.
+    this.commands.mark(commandId,'dispatching');
+    try{await this.persist();if(this.disposed)throw fault('agent-disposed');const current=this.conversation.state.snapshot;if(current?.logEpoch!==held.logEpoch||current.inputRouting.mode!=='choice'||current.queue.items.length!==held.items.length||!held.items.every(item=>current.queue.items.some(value=>value.queueItemId===item.queueItemId&&value.sourceCommandId===item.sourceCommandId)))throw fault('held-queue-confirmation-stale');const result=await this.conversation.submit({type:'sendText',commandId,baseLogEpoch:held.logEpoch,payload:{...held.payload,heldQueueDisposition:disposition,expectedHeldQueueItemIds:held.items.map(item=>item.queueItemId)}});this.commands.receipt(commandId,result);delete operation.held;await this.persist();return result}
+    catch(error){const sent=this.conversation.command(commandId);this.commands.mark(commandId,sent?'outcome-unknown':'held',{error:error.code??'command-failed'});await this.persist();throw error}
   }
   async queueAction({queueItemId,action,newText}){
     await this.connect();if(!await this.whenProjectionReady())throw fault('projection-unconfirmed');

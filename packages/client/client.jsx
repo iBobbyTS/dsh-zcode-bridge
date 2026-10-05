@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { statusText } from './status.mjs';
 import { StatusController } from './controller.mjs';
+import { installParityPanels } from './parity-controls.jsx';
+export { BridgeParityPage,BridgeSettingsPanel,AutomationPanel,PreferencesPanel,FeedbackPanel,AttachmentPanel,SessionParityPanel,DiagnosticsExtras } from './parity-controls.jsx';
 import { installRuntimeControls } from './runtime-controls.mjs';
 import { CompatibilityStore } from './compatibility.mjs';
 export { CompatibilityStore } from './compatibility.mjs';
@@ -12,9 +14,9 @@ export function apply(ctx){
   // plugin opens. There is deliberately no manual Connect gate; failures surface through status.
   const connection=new StatusController(ctx.connection.rpc,ctx.connection.state);
   ctx.effect(()=>{connection.start();return ()=>connection.dispose()},'zcode-bridge: auto connection');
-  installRuntimeControls(ctx);
+  const controls=installRuntimeControls(ctx);
+  installParityPanels(ctx,connection,controls,StatusCard);
   ctx.effect(()=>ctx.locale.register('zcodeBridge',{zh,en}),'zcode-bridge: locale');
-  ctx.effect(()=>ctx.slots.inject('plugins.bundle.config',()=>ctx.slots.register({name:'plugins.bundle.config',id:'zcode-bridge-status',key:'@dsh-zcode/bridge',locale:'zcodeBridge',inject:()=>({controller:connection})},StatusCard)),'zcode-bridge: page');
 }
 /** R19 version banner and R20 fail-safe notices. Dismissal is a separate local preference and
  *  never clears the host fail-safe. */
@@ -43,7 +45,7 @@ export function StatusCard({controller,view}){
   const install=state.installation;
   return <section aria-label="ZCode connection" style={{padding:16,color:'var(--dsw-alias-text-primary)',fontSize:14}}>
     <h3>ZCode</h3><p role="status">{statusText(state)}</p>
-    {state.launcher?.routeB?.allowed===false&&<p role="alert">{state.launcher.routeB.reason} · isolated scratch fallback</p>}
+    {state.launcher?.routeB?.allowed===false&&<p role="alert">{state.launcher.routeB.reason}</p>}
     <ZCodeVersionBanner compatibility={state.compatibility} store={compatibilityStore}/>
     {state.failSafe?.incompatible&&<p role="alert" data-testid="zcode-failsafe-core">Core protocol incompatibility: new side effects are stopped; reconnect to retry.</p>}
     {state.failSafe?.level==='non-core'&&<p data-testid="zcode-failsafe-isolated">Optional capabilities isolated: {state.failSafe.isolated.map(item=>item.capability).join(', ')}. Other paths keep working.</p>}

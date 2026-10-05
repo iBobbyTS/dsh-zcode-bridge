@@ -15,6 +15,7 @@ import {
   v4AttachmentChunkParamsSchema, v4AttachmentChunkResultSchema,
   v4AttachmentCommitParamsSchema, v4AttachmentCommitResultSchema,
   v4AttachmentAbortParamsSchema, v4AttachmentAbortResultSchema,
+  v4AttachmentPreviewSourceParamsSchema, v4AttachmentPreviewSourceResultSchema,
   v4AttachmentReadParamsSchema, v4AttachmentReadResultSchema,
   v4ConversationAttachmentReadParamsSchema, v4ConversationAttachmentReadResultSchema,
   v4ConversationAttachmentStatParamsSchema, v4ConversationAttachmentStatResultSchema,
@@ -43,7 +44,7 @@ const managementCommands=MANAGEMENT_COMMANDS;
 const availabilityCommands={editQueueItem:'queueEdit',reorderQueueItem:'queueEdit',deleteQueueItem:'queueEdit',sendQueuedNow:'sendQueuedNow',switchModelConfig:'switchModelConfig',setFollowupMode:'setFollowupMode',pauseGoal:'pauseGoal',resumeGoal:'resumeGoal',compact:'compact'};
 // These ACKs settle the control application, not an input turn. Promotion runs under
 // the queued input's original sourceCommandId, so its control ID cannot await a turn header.
-const ackSettledControls=new Set(['editQueueItem','sendQueuedNow']);
+const ackSettledControls=new Set(['editQueueItem','sendQueuedNow','reorderQueueItem','setAutoDrain','setFollowupMode','switchCollaborationMode','pauseGoal','resumeGoal','setAssistantFeedback']);
 const terminal=new Set(['completed','failed','interrupted','rejected','stale','noop','not-sent']);
 export const INPUT_COMMANDS=new Set(['sendText','sendGoalCommand','stop','sendQueuedNow','editQueueItem','reorderQueueItem','deleteQueueItem','setAutoDrain','switchModelConfig','switchCollaborationMode','setFollowupMode','pauseGoal','resumeGoal']);
 const workspaceCarriers={
@@ -84,7 +85,7 @@ export class V4Conversation {
     this.#offNotification=peer.onNotification(m=>{if(m.method==='v4/conversation/frame')this.#wire(m.params)});
     this.#offClosed=peer.onClosed(code=>reconnectable?this.#transportLost(code):this.#disconnect(code));
   }
-  get state(){return structuredClone({...this.#state,commands:[...this.#commands.values()],observerErrors:this.#observerErrors,profile:this.clientMode==='desktop-continuous'?'continuous':'replayable',admission:this.admission,managementAdmission:this.managementAdmission,attachmentAdmission:this.attachmentAdmission,workAdmission:this.workAdmission,workflowAdmission:{reads:this.workAdmission,writes:this.managementAdmission,...WORKFLOW_LIMITATIONS},...(this.hostTools?{hostTools:this.hostTools.snapshot(this.address.sessionId)}:{})})}
+  get state(){return structuredClone({...this.#state,commands:[...this.#commands.values()],observerErrors:this.#observerErrors,profile:this.clientMode==='desktop-continuous'?'continuous':'replayable',admission:this.admission,managementAdmission:this.managementAdmission,attachmentAdmission:this.attachmentAdmission,workAdmission:this.workAdmission,workflowAdmission:{reads:this.workAdmission,writes:this.managementAdmission,...WORKFLOW_LIMITATIONS,execution:this.admission},...(this.hostTools?{hostTools:this.hostTools.snapshot(this.address.sessionId)}:{})})}
   get admission(){return {allowed:!this.#closed&&this.runnable&&this.#state.status==='live'&&!!this.#state.snapshot,reason:this.#closed?'closed':!this.runnable?'runtime-restricted':this.#state.status!=='live'?'projection-unconfirmed':null}}
   get managementAdmission(){return {allowed:!this.#closed&&this.managementAllowed&&this.#state.status==='live'&&!!this.#state.snapshot,reason:this.#closed?'closed':!this.managementAllowed?'management-unverified':this.#state.status!=='live'?'projection-unconfirmed':null}}
   /** Attachment resource calls follow the official session-scoped wire, not model admission. */
@@ -347,6 +348,12 @@ export class V4Conversation {
     const parsed=v4AttachmentReadParamsSchema.safeParse({sessionId:this.address.sessionId,ref,...(target===undefined?{}:{target}),...(attachmentIndex===undefined?{}:{attachmentIndex}),offset,limit});
     if(!parsed.success)throw new BridgeError('attachment-invalid');
     return v4AttachmentReadResultSchema.parse(await this.peer.request('v4/attachment/read',parsed.data,{signal}));
+  }
+  async attachmentPreviewSource({ref,target,attachmentIndex,signal}={}){
+    this.#projectionAdmission();if(!this.#boundAttachmentRef(ref))throw new BridgeError('attachment-ref-unbound');
+    const parsed=v4AttachmentPreviewSourceParamsSchema.safeParse({sessionId:this.address.sessionId,clientMode:this.clientMode,ref,...(target===undefined?{}:{target}),...(attachmentIndex===undefined?{}:{attachmentIndex})});
+    if(!parsed.success)throw new BridgeError('attachment-invalid');
+    return v4AttachmentPreviewSourceResultSchema.parse(await this.peer.request('v4/attachment/previewSource',parsed.data,{signal}));
   }
   /** Share/plain-text attachment metadata stat; same session binding, no content read. */
   async conversationAttachmentStat({ref,target,attachmentIndex,signal}={}){

@@ -8,9 +8,8 @@ const errorOf=error=>({code:error?.code??'catalog-unavailable',message:error?.me
 function initial(){return Object.freeze({loaded:false,busy:false,error:null,admission:emptyAdmission('not-connected'),auth:'unconfirmed',installationVerified:false,workspace:null,sections:{mcp:null,overview:null,reference:null,skills:null},describe:null,validate:null,operations:[],hostOperations:[]})}
 
 /** Directory read kinds the panel renders. No catalog is persisted; every refresh reads official.
- *  `pluginsList` is not eager-read here because the panel has no render point for it; the host
- *  carrier remains exposed for a future bounded consumer that actually displays source:missing. */
-export const CATALOG_READ_KINDS=Object.freeze({mcp:'mcpList',overview:'pluginsOverview',reference:'pluginReference',skills:'skillReference'});
+ *  `pluginsList` supplies the source-status view, including missing official metadata. */
+export const CATALOG_READ_KINDS=Object.freeze({mcp:'mcpList',overview:'pluginsOverview',reference:'pluginReference',skills:'skillReference',list:'pluginsList'});
 
 /**
  * Read-only official outcome projection for one management call. Diagnostics with severity "error"
@@ -29,7 +28,7 @@ export class CatalogStore {
   constructor(rpc,{connectionGeneration}={}){
     if(!rpc||typeof rpc.call!=='function')throw err('catalog-rpc-required');
     this.#rpc=rpc;
-    if(connectionGeneration)connectionGeneration.subscribe(()=>this.#reset());
+    if(connectionGeneration)this.offGeneration=connectionGeneration.subscribe(()=>this.#reset());
   }
   getSnapshot=()=>this.#snapshot;
   subscribe=listener=>{if(this.#closed)return ()=>{};this.#listeners.add(listener);return ()=>this.#listeners.delete(listener)};
@@ -112,5 +111,5 @@ export class CatalogStore {
     return value;
   }
   #settle(operationId,patch){this.#publish({operations:this.#snapshot.operations.map(record=>record.operationId===operationId?Object.freeze({...record,...patch}):record)})}
-  dispose(){if(this.#closed)return;this.#closed=true;for(const controller of this.#reads)controller.abort();this.#reads.clear();this.#listeners.clear();this.#publish(initial())}
+  dispose(){if(this.#closed)return;this.#closed=true;this.offGeneration?.();for(const controller of this.#reads)controller.abort();this.#reads.clear();this.#listeners.clear();this.#publish(initial())}
 }

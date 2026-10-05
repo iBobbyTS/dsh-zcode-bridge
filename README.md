@@ -34,3 +34,7 @@ Only App-owned Electron Host/CLI artifacts are launched. Existing sandbox, HOME,
 credential, and exact-process ownership restrictions remain in force. The bridge
 never reads or exports credentials. Shared-GUI arbitration is only proven within
 this Host; another official GUI process may be running the same session.
+
+S06 adds **Zcode Bridge** to the official `settings.section` and keeps the bridge configuration page in `plugins.bundle.config`. The configuration page exposes the official MCP/plugin/skill catalog, usage/process diagnostics, explicit model connectivity testing, cron/off-peak listings, saved workflows, and interaction preferences. Session dock panels expose workflow runs and controls, assistant feedback, session-bound v4 attachments, queue preferences, and paused-queue disposition confirmation. Actions show official receipts; reads and reconnects can retry unknown capabilities. No delete, uninstall, or marketplace-removal entry is provided.
+
+The catalog-sync preference defaults ON and persists in the isolated DSH_HOME. Turning it OFF stops only background incremental sync; startup sync and refresh-before-open still run. The runtime-default note stays read-only (`zcode`). Official interaction preferences use the official GUI's settings-update/runtime-sync flow and apply to the official Host's active workspaces. Connectivity tests and execution controls are explicit actions; opening these panels does not issue model requests. Protocol ownership and approved deferrals are recorded in `PROTOCOL-COVERAGE.md`.
