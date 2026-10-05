@@ -37,7 +37,7 @@
     "packages/client/index.mjs",
     "packages/client/lib/client.js",
     "packages/client/runtime.mjs",
-    "packages/client/runtime-controls.jsx",
+    "packages/client/runtime-controls.mjs",
     "packages/client/controller.mjs",
     "packages/client/status.mjs",
     "packages/client/compatibility.mjs"

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { statusText } from './status.mjs';
 import { StatusController } from './controller.mjs';
-import { installRuntimeControls } from './runtime-controls.jsx';
+import { installRuntimeControls } from './runtime-controls.mjs';
 import { CompatibilityStore } from './compatibility.mjs';
 export { CompatibilityStore } from './compatibility.mjs';
 export const inject=['slots','locale','connection','sessions','uiWorkspace'];

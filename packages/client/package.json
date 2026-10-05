@@ -40,7 +40,7 @@
     "index.mjs",
     "lib/client.js",
     "runtime.mjs",
-    "runtime-controls.jsx",
+    "runtime-controls.mjs",
     "controller.mjs",
     "status.mjs",
     "compatibility.mjs"
