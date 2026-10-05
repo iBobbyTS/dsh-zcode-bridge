@@ -222,11 +222,22 @@ export class ZCodeAgent {
     const task=this.submitControlOwned(command);this.dispatches.add(task);
     void task.finally(()=>{this.dispatches.delete(task);this.scheduleIdleRelease()}).catch(()=>{});return task;
   }
-  async submitControlOwned({type,payload,baseRevision,baseLogEpoch}){
+  assertHeldQueueCurrent(held){
+    const snapshot=this.conversation?.state.snapshot;
+    if(!held||!Array.isArray(held.items))throw fault('held-queue-confirmation-required');
+    if(!snapshot||snapshot.logEpoch!==held.logEpoch||snapshot.inputRouting.mode!=='choice'||
+       new Set(held.items.map(item=>item?.queueItemId)).size!==held.items.length||
+       snapshot.queue.items.length!==held.items.length||!held.items.every(item=>
+         typeof item?.queueItemId==='string'&&typeof item?.sourceCommandId==='string'&&
+         snapshot.queue.items.some(current=>current.queueItemId===item.queueItemId&&current.sourceCommandId===item.sourceCommandId)))throw fault('held-queue-confirmation-stale');
+  }
+  async submitControlOwned({type,payload,baseRevision,baseLogEpoch,heldQueue,signal}){
     clearTimeout(this.idleTimer);
-    const {commandId}=this.commands.prepareControl(type,payload);
-    await this.persist();
-    try{if(this.disposed)throw fault('agent-disposed');const result=await this.conversation.submit({type,payload,commandId,baseRevision,baseLogEpoch});this.commands.receipt(commandId,result);await this.persist();return result}
+    const operation=this.commands.prepareControl(type,payload),{commandId}=operation;
+    if(heldQueue)operation.heldQueue=clean(heldQueue);
+    try{await this.persist();if(this.disposed)throw fault('agent-disposed');if(signal?.aborted)throw fault('cancelled');
+      if(heldQueue)this.assertHeldQueueCurrent(operation.heldQueue);
+      const result=await this.conversation.submit({type,payload,commandId,baseRevision,baseLogEpoch},{signal});this.commands.receipt(commandId,result);await this.persist();return result}
     catch(error){this.commands.mark(commandId,this.conversation.command(commandId)?'outcome-unknown':'not-sent',{error:error.code??'command-failed'});await this.persist();throw error}
     finally{this.scheduleIdleRelease()}
   }
@@ -243,11 +254,10 @@ export class ZCodeAgent {
     await this.connect();if(!await this.whenProjectionReady())throw fault('projection-unconfirmed');
     if(this.disposed)throw fault('agent-disposed');
     if(operation.state!=='held'||!operation.held)throw fault('held-input-unconfirmed');
-    const snapshot=this.conversation.state.snapshot,held=operation.held;
-    if(snapshot.logEpoch!==held.logEpoch||snapshot.inputRouting.mode!=='choice'||snapshot.queue.items.length!==held.items.length||!held.items.every(item=>snapshot.queue.items.some(current=>current.queueItemId===item.queueItemId&&current.sourceCommandId===item.sourceCommandId)))throw fault('held-queue-confirmation-stale');
+    const held=operation.held;this.assertHeldQueueCurrent(held);
     // Claim synchronously before persistence, so double confirmation cannot replay the input.
     this.commands.mark(commandId,'dispatching');
-    try{await this.persist();if(this.disposed)throw fault('agent-disposed');const current=this.conversation.state.snapshot;if(current?.logEpoch!==held.logEpoch||current.inputRouting.mode!=='choice'||current.queue.items.length!==held.items.length||!held.items.every(item=>current.queue.items.some(value=>value.queueItemId===item.queueItemId&&value.sourceCommandId===item.sourceCommandId)))throw fault('held-queue-confirmation-stale');const result=await this.conversation.submit({type:'sendText',commandId,baseLogEpoch:held.logEpoch,payload:{...held.payload,heldQueueDisposition:disposition,expectedHeldQueueItemIds:held.items.map(item=>item.queueItemId)}});this.commands.receipt(commandId,result);delete operation.held;await this.persist();return result}
+    try{await this.persist();if(this.disposed)throw fault('agent-disposed');this.assertHeldQueueCurrent(held);const result=await this.conversation.submit({type:'sendText',commandId,baseLogEpoch:held.logEpoch,payload:{...held.payload,heldQueueDisposition:disposition,expectedHeldQueueItemIds:held.items.map(item=>item.queueItemId)}});this.commands.receipt(commandId,result);delete operation.held;await this.persist();return result}
     catch(error){const sent=this.conversation.command(commandId);this.commands.mark(commandId,sent?'outcome-unknown':'held',{error:error.code??'command-failed'});await this.persist();throw error}
   }
   async queueAction({queueItemId,action,newText}){

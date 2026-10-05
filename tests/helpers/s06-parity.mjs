@@ -4,7 +4,7 @@ import {MockPeer,row} from './zcode-runtime-fixture.mjs';
 import {createExecutionRelay,LauncherPeer} from '../../packages/host/launcher/execution.mjs';
 export {tick,row};
 export const fixtures=Object.fromEntries(['s09/directory','s09/operations','s12/lifecycle','s14/usage','s13/projection'].map(name=>[name.split('/')[0]+(name.endsWith('operations')?'Ops':''),JSON.parse(readFileSync(new URL('../fixtures/'+name+'.json',import.meta.url)))]));
-export async function parityWorld({catalogSync=true,path='/execution'}={}){
+export async function parityWorld({catalogSync=true,path='/execution',sessionPath=path}={}){
  const official=new MockPeer(),events=new Set(),states=new Set(),calls=[],responses=new Map();
  const d=fixtures.s09,o=fixtures.s09Ops,w=fixtures.s12,i=fixtures.s14,a=fixtures.s13.frames;
  let preferences={askUserQuestionAutoResolutionEnabled:true,modelIoFullRetentionEnabled:false};
@@ -37,7 +37,7 @@ export async function parityWorld({catalogSync=true,path='/execution'}={}){
  const relay=createExecutionRelay({channel,workspacePath:path,resolveWorkspace:async path=>({workspaceIdentity:path}),emit:event=>{for(const listener of events)listener(event)}});
  official.onNotification(event=>{for(const listener of events)listener(event)});
  const launcher={state:{phase:'ready',auth:'authenticated',executionWorkspace:path},subscribe:fn=>{states.add(fn);return ()=>states.delete(fn)},onExecutionEvent:fn=>{events.add(fn);return ()=>events.delete(fn)},execution:(method,params)=>relay.request(method,params),read:()=>official.listProviders()};
- const peer=new LauncherPeer(launcher),worldState=await world({catalog:async()=>directory([catalogRow('one','S06 parity fixture',path)])});
+ const peer=new LauncherPeer(launcher),worldState=await world({catalog:async()=>directory([catalogRow('one','S06 parity fixture',sessionPath)])});
  worldState.host.launcher=launcher;worldState.host.status.installation={version:'3.14.4',verified:true};worldState.runtime.peerFactory=()=>peer;worldState.host.taskUsage=async address=>({address,usage:await peer.request('v4/conversation/usage',{sessionId:address.sessionId,workspace:{workspacePath:address.workspace,workspaceKey:address.workspace}})});official.registerSession('one');
  worldState.runtime.settings.value={catalogSync};
  await worldState.runtime.start();const id=[...worldState.store.records.keys()][0];await worldState.runtime.open(id);await tick();

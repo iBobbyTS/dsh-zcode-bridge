@@ -42,7 +42,7 @@
 | `session/setModel` | 3594 | S06 | carrier/handler及UI语义按所属节核实 | Y | Y | Y | S02 |
 | `session/setThoughtLevel` | 3598 | S06 | carrier/handler及UI语义按所属节核实 | Y | Y | Y | S02 |
 | `session/setMode` | 3599 | S06 | carrier/handler及UI语义按所属节核实 | Y | Y | Y | S02 |
-| `workspace/readPresentation` | 3600 | S06 | carrier/handler及UI语义按所属节核实；D5/TASK-S06 批准延期；不以替代入口宣称完成 | Y | Y | N | 延期（D5） |
+| `workspace/readPresentation` | 3600 | S06 | D5 批准归 S06；官方 Host readWorkspacePresentation；只读工作区 mode/slash commands 入口（修正 TASK-S06 误写） | Y | Y | Y | S06 |
 | `workspace/hooks/trustGrant` | 3601 | S05 | carrier/handler及UI语义按所属节核实 | Y | Y | Y | S05 |
 | `provider/updateAccountConfig` | 3603 | S01 | 不可据此推断提供login/token取得能力；内部载体随所属能力，不另造按钮 | Y | N（内部往返） | N（随所属入口） | S05 |
 | `workspace/updateInteractionPreferences` | 3604 | S06 | carrier/handler及UI语义按所属节核实；官方 GUI 的 setting.update → syncAppRuntimePreferences；作用于官方 active workspaces | Y | Y | Y | S06 |
@@ -229,6 +229,6 @@ node scripts/inspect-protocol.cjs \
 - 150 个声明行全部保留（74/7/31/4/34），OldOwner 不改写；新归属以 D5 + D3 + TASK-S06 为准。
 - `外露=Y` 表示 S01 已确认的官方 Host/CLI/反向或通知载体；它不是本节 live 执行证据。内部往返依所属入口追踪，不独立造按钮。
 - S06 入口：Plugins → @dsh-zcode/bridge 配置页；Settings → Zcode Bridge；ZCode 会话 composer dock → workflows/feedback/attachments/queue preferences。既有官方 model picker 保持原生。
-- workspace/readPresentation 按 TASK-S06 的 remote-workspace 延期跳过；browser/computer-use/trajectory 按 D5 延期。删除/卸载/移除入口按 D3/TASK-S06 禁止。
+- workspace/readPresentation 按 D5 归 S06 必做，repair wave 1 修正 TASK-S06 的误写并交付只读呈现入口；browser/computer-use/trajectory 按 D5 延期。删除/卸载/移除入口按 D3/TASK-S06 禁止。
 - workspace off-peak/dynamic-workflow policy 是官方 Host 内部 entitlement 同步，辅助 generation/cancel 是官方 GUI 辅助请求内部链，不伪造独立配置状态或另造内部按钮。
 - 本节 mock/headless/浏览器及包验证见 `.agent-work/handoffs/S06.md`；真实模型调用预算 0。S07 继续维护实现差距/安装版本差异；S08 执行 npm-installed official DSH 最终只读验收与人工写入清单。

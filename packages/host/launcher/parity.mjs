@@ -64,7 +64,7 @@ export async function requestParity(channel,method,params,target,emit=()=>{}) {
   if(method==='automation/create'||method==='automation/update'){
     // Only the shared GUI subset is accepted here; unsupported binding/interval fields are never silently dropped.
     if(['targetTaskId','botDeliveryTarget','interval','intervalUnit'].some(key=>body[key]!==undefined))throw fault('automation-host-params-unsupported');
-    const raw=await call('zcode-agent',method.endsWith('create')?'createAutomation':'updateAutomation',[{...body,title:body.title??'',...target}]);
+    const raw=await call('zcode-agent',method.endsWith('create')?'createAutomation':'updateAutomation',[{...body,...(method==='automation/create'?{title:body.title??''}:{}),...target}]);
     return {automation:pick(raw,automationKeys)};
   }
   if(method==='offPeak/list')return {tasks:(await call('off-peak-task','list')).filter(task=>(task.workspaceIdentity?.trim()||task.workspacePath)===(target.workspaceIdentity?.trim()||target.workspacePath)).map(task=>pick(task,['offPeakTaskId','title','status','queuePosition','sessionId','createdAt']))};

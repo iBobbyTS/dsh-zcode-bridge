@@ -5,7 +5,7 @@ import { ZCodeInsightsPanel,insightsLocales } from './insights-view.jsx';
 import { ZCodeWorkflowPanel } from './workflow-view.jsx';
 import { inputSubmission,heldConfirmation,confirmHeld,commandResultText } from './input-controls.mjs';
 
-export const parityLocales={en:{title:'Zcode Bridge',connection:'Connection',version:'Official version',sync:'Sync official task directory in the background',syncNote:'Startup sync and refresh before opening a session always run.',diagnostics:'Diagnostics',runtime:'Default runtime: zcode (fixed for new sessions)',catalog:'Task catalog',insights:'Account, usage and diagnostics',automation:'Automations',workflows:'Workflows',preferences:'Interaction preferences',refresh:'Refresh official state',unknown:'Unknown',...Object.fromEntries(Object.entries(catalogLocales.en).map(([k,v])=>['catalog.'+k,v])),...Object.fromEntries(Object.entries(insightsLocales.en).map(([k,v])=>['insights.'+k,v]))},zh:{title:'Zcode Bridge',connection:'连接状态',version:'官方版本',sync:'后台同步官方任务目录',syncNote:'启动同步和打开会话前刷新始终执行。',diagnostics:'诊断信息',runtime:'默认 runtime：zcode（新会话固定默认值）',catalog:'任务目录',insights:'账号、用量与诊断',automation:'自动化',workflows:'工作流',preferences:'交互偏好',refresh:'刷新官方状态',unknown:'未知',...Object.fromEntries(Object.entries(catalogLocales.zh).map(([k,v])=>['catalog.'+k,v])),...Object.fromEntries(Object.entries(insightsLocales.zh).map(([k,v])=>['insights.'+k,v]))}};
+export const parityLocales={en:{title:'Zcode Bridge',connection:'Connection',version:'Official version',sync:'Sync official task directory in the background',syncNote:'Startup sync and refresh before opening a session always run.',diagnostics:'Diagnostics',runtime:'Default runtime: zcode (fixed for new sessions)',catalog:'Task catalog',insights:'Account, usage and diagnostics',automation:'Automations',workflows:'Workflows',workspace:'Workspace presentations',preferences:'Interaction preferences',refresh:'Refresh official state',unknown:'Unknown',...Object.fromEntries(Object.entries(catalogLocales.en).map(([k,v])=>['catalog.'+k,v])),...Object.fromEntries(Object.entries(insightsLocales.en).map(([k,v])=>['insights.'+k,v]))},zh:{title:'Zcode Bridge',connection:'连接状态',version:'官方版本',sync:'后台同步官方任务目录',syncNote:'启动同步和打开会话前刷新始终执行。',diagnostics:'诊断信息',runtime:'默认 runtime：zcode（新会话固定默认值）',catalog:'任务目录',insights:'账号、用量与诊断',automation:'自动化',workflows:'工作流',workspace:'工作区呈现',preferences:'交互偏好',refresh:'刷新官方状态',unknown:'未知',...Object.fromEntries(Object.entries(catalogLocales.zh).map(([k,v])=>['catalog.'+k,v])),...Object.fromEntries(Object.entries(insightsLocales.zh).map(([k,v])=>['insights.'+k,v]))}};
 const fallback=key=>parityLocales.en[key]??key;
 const style={padding:12,overflowWrap:'anywhere',minWidth:0};
 function Facts({value}){return value===null||value===undefined?null:<pre style={{whiteSpace:'pre-wrap',maxHeight:280,overflow:'auto'}}>{JSON.stringify(value,null,2)}</pre>}
@@ -70,16 +70,24 @@ export function FeedbackPanel({controller,snapshot}){
   return <section style={style} data-zcode-feedback=""><h4>Message feedback</h4>{!rows.length&&<p>No official assistant message projected.</p>}{rows.map(row=><div key={`${row.rowId}:${row.entityId}`}><p>{row.text}</p><span>Official feedback: {row.feedback??'unreported'}</span>{[['like','Like'],['dislike','Dislike'],[null,'Clear feedback']].map(([feedback,label])=><button key={label} disabled={read.busy} onClick={()=>void read.run(()=>controller.command('setAssistantFeedback',{target:{rowId:row.rowId,entityId:row.entityId},feedback},snapshot))}>{label}</button>)}</div>)}<Result read={read}/></section>;
 }
 export function AttachmentPanel({controller,snapshot}){
-  const read=useParityRead(controller),[attachments,setAttachments]=useState([]),[text,setText]=useState(''),[held,setHeld]=useState(null),[progress,setProgress]=useState(null),upload=useRef(null),owner=useRef(controller);
+  const read=useParityRead(controller),[attachments,setAttachments]=useState([]),[text,setText]=useState(''),[held,setHeld]=useState(null),[progress,setProgress]=useState(null),upload=useRef(null),owner=useRef(controller),sendClaim=useRef(null);
   useEffect(()=>{owner.current=controller;setAttachments([]);setHeld(null);return ()=>{owner.current=null;upload.current?.abort()}},[controller]);
-  const send=async(disposition)=>{const command=held?confirmHeld(snapshot,held,disposition):inputSubmission(snapshot,text,{attachments});if(!held&&snapshot.inputRouting.mode==='choice'){setHeld(heldConfirmation(snapshot,command));return}const result=await controller.command(command.type,command.payload,snapshot);if(['accepted','duplicate'].includes(result.ack?.status)){setText('');setAttachments([]);setHeld(null)}return result};
+  const send=async(disposition,signal)=>{
+    const confirmation=held,command=confirmation?confirmHeld(snapshot,confirmation,disposition):inputSubmission(snapshot,text,{attachments});
+    if(!confirmation&&snapshot.inputRouting.mode==='choice'){setHeld(heldConfirmation(snapshot,command));return}
+    const claim={};sendClaim.current=claim;
+    try{
+      const result=await controller.command(command.type,command.payload,snapshot,{signal,...(confirmation?{heldQueue:{logEpoch:confirmation.logEpoch,items:confirmation.items}}:{})});
+      if(owner.current===controller&&!signal.aborted&&['accepted','duplicate'].includes(result.ack?.status)){setText('');setAttachments([]);setHeld(null)}return result;
+    }finally{if(sendClaim.current===claim)sendClaim.current=null}
+  };
   const selectFiles=async event=>{const files=[...event.target.files];event.target.value='';const current=controller,abort=new AbortController();upload.current=abort;
     try{await read.run(async()=>{for(const file of files){const ref=await controller.upload(file,{signal:abort.signal,onProgress:p=>{if(owner.current===current&&!abort.signal.aborted)setProgress(p)}});if(owner.current===current&&!abort.signal.aborted)setAttachments(items=>[...items,ref])}return {uploaded:true}})}finally{if(owner.current===current)setProgress(null);upload.current=null}
   };
   const projected=(snapshot?.rows?.window??[]).flatMap(row=>(row.attachments??[]).map((attachment,attachmentIndex)=>({attachment,row,attachmentIndex})));
   return <section data-zcode-attachments="" style={style}><h4>Attachments</h4><label>Files <input type="file" multiple aria-label="ZCode attachment files" disabled={read.busy||!!held} onChange={event=>void selectFiles(event)}/></label>{progress&&<p role="status">{progress.phase} · {progress.uploadedBytes}/{progress.totalBytes}<button onClick={()=>upload.current?.abort()}>Cancel upload</button></p>}
-    <ul>{attachments.map(a=><li key={a.ref}>{a.fileName} · {a.bytes} bytes · committed</li>)}</ul><label>Text for attachment input <textarea aria-label="Attachment input text" value={text} onChange={e=>setText(e.target.value)} disabled={!!held}/></label><button disabled={read.busy||!!held||(!attachments.length&&!text.trim())} onClick={()=>void read.run(()=>send())}>Send attachment input</button>
-    {held&&<div role="dialog" aria-label="Attachment input queue disposition"><p>Confirmed paused queue: {held.items.map(i=>i.queueItemId+' / '+i.sourceCommandId).join(', ')}</p><button disabled={read.busy} onClick={()=>void read.run(()=>send('keepQueueAndSend'))}>Keep queue and send</button><button disabled={read.busy} onClick={()=>void read.run(()=>send('clearQueueAndSend'))}>Clear confirmed queue and send</button><button onClick={()=>setHeld(null)}>Cancel confirmation</button></div>}
+    <ul>{attachments.map(a=><li key={a.ref}>{a.fileName} · {a.bytes} bytes · committed</li>)}</ul><label>Text for attachment input <textarea aria-label="Attachment input text" value={text} onChange={e=>setText(e.target.value)} disabled={!!held}/></label><button disabled={read.busy||!!held||(!attachments.length&&!text.trim())} onClick={()=>void read.run(signal=>send(undefined,signal))}>Send attachment input</button>
+    {held&&<div role="dialog" aria-label="Attachment input queue disposition"><p>Confirmed paused queue: {held.items.map(i=>i.queueItemId+' / '+i.sourceCommandId).join(', ')}</p><button disabled={read.busy} onClick={()=>void read.run(signal=>send('keepQueueAndSend',signal))}>Keep queue and send</button><button disabled={read.busy} onClick={()=>void read.run(signal=>send('clearQueueAndSend',signal))}>Clear confirmed queue and send</button><button disabled={read.busy} onClick={()=>{if(!sendClaim.current)setHeld(null)}}>Cancel confirmation</button>{read.busy&&<p role="status">Sending confirmed input; cancellation is unavailable after claim.</p>}</div>}
     {projected.map(({attachment,row,attachmentIndex})=>{const params={ref:attachment.ref,target:{rowId:row.rowId,entityId:row.entityId},attachmentIndex};return <div key={`${row.rowId}:${attachmentIndex}`}>{attachment.fileName??attachment.ref} <button disabled={read.busy} onClick={()=>void read.run(()=>controller.call('attachment','preview',undefined,params))}>Preview source</button><button disabled={read.busy} onClick={()=>void read.run(()=>controller.call('attachment','stat',undefined,params))}>Read attachment metadata</button><button disabled={read.busy} onClick={()=>void read.run(()=>controller.call('attachment','conversationRead',undefined,{...params,offset:0,limit:65536}))}>Read text chunk</button><button disabled={read.busy} onClick={()=>void read.run(()=>controller.call('attachment','read',undefined,{...params,offset:0,limit:65536}))}>Read preview chunk</button></div>})}
     <Result read={read}/><Facts value={read.value}/>
   </section>;
@@ -107,6 +115,20 @@ export function SessionParityPanel({rpc,sessionId,controls,connectionGeneration}
     {!info.officialAddress?.sessionId&&<p>The first text input creates the official session. Session-bound resources are available after its official projection arrives.</p>}
   </details>;
 }
+export function WorkspacePresentationPanel({controller}){
+  const read=useParityRead(controller);
+  const refresh=()=>read.run(signal=>controller.call('workspace','read',undefined,{}, {signal}));
+  useEffect(()=>{void refresh()},[controller]);
+  return <section data-zcode-workspace-presentations="" style={style}><h3>Official workspace presentations</h3>
+    <p>Mode and slash commands are read from each official workspace. No connection or configuration write is performed.</p>
+    <button disabled={read.busy} onClick={()=>void refresh()}>Refresh workspace presentations</button><Result read={read}/>
+    {read.value?.presentations.map(entry=><article key={entry.workspace}><h4>{entry.workspace}</h4>
+      {entry.error?<p role="alert">{entry.error.code} · refresh to read current official availability.</p>:<><p>Mode: {entry.presentation.mode}</p>
+        <ul>{entry.presentation.slashCommands.map(command=><li key={command.name}>/{command.name} · {command.description}{command.inputHint?` · ${command.inputHint}`:''}{command.source?` · ${command.source}`:''}</li>)}</ul>
+        {!entry.presentation.slashCommands.length&&<p>No official slash command listed.</p>}</>}
+    </article>)}
+  </section>;
+}
 export function BridgeParityPage({controller:statusController,rpc,controls,connectionGeneration,t=fallback,view,settingsOnly=false,StatusComponent}){
   const {status}=useSyncExternalStore(statusController.subscribe,statusController.getSnapshot,statusController.getSnapshot);
   const controller=useMemo(()=>new ParityController(rpc,{connectionGeneration}),[rpc,connectionGeneration]);
@@ -114,11 +136,12 @@ export function BridgeParityPage({controller:statusController,rpc,controls,conne
   const [tab,setTab]=useState(settingsOnly?'settings':'catalog');
   if(view==='summary')return t('title');
   return <div style={{...style,overflow:'auto'}}><BridgeSettingsPanel rpc={rpc} status={status} t={t} onDiagnostics={()=>setTab('insights')}/>{StatusComponent&&!settingsOnly&&<details open={status?.failSafe?.incompatible||['newer-unverified','identity-mismatch'].includes(status?.compatibility?.state)}><summary>{t('connection')}</summary><StatusComponent controller={statusController}/></details>}
-    {(!settingsOnly||tab!=='settings')&&<><nav aria-label="Zcode Bridge panels">{['catalog','insights','automation','workflows','preferences'].map(key=><button type="button" key={key} aria-pressed={tab===key} onClick={()=>setTab(key)}>{t(key)}</button>)}</nav>
+    {(!settingsOnly||tab!=='settings')&&<><nav aria-label="Zcode Bridge panels">{['catalog','insights','automation','workflows','workspace','preferences'].map(key=><button type="button" key={key} aria-pressed={tab===key} onClick={()=>setTab(key)}>{t(key)}</button>)}</nav>
       {tab==='catalog'&&<ZCodeCatalogPanel sources={controller.catalog} t={key=>t('catalog.'+key)}/>}
       {tab==='insights'&&<><ZCodeInsightsPanel sources={controller.insights} t={key=>t('insights.'+key)}/><DiagnosticsExtras controller={controller}/></>}
       {tab==='automation'&&<AutomationPanel controller={controller}/>}
       {tab==='workflows'&&<><ZCodeWorkflowPanel controller={controller} state={{workflowAdmission:{reads:{allowed:true},writes:{allowed:true}}}}/><p>Open a ZCode session for run, resume, amendment and cancellation controls.</p></>}
+      {tab==='workspace'&&<WorkspacePresentationPanel controller={controller}/>}
       {tab==='preferences'&&<PreferencesPanel controller={controller}/>}
     </>}
   </div>;
