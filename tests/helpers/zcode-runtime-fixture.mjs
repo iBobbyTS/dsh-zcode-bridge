@@ -13,7 +13,9 @@ export function sampleProviders(){return [
 ]}
 export function baseSnapshot(id='official-session'){const snapshot=structuredClone(captured.initial.frame.payload.snapshot);snapshot.sessionId=id;return snapshot}
 export class MockPeer {
-  closed=false;connectionId='mock-connection';notifications=new Set();closers=new Set();calls=[];acks=new Map();ordinal=0;subscriptionSeq=0;subscriptions=new Map();delivered=new Map();snapshot=baseSnapshot();loseAck=false;providers=sampleProviders();
+  closed=false;connectionId='mock-connection';notifications=new Set();closers=new Set();calls=[];acks=new Map();ordinal=0;subscriptionSeq=0;subscriptions=new Map();delivered=new Map();snapshots=new Map();snapshot=baseSnapshot();loseAck=false;providers=sampleProviders();
+  /** Register an independent official session so per-session topics carry only their own frames. */
+  registerSession(sessionId){const snapshot=baseSnapshot(sessionId);this.snapshots.set(sessionId,snapshot);return snapshot}
   /** Discovery seam consumed by the Zcode LLM adapter; returns detached provider groups. */
   async listProviders(){return structuredClone(this.providers)}
   /** Validate one OFFICIAL provider/model identity against the advertised registry, mirroring the
@@ -41,11 +43,15 @@ export class MockPeer {
       if(this.loseAck){this.loseAck=false;throw Object.assign(new Error('lost'),{code:'execution-outcome-unknown'})}
     }else if(method==='v4/commands/query')result={results:params.commands.map(key=>({key,result:this.acks.get(key.commandId)??'unknown'}))};
     else if(method==='v4/conversation/subscribe'){
-      const id='mock-sub-'+this.subscriptionSeq++;this.subscriptions.set(params.topic,id);result={ack:{subscriptionId:id,mode:'snapshot',logEpoch:this.snapshot.logEpoch}};setImmediate(()=>this.publish());
+      const id='mock-sub-'+this.subscriptionSeq++;const sessionId=typeof params.topic==='string'?params.topic.slice('conversation/'.length):undefined;this.subscriptions.set(params.topic,id);const snapshot=this.snapshots.get(sessionId)??this.snapshot;result={ack:{subscriptionId:id,mode:'snapshot',logEpoch:snapshot.logEpoch}};setImmediate(()=>this.publish(snapshot));
     }else if(method==='v4/conversation/unsubscribe'){for(const [topic,id] of this.subscriptions)if(id===params.subscriptionId||topic===params.topic)this.subscriptions.delete(topic);result={ack:{subscriptionId:params.subscriptionId}}}else if(method==='v4/conversation/resync'){result={ack:{subscriptionId:params.subscriptionId,mode:'snapshot',logEpoch:this.snapshot.logEpoch}};setImmediate(()=>this.publish(this.snapshot,'recovery'))}
     return onResult?onResult(result):result;
   }
-  publish(snapshot=this.snapshot,deliveryKind){this.snapshot=structuredClone(snapshot);for(const [topic,subscriptionId] of this.subscriptions){const seen=this.delivered.get(subscriptionId)??0;this.delivered.set(subscriptionId,seen+1);const kind=deliveryKind??(seen===0?'initial':'online');const wire=structuredClone(captured.initial);Object.assign(wire,{topic,subscriptionId,logicalFrameId:'mock-'+(++this.ordinal),logicalFrameOrdinal:this.ordinal,deliveryKind:kind});Object.assign(wire.frame,{topic,subscriptionId,fromSeq:0,toSeq:snapshot.seq,payload:{kind:'snapshot',snapshot}});for(const listener of this.notifications)listener({method:'v4/conversation/frame',params:wire})}}
+  publish(snapshot=this.snapshot,deliveryKind){const next=structuredClone(snapshot);this.snapshot=next;this.snapshots.set(next.sessionId,next);
+    // True per-session topics: a frame goes only to subscribers of that session. When no
+    // subscription matches (legacy single-session fixtures), keep the historical broadcast.
+    const matching=[...this.subscriptions].filter(([topic])=>topic==='conversation/'+next.sessionId);
+    for(const [topic,subscriptionId] of (matching.length?matching:[...this.subscriptions])){const seen=this.delivered.get(subscriptionId)??0;this.delivered.set(subscriptionId,seen+1);const kind=deliveryKind??(seen===0?'initial':'online');const wire=structuredClone(captured.initial);Object.assign(wire,{topic,subscriptionId,logicalFrameId:'mock-'+(++this.ordinal),logicalFrameOrdinal:this.ordinal,deliveryKind:kind});Object.assign(wire.frame,{topic,subscriptionId,fromSeq:0,toSeq:next.seq,payload:{kind:'snapshot',snapshot:next}});for(const listener of this.notifications)listener({method:'v4/conversation/frame',params:wire})}}
   disconnect(){for(const listener of this.closers)listener('execution-disconnected')}
   close(){this.closed=true;this.notifications.clear();this.closers.clear()}
 }

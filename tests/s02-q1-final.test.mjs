@@ -11,7 +11,8 @@ import {ZCodeAgent} from '../packages/host/zcode-agent.mjs';
 import {ZCodeRuntime} from '../packages/host/zcode-runtime.mjs';
 import {RuntimeControls} from '../packages/client/runtime.mjs';
 import {ProviderBadge,RuntimeLockedLabel,installRuntimeControls} from '../packages/client/runtime-controls.mjs';
-import {MockPeer,sampleProviders,tick} from './helpers/zcode-runtime-fixture.mjs';
+import {MockPeer,sampleProviders,row,tick} from './helpers/zcode-runtime-fixture.mjs';
+import {V4Conversation} from '../packages/host/conversation.mjs';
 
 const EFFORT_LEVELS={'A/model_a':['low','medium','high'],'A/model_b':['low','medium','high'],'B/model_c':['low']};
 const effortDefault=model=>model.startsWith('B/')?'low':model==='A/model_b'?'high':'medium';
@@ -186,6 +187,26 @@ test('S02-Q1 locked-runtime display shows DSH for native and the locked hint for
  assert.match(native,/data-zcode-runtime-locked="native"/);assert.match(native,/>DSH</);assert.equal(native.includes('官方 GUI'),false);
  const bound=renderToStaticMarkup(createElement(RuntimeLockedLabel,{controls:controls('b')({runtime:'zcode',hint:'官方 GUI 可能正在运行本会话',bindingHint:'Session created in the ZCode execution workspace; the picked workspace applies to native sessions only.'}),sessionId:'b'}));
  assert.match(bound,/data-zcode-binding-hint/);assert.match(bound,/ZCode execution workspace/);
+});
+
+test('S02-Q1 wave5: two sessions receive independent per-session live frames',async()=>{
+ const peer=new MockPeer();const first=peer.registerSession('s1'),second=peer.registerSession('s2');
+ const workspace={workspacePath:'/fixture/workspace',workspaceKey:'/fixture/workspace'};
+ const make=sessionId=>new V4Conversation(peer,{address:{runtime:'zcode',authority:'fixture',workspace:workspace.workspacePath,sessionId},workspace,clientId:'client-'+sessionId,connectionId:'client-'+sessionId,runnable:true});
+ const a=make('s1'),b=make('s2');
+ try{
+  await a.connect();await b.connect();await tick();await tick();
+  assert.equal(a.state.status,'live');assert.equal(b.state.status,'live');
+  assert.equal(a.state.snapshot.sessionId,'s1');assert.equal(b.state.snapshot.sessionId,'s2');
+  const firstNext={...structuredClone(first),seq:1,revision:1,rows:{...first.rows,window:[row('assistantText',1,{text:'one',state:'streaming'})]}};
+  peer.publish(firstNext);await tick();await tick();
+  assert.equal(a.state.snapshot.rows.window.at(-1)?.text,'one');
+  assert.equal(b.state.snapshot.rows.window.length,0,'s2 must not receive s1 frames');
+  const secondNext={...structuredClone(second),seq:1,revision:1,rows:{...second.rows,window:[row('assistantText',1,{text:'two',state:'streaming'})]}};
+  peer.publish(secondNext);await tick();await tick();
+  assert.equal(b.state.snapshot.rows.window.at(-1)?.text,'two');
+  assert.equal(a.state.snapshot.rows.window.at(-1)?.text,'one','s1 must not receive s2 frames');
+ }finally{await a.cancel();await b.cancel()}
 });
 
 test('S02-Q1 wave4: zcode create binds the execution workspace and hints on a mismatched picker choice',async()=>{
