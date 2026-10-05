@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { writeFileSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -8,11 +9,11 @@ import { createLauncherConfig, prepareLauncher, sandboxProfile, fault } from './
 /** Node/DSH-side resource owner. Status is a projection, never a command or auth transport. */
 export class HostLauncher {
   #state={phase:'idle',revision:0,channelAvailable:false,services:[],login:'disabled-s03',sharedOfficialMain:'NO-GO'};
-  #executionNonce;#routeBAttempted=false;#reads=new Map();#readSeq=0;#events=new EventEmitter();#child;#starting;#stopping;#disposed=false;#exited;
+  #executionNonce;#routeBAttempted=false;#routeBReady=false;#launchCount=0;#reads=new Map();#readSeq=0;#events=new EventEmitter();#child;#starting;#stopping;#disposed=false;#exited;
   constructor(options,{spawnProcess=spawn}={}){this.options=options;this.spawnProcess=spawnProcess}
   get state(){return structuredClone(this.#state)}
   subscribe(listener){this.#events.on('state',listener);return ()=>this.#events.off('state',listener)}
-  #publish(state){this.#state={...state,revision:this.#state.revision+1};this.#events.emit('state',this.state)}
+  #publish(state){if(this.#routeBAttempted&&state.phase==='ready'&&state.auth==='authenticated')this.#routeBReady=true;this.#state={...state,revision:this.#state.revision+1};this.#events.emit('state',this.state)}
   waitState(afterRevision,{signal,timeoutMs=25000}={}){
     if(signal?.aborted)return Promise.reject(fault('cancelled'));
     if(this.#state.revision>afterRevision||this.#disposed)return Promise.resolve(this.state);
@@ -28,8 +29,10 @@ export class HostLauncher {
       if(process.platform!=='darwin')throw fault('launcher-platform-unsupported');
       if(this.#stopping)await this.#stopping;
       if(this.#disposed)throw fault('disposed');
-      if(this.#routeBAttempted)throw fault('route-b-retry-disabled');
-      config=prepareLauncher(createLauncherConfig(this.options));this.#executionNonce=config.executionNonce;
+      if(this.#routeBAttempted&&!this.#routeBReady)throw fault('route-b-retry-disabled');
+      // Recovery uses the same validated configuration/profile, with a fresh owned run. Failed
+      // first bootstrap remains guarded; an authenticated ready owner may recover after exit.
+      config=prepareLauncher(createLauncherConfig({...this.options,...(this.#launchCount?{runId:'recovery-'+randomUUID()}: {})}));this.#launchCount++;this.#executionNonce=config.executionNonce;
       if(config.mode==='route-b')this.#routeBAttempted=true;
       const codeRoot=realpathSync(fileURLToPath(new URL('../',import.meta.url)));
       const dependencyRoot=dirname(fileURLToPath(import.meta.resolve('zod')));

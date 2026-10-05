@@ -66,7 +66,7 @@ export class V4Conversation {
   #state={status:'idle',snapshot:null,subscriptionId:null,logEpoch:null,error:null,gap:null,cleanupError:null};
   #assembler; #offHostTools; #offNotification; #offClosed; #connect; #resync; #generation=0; #closed=false;
   #observerErrors=0; #flight; #resyncAgain=null; #appliedBase=false; #orphans=[]; #frameTimer; #assemblyTimer; #commands=new Map(); #commandControllers=new Map(); #cancelPromise; #listeners=new Set();
-  #uploads=new Map(); #committedUploads=new Map(); #attachmentRefs=new Map();
+  #suspending; #uploads=new Map(); #committedUploads=new Map(); #attachmentRefs=new Map();
   constructor(peer,{address,workspace,connectionId,clientId,clientMode='web-remote-replayable',runnable=false,managementAllowed=false,hostTools,onChange=()=>{},frameTimeoutMs=10000,assemblyOptions={},maxCommands=128,reconnectable=false}={}){
     if(!workspace||!address||address.runtime!=='zcode'||!nonempty(address.authority)||!nonempty(address.sessionId)||address.workspace!==workspace?.workspacePath||workspace.workspaceKey!==workspace.workspacePath||!nonempty(workspace?.workspacePath)||!nonempty(connectionId)||!nonempty(clientId)||typeof runnable!=='boolean'||typeof managementAllowed!=='boolean'||!['desktop-continuous','web-remote-replayable'].includes(clientMode)||!int(frameTimeoutMs)||frameTimeoutMs===0||!int(maxCommands)||maxCommands===0)throw new BridgeError('conversation-context-invalid');
     Object.assign(this,{peer,address:structuredClone(address),workspace:structuredClone(workspace),connectionId,clientId,clientMode,runnable,managementAllowed,onChange,frameTimeoutMs,maxCommands});
@@ -127,6 +127,7 @@ export class V4Conversation {
   }
   connect({forceSnapshot=false}={}){
     if(this.#closed)return Promise.reject(new BridgeError('conversation-closed'));
+    if(this.#suspending)return this.#suspending.then(()=>this.connect({forceSnapshot}));
     if(this.#connect)return this.#connect;
     const generation=++this.#generation,base=forceSnapshot?null:this.#base();
     this.#resyncAgain=null;this.#assembler.clear();clearTimeout(this.#assemblyTimer);clearTimeout(this.#frameTimer);
@@ -139,7 +140,7 @@ export class V4Conversation {
       const result=v4ConversationSubscribeResultSchema.parse(raw),ack=result.ack;
       if(!nonempty(ack.subscriptionId)||!nonempty(ack.logEpoch))throw new BridgeError('subscription-ack-invalid');
       if(this.#closed||generation!==this.#generation){this.#orphans.push(this.#unsubscribe(ack.subscriptionId));return result}
-      if(this.#state.status==='error'||this.#flight!==flight)return result;
+      if(this.#state.status==='error'||this.#flight!==flight){this.#orphans.push(this.#unsubscribe(ack.subscriptionId));return result;}
       const held=this.#state.snapshot;
       if(ack.mode==='resume'&&(!base||base.logEpoch!==ack.logEpoch||!this.#appliedBase||held?.logEpoch!==base.logEpoch||held?.seq!==base.seq))throw new BridgeError('subscription-base-invalid');
       this.#appliedBase=ack.mode==='resume';
@@ -485,7 +486,7 @@ export class V4Conversation {
     this.#reserveCommand();
     const controller=new AbortController(),abort=()=>controller.abort();signal?.addEventListener('abort',abort,{once:true});
     this.#commandControllers.set(commandId,controller);
-    const record={commandId,type,sessionId:envelope.sessionId,logEpoch:snapshot.logEpoch,revision:snapshot.revision,state:'sent-unconfirmed',...(WORK_COMMANDS.has(type)||type==='resumeWorkflowRun'?{workId:payload.workId}:{}),...(type==='resumeWorkflowRun'?{baselineWorkflowSequence:snapshot.workflowRuns?.runs?.find(r=>r.runId===payload.workId)?.lastEventSequence??-1}:{})};
+    const record={commandId,type,sessionId:envelope.sessionId,logEpoch:snapshot.logEpoch,revision:snapshot.revision,...(type==='stop'?{foregroundExecutionId:payload.expectedForegroundExecutionId}:{}),state:'sent-unconfirmed',...(WORK_COMMANDS.has(type)||type==='resumeWorkflowRun'?{workId:payload.workId}:{}),...(type==='resumeWorkflowRun'?{baselineWorkflowSequence:snapshot.workflowRuns?.runs?.find(r=>r.runId===payload.workId)?.lastEventSequence??-1}:{})};
     this.#commands.set(commandId,record);this.#publish();
     try{
       await this.peer.request('v4/command',parsed.envelope,{signal:controller.signal,onResult:raw=>{this.#ack(record,raw);return raw}});
@@ -533,6 +534,11 @@ export class V4Conversation {
     const snapshot=this.#state.snapshot;if(!snapshot)return;
     for(const record of this.#commands.values()){
       if(terminal.has(record.state))continue;
+      if(['accepted','duplicate'].includes(record.ack?.status)){
+        if(record.type==='stop'){
+          record.state=snapshot.control.activeWorks.some(work=>work.foregroundExecutionId===record.foregroundExecutionId)?'accepted-awaiting-terminal':'completed';continue;
+        }
+      }
       const rerun=['editUserQuery','retryTurn'].includes(record.type)&&['accepted','duplicate'].includes(record.ack?.status);
       if(record.logEpoch!==snapshot.logEpoch&&!rerun)continue;
       // A cancel has no turnHeader. Its terminal is the authoritative work projection: once the work
@@ -562,13 +568,25 @@ export class V4Conversation {
   /** Cancels observation/wait only. Runtime stop is a separately correlated command. */
   cancelCommand(commandId){const controller=this.#commandControllers.get(commandId);if(!controller)return false;controller.abort();this.#commandControllers.delete(commandId);return true}
   async #unsubscribe(subscriptionId){
-    if(this.peer.closed)return;
+    if(this.peer.closed)return true;
     const params=v4ConversationUnsubscribeParamsSchema.parse({topic:this.topic,connectionId:this.connectionId,subscriptionId});
-    try{await this.peer.request('v4/conversation/unsubscribe',params)}
-    catch(e){this.#publish({cleanupError:{code:e.code??'unsubscribe-failed',...(e.protocolCode===undefined?{}:{protocolCode:e.protocolCode})}})}
+    try{await this.peer.request('v4/conversation/unsubscribe',params);return true}
+    catch(e){this.#publish({cleanupError:{code:e.code??'unsubscribe-failed',...(e.protocolCode===undefined?{}:{protocolCode:e.protocolCode})}});return false}
+  }
+  /** Release observation capacity without disposing the resident Session or its official baseline. */
+  suspend(){
+    if(this.#suspending)return this.#suspending;
+    if(this.#closed||this.#connect||this.#resync)return Promise.resolve(false);
+    const id=this.#state.subscriptionId;
+    const generation=++this.#generation;clearTimeout(this.#frameTimer);clearTimeout(this.#assemblyTimer);this.#assembler.clear();this.#flight=null;
+    // Establish the release barrier before notifying synchronous observers. A reopen must wait
+    // for unsubscribe, rather than acquire another subscription while the old one is still live.
+    this.#suspending=Promise.resolve().then(async()=>{const released=!id||await this.#unsubscribe(id);if(!released&&!this.#closed&&generation===this.#generation)this.#publish({status:'error',error:'subscription-release-uncertain',subscriptionId:id});return released}).finally(()=>this.#suspending=null);
+    this.#publish({status:'idle',subscriptionId:null});
+    return this.#suspending;
   }
   #transportLost(code){
-    if(this.#closed)return;
+    if(this.#closed||this.#state.status==='idle'&&!this.#state.subscriptionId&&!this.#flight)return;
     ++this.#generation;clearTimeout(this.#frameTimer);clearTimeout(this.#assemblyTimer);this.#assembler.clear();this.#flight=null;
     for(const [id,controller] of this.#commandControllers){controller.abort();const record=this.#commands.get(id);if(record&&!terminal.has(record.state)){record.state='outcome-unknown';record.error=code}}
     this.#commandControllers.clear();this.#publish({status:'error',error:code,subscriptionId:null});
@@ -584,7 +602,7 @@ export class V4Conversation {
     if(this.#cancelPromise)return this.#cancelPromise;
     const id=this.#state.subscriptionId;this.#disconnect(reason);
     // A subscribe in flight still receives its ACK, cleans the owned orphan, then settles.
-    this.#cancelPromise=(async()=>{if(id)await this.#unsubscribe(id);await this.#connect;await this.#resync;await Promise.all(this.#orphans);this.#orphans=[]})().catch(e=>{this.#publish({cleanupError:{code:e.code??'subscription-cleanup-uncertain'}})});
+    this.#cancelPromise=(async()=>{if(id)await this.#unsubscribe(id);await this.#connect;await this.#resync;await this.#suspending;await Promise.all(this.#orphans);this.#orphans=[]})().catch(e=>{this.#publish({cleanupError:{code:e.code??'subscription-cleanup-uncertain'}})});
     return this.#cancelPromise;
   }
 }

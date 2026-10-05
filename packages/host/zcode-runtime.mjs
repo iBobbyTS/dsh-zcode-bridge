@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile, rename } from 'node:fs/promises';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
+import { mirrorLifecycle } from './mirror-lifecycle.mjs';
 import { MirrorState } from './mirror-state.mjs';
 import { randomUUID } from 'node:crypto';
 import { CommandLifecycle } from './command-lifecycle.mjs';
@@ -26,7 +27,7 @@ export class RuntimeStore {
 export class ZCodeRuntime {
   agents=new Map();disposers=new Map();creating=new Map();absent=new Set();disposed=false;persistError=null;historyListeners=new Map();
   executionWorkspace=null;directory=new MirrorState();directoryRead=0;directoryTail=Promise.resolve();
-  constructor(ctx,host,{store=new RuntimeStore(process.env.DSH_HOME??join(homedir(),'.dsh')),createScope,agentEvents,peerFactory=launcher=>new LauncherPeer(launcher),discoverModels}={}){Object.assign(this,{ctx,host,store,createScope,agentEvents,peerFactory,discoverModels:discoverModels??(async()=>{await this.ensurePeer();return typeof this.host.launcher.read==='function'?this.host.launcher.read('models'):[]})})}
+  constructor(ctx,host,{store=new RuntimeStore(process.env.DSH_HOME??join(homedir(),'.dsh')),createScope,agentEvents,peerFactory=launcher=>new LauncherPeer(launcher),discoverModels,agentOptions={}}={}){Object.assign(this,{ctx,host,store,createScope,agentEvents,peerFactory,agentOptions,discoverModels:discoverModels??(async()=>{await this.ensurePeer();return typeof this.host.launcher.read==='function'?this.host.launcher.read('models'):[]})})}
   /** Register-or-resolve the launcher's execution workspace in DSH so a mirror Session's cwd can
    * match the official Agent header. The official executor owns the run workspace; DSH only needs
    * a proper workspace row to attach/present it. */
@@ -42,12 +43,12 @@ export class ZCodeRuntime {
   /** Discovered executable official account provider/model groups, projected by launcher Main. */
   modelProviders(){return this.discoverModels()}
   persist(){const promise=this.store.save();void promise.catch(()=>{this.persistError='runtime-persistence-failed'});return promise}
-  async start(){await this.store.load();for(const record of this.store.records.values())for(const retired of record.retiredMirrors??[])this.absent.add(retired.id);for(const record of this.store.records.values()){if(record.catalogSeen&&this.host.listSessions)continue;if(record.officialId||record.localDraft)await this.register(record);else record.error='create-outcome-unknown'}this.offRecovery=this.host.launcher?.subscribe(state=>{if(state.phase==='ready')void this.recoverAll().catch(()=>{})});if(this.host.launcher?.state.phase==='ready')await this.recoverAll();if(this.host.listSessions){await this.refreshDirectory();this.directoryTimer=setInterval(()=>{void this.refreshDirectory().catch(()=>{})},5000);this.directoryTimer.unref?.()}}
+  async start(){await this.store.load();for(const record of this.store.records.values())for(const retired of record.retiredMirrors??[])this.absent.add(retired.id);for(const record of this.store.records.values()){if(record.catalogSeen&&this.host.listSessions)continue;if(record.officialId||record.localDraft)await this.register(record);else record.error='create-outcome-unknown'}this.offRecovery=this.host.launcher?.subscribe(state=>{if(state.phase!=='ready')this.handshake=null;if(state.phase==='ready')void this.recoverAll().catch(()=>{})});if(this.host.launcher?.state.phase==='ready')await this.recoverAll();if(this.host.listSessions){await this.refreshDirectory();this.directoryTimer=setInterval(()=>{void this.refreshDirectory().catch(()=>{})},5000);this.directoryTimer.unref?.()}}
   async ensurePeer(){
     await this.host.connect();const state=this.host.launcher?.state;
     if(state?.phase!=='ready'||state.auth!=='authenticated'||!state.executionWorkspace)throw fault('execution-unavailable');
     this.peer??=this.peerFactory(this.host.launcher);
-    this.handshake??=(async()=>{const hello=await this.peer.request('hello');await this.peer.request('initialize',negotiatedClientHello(hello,{clientId:'dsh-zcode-bridge',appVersion:'0.1.0'}))})();await this.handshake;
+    if(!this.handshake){const flight=(async()=>{const hello=await this.peer.request('hello');await this.peer.request('initialize',negotiatedClientHello(hello,{clientId:'dsh-zcode-bridge',appVersion:'0.1.0'}))})().catch(error=>{if(this.handshake===flight)this.handshake=null;throw error});this.handshake=flight;}await this.handshake;
     const execution=await this.ensureExecutionWorkspace(state.executionWorkspace);
     return {peer:this.peer,workspace:state.executionWorkspace,cwd:execution.path??state.executionWorkspace,workspaceId:execution.id,authority:'official-host'};
   }
@@ -85,7 +86,7 @@ export class ZCodeRuntime {
     const releaseSession=this.ctx.sessions.enter(session);this.ctx.sessions.announce?.(session);
     let agent,releaseAgent;
     try{
-      agent=new ZCodeAgent(this.ctx,session,record,{peer,createScope:this.createScope,agentEvents:this.agentEvents,onPersist:()=>this.persist(),onFirstInput:(agent,operation,text)=>this.firstInput(agent,operation,text),onReplacement:snapshot=>{this.replace(record,snapshot)}});
+      agent=new ZCodeAgent(this.ctx,session,record,{...this.agentOptions,ensureReady:()=>this.ensurePeer(),peer,createScope:this.createScope,agentEvents:this.agentEvents,onPersist:()=>this.persist(),onFirstInput:(agent,operation,text)=>this.firstInput(agent,operation,text),onReplacement:snapshot=>{this.replace(record,snapshot)}});
       agent.projected=new Set(record.projected??[]);
       if(record.snapshot){agent.mirror.accept(record.snapshot);for(const row of record.snapshot.rows.window)agent.turnFor(row.turnId)}
       releaseAgent=await this.ctx.agents.register(agent);assertCurrent();
@@ -251,10 +252,10 @@ export class ZCodeRuntime {
     this.store.records.set(id,pending);await this.store.save();const agent=await this.register(pending);if(resolved)agent.confirmSelection(resolved);await this.publishDirectory?.();
     return {sessionId:id,runtime:'zcode',workspaceId:pending.workspaceId,workspacePath:pending.cwd,hint:pending.bindingHint};
   }
-  info(id){const record=this.store.records.get(id);return record?{runtime:'zcode',locked:true,historyGeneration:record.historyGeneration??0,selection:record.selection??null,mode:record.mode,error:record.error??this.persistError,hint:SHARED_GUI_HINT,bindingHint:record.bindingHint??null,officialAddress:{runtime:'zcode',authority:this.host.status?.sessionAuthority??record.authority,workspace:record.workspace,sessionId:record.officialId},approval:record.approval??null,lastCommand:record.lastCommand??null}: this.absent.has(id)?{runtime:'zcode',locked:true,error:'session/not-found'}:{runtime:'native',locked:true}}
+  info(id){const record=this.store.records.get(id);return record?{runtime:'zcode',locked:true,historyGeneration:record.historyGeneration??0,selection:record.selection??null,mode:record.mode,error:record.error??this.persistError,hint:SHARED_GUI_HINT,bindingHint:record.bindingHint??null,officialAddress:{runtime:'zcode',authority:this.host.status?.sessionAuthority??record.authority,workspace:record.workspace,sessionId:record.officialId},lifecycle:mirrorLifecycle(this.agents.get(id),record),approval:record.approval??null,lastCommand:record.lastCommand??null}: this.absent.has(id)?{runtime:'zcode',locked:true,error:'session/not-found'}:{runtime:'native',locked:true}}
   async handle(payload){
     if(!payload||typeof payload!=='object'||Array.isArray(payload))throw fault('invalid-payload');
-    const keys={create:['operation','sessionId','workspaceId','cwd','selection','mode'],info:['operation','sessionId'],select:['operation','sessionId','selection'],cancel:['operation','sessionId'],usage:['operation','sessionId'],open:['operation','sessionId']};
+    const keys={create:['operation','sessionId','workspaceId','cwd','selection','mode'],info:['operation','sessionId'],select:['operation','sessionId','selection'],cancel:['operation','sessionId'],usage:['operation','sessionId'],open:['operation','sessionId'],observe:['operation','sessionId'],queue:['operation','sessionId','queueItemId','action','newText']};
     if(!keys[payload.operation]||Object.keys(payload).some(key=>!keys[payload.operation].includes(key)))throw fault('invalid-payload');
     if(payload.operation==='create')return this.create(payload);
     if(typeof payload.sessionId!=='string')throw fault('invalid-payload');
@@ -262,7 +263,9 @@ export class ZCodeRuntime {
     if(payload.operation==='open')return this.open(payload.sessionId);
     const agent=this.agents.get(payload.sessionId);if(!agent)throw fault('runtime-identity-locked');
     if(payload.operation==='usage')return this.host.taskUsage(this.info(payload.sessionId).officialAddress);
-    if(payload.operation==='cancel'){agent.cancel();return {requested:true}}
+    if(payload.operation==='observe'){agent.touch();await agent.connect();return this.info(payload.sessionId)}
+    if(payload.operation==='cancel')return agent.stop();
+    if(payload.operation==='queue')return agent.queueAction(payload);
     return this.selectSession(payload.sessionId,payload.selection,agent);
   }
   /** Legacy bridge selection entry: same identity translation/outcome contract as the official

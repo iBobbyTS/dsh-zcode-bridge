@@ -33,6 +33,25 @@ export class RuntimeControls {
   }
   async open(id){const owner={};this.owners.set(id,owner);this.usages.delete(id);const value=await this.call({operation:'open',sessionId:id});if(this.owners.get(id)===owner){this.infos.set(id,value);this.publish()}return value}
   async usage(id){const owner=this.owners.get(id),generation=this.generation;const value=await this.call({operation:'usage',sessionId:id});if(!this.disposed&&generation===this.generation&&this.owners.get(id)===owner){this.usages.set(id,value);this.publish()}return value}
+  /** Poll only while a composer is mounted; this renews the idle observation lease. */
+  watch(id,intervalMs=1000){
+    let active=true,timer;
+    const poll=async()=>{
+      if(!active||this.disposed)return;
+      const generation=this.generation;
+      try{
+        const initial=this.infos.get(id)??await this.info(id);
+        if(initial.runtime==='zcode'){
+          const value=await this.call({operation:'observe',sessionId:id});
+          if(active&&!this.disposed&&generation===this.generation){this.infos.set(id,value);this.publish()}
+        }
+      }catch(error){
+        if(active&&!this.disposed&&generation===this.generation){const held=this.infos.get(id);if(held){this.infos.set(id,{...held,error:error.code??'execution-disconnected',lifecycle:{...held.lifecycle,confirmed:false,reason:error.code??'execution-disconnected'}});this.publish()}}
+      }finally{if(active&&!this.disposed)timer=setTimeout(poll,intervalMs)}
+    };
+    void poll();return ()=>{active=false;clearTimeout(timer)};
+  }
+  async control(id,operation,params={}){const result=await this.call({operation,sessionId:id,...params});await this.info(id);return result}
   async select(id,selection){const result=await this.call({operation:'select',sessionId:id,selection});await this.info(id);return result}
   dispose(){this.disposed=true;this.generation++;this.off?.();this.listeners.clear()}
 }

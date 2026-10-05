@@ -29,6 +29,41 @@ export function RuntimeLockedLabel({controls,sessionId}){
     info.bindingHint?h('span',{key:'binding',role:'note','data-zcode-binding-hint':'',style:{color:'var(--dsw-alias-label-warning, var(--dsw-alias-label-secondary))'}},info.bindingHint):null,
   ]);
 }
+
+const RECEIPTS={pending:'等待官方回执',accepted:'官方已受理',queued:'官方已排队',rejected:'官方未受理', 'outcome-unknown':'结果未知（不自动重发）'};
+/** Session-scoped official lifecycle presentation, with no local queue mutations. */
+export function RuntimeLifecycleDock({controls,sessionId}){
+  useSyncExternalStore(controls.subscribe,controls.getSnapshot,controls.getSnapshot);
+  useEffect(()=>controls.watch(sessionId),[controls,sessionId]);
+  const owner=React.useRef({sessionId});if(owner.current.sessionId!==sessionId)owner.current={sessionId};
+  const [busy,setBusy]=React.useState(false),[error,setError]=React.useState(null),[editing,setEditing]=React.useState(null);
+  useEffect(()=>{setBusy(false);setError(null);setEditing(null)},[sessionId]);
+  const info=controls.infos.get(sessionId),state=info?.lifecycle;
+  if(info?.runtime!=='zcode'||!state)return null;
+  const act=async(operation,params)=>{const acting=owner.current;setBusy(true);setError(null);try{const result=await controls.control(sessionId,operation,params);if(acting!==owner.current)return;if(!['accepted','duplicate'].includes(result.ack?.status))setError(result.ack?.reasonCode??result.state);else setEditing(null)}catch(error){if(acting===owner.current)setError(error.code??error.message)}finally{if(acting===owner.current)setBusy(false)}};
+  const ready=state.confirmed&&!busy;
+  const receipts=state.receipts??[];
+  return h('div',{'data-zcode-lifecycle':'',style:{display:'grid',gap:6}},[
+    h('div',{key:'state',role:'status','data-zcode-connection':state.status},state.reason?`ZCode 不可用：${state.reason}；自动恢复后刷新官方状态`:`ZCode：${state.control?.phase??state.status} · ${state.control?.activeWorks?.length??0} 个活动任务`),
+    h('button',{key:'stop',type:'button','aria-label':'Stop ZCode',disabled:!ready||!state.control?.canStop,onClick:()=>void act('cancel')},state.control?.stopState==='stopping'?'正在停止':'停止 ZCode'),
+    h('div',{key:'queue','data-zcode-queue':'',role:'group','aria-label':'Official ZCode queue'},[
+      h('span',{key:'label'},`官方队列：${state.queue.items.length} · ${state.queue.autoDrain?'自动执行':`已暂停${state.queue.pauseReason?'：'+state.queue.pauseReason:''}`}`),
+      ...state.queue.items.map(item=>h('div',{key:item.queueItemId,'data-zcode-queue-item':item.queueItemId},[
+        h('span',{key:'text'},item.text),
+        h('span',{key:'status',role:'status'},` · ${item.dispatch.state} · ${item.steer.state}`),
+        item.steer.reasonCode?h('span',{key:'reason'},` · ${item.steer.reasonCode}`):null,
+        h('button',{key:'edit',type:'button',disabled:!ready||item.dispatch.state!=='queued'||item.kind==='compact'||!state.availability?.queueEdit.allowed,onClick:()=>setEditing({sessionId,id:item.queueItemId,text:item.text})},'编辑'),
+        h('button',{key:'send',type:'button',disabled:!ready||item.dispatch.state!=='queued'||!state.availability?.sendQueuedNow.allowed,onClick:()=>void act('queue',{action:'sendNow',queueItemId:item.queueItemId})},'立即发送'),
+      ])),
+    ]),
+    editing?.sessionId===sessionId?h('form',{key:'editor',onSubmit:event=>{event.preventDefault();void act('queue',{action:'edit',queueItemId:editing.id,newText:editing.text})}},[
+      h('input',{key:'input','aria-label':'Official queue text',value:editing.text,onChange:event=>setEditing({...editing,text:event.target.value})}),h('button',{key:'save',type:'submit',disabled:!ready},'保存'),h('button',{key:'cancel',type:'button',onClick:()=>setEditing(null)},'取消编辑'),
+    ]):null,
+    ...receipts.map(receipt=>h('div',{key:receipt.commandId,role:receipt.receiptClass==='rejected'?'alert':'status','data-zcode-receipt':receipt.receiptClass,'data-zcode-command':receipt.commandId},`${RECEIPTS[receipt.receiptClass]??receipt.receiptClass}${receipt.reason?'：'+receipt.reason:''}`)),
+    error?h('div',{key:'error',role:'alert'},error):null,
+  ]);
+}
+
 export function RuntimeHero({controls,create}){
   const state=useSyncExternalStore(controls.subscribe,controls.getSnapshot,controls.getSnapshot);const [error,setError]=React.useState(null);
   return h('div',{'data-zcode-runtime-hero':'',role:'group','aria-label':'New session runtime'},[
@@ -65,5 +100,6 @@ export function installRuntimeControls(ctx){
   ctx.slots.inject('conversation.hero.agentPreset',()=>ctx.slots.register({name:'conversation.hero.agentPreset',priority:-1,inject:()=>({controls,create:async()=>{const id=await ctx.sessions.create();ctx.uiWorkspace.openSession(id);return id}})},RuntimeHero));
   // Read-only runtime display right of the Standard-mode cluster. No selection UI.
   ctx.slots.inject('conversation.input.left',()=>ctx.slots.register({name:'conversation.input.left',id:'zcode-runtime-locked',order:1,registrant:'zcode-runtime-locked',inject:sessionId=>({controls,sessionId})},RuntimeLockedLabel));
+  ctx.slots.inject('conversation.input.dock',()=>ctx.slots.register({name:'conversation.input.dock',id:'zcode-lifecycle',order:21,registrant:'zcode-lifecycle',inject:sessionId=>({controls,sessionId})},RuntimeLifecycleDock));
   return controls;
 }

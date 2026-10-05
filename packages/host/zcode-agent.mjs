@@ -23,8 +23,8 @@ export function approvalAnswer(interaction,outcome){
  * not a parallel implementation. Inbox mutation without an official route fails explicitly. */
 export class ZCodeAgent {
   status='idle';disposed=false;mirror=new MirrorState();streams=new Map();projected=new Set();turns=new Map();pendingApprovals=new Map();revision=0;idleWaiters=[];dispatches=new Set();
-  constructor(ctx,session,record,{peer,createScope,agentEvents,onPersist=()=>{},onReplacement,onFirstInput,approval}={}){
-    Object.assign(this,{id:session.id,session,record,peer,onPersist,onReplacement:onReplacement??(snapshot=>this.reconcile(snapshot)),onFirstInput,approval});
+  constructor(ctx,session,record,{peer,createScope,agentEvents,onPersist=()=>{},onReplacement,onFirstInput,approval,ensureReady=()=>{},idleSubscriptionMs=30000,reconnectDelayMs=250}={}){
+    Object.assign(this,{id:session.id,session,record,peer,onPersist,onReplacement:onReplacement??(snapshot=>this.reconcile(snapshot)),onFirstInput,approval,ensureReady,idleSubscriptionMs,reconnectDelayMs});
     this.turns=new Map(record.turns??[]);
     if(!record.turns&&record.snapshot){const ids=[...new Set(record.snapshot.rows.window.map(row=>row.turnId))];const starts=(record.events??[]).filter(event=>event.type==='turn/start'&&event.seq>=(record.historyStartSeq??0));ids.forEach((id,index)=>{if(starts[index])this.turns.set(id,starts[index].data.turn)})}
     this.nextTurn=Math.max(0,...(record.events??[]).filter(event=>event.type==='turn/start').map(event=>event.data.turn))+1;
@@ -43,13 +43,46 @@ export class ZCodeAgent {
   setStatus(status){if(this.status===status)return;this.status=status;this.dispatch.emit('agent/status',{status});if(status==='idle')for(const resolve of this.idleWaiters.splice(0))resolve()}
   bindConversation(){
     this.conversation=new V4Conversation(this.peer,{address:{runtime:'zcode',authority:this.record.authority,workspace:this.record.workspace,sessionId:this.record.officialId},workspace:{workspacePath:this.record.workspace,workspaceKey:this.record.workspace},connectionId:this.peer.connectionId,clientId:'dsh-zcode-bridge',clientMode:'desktop-continuous',runnable:true,managementAllowed:true,reconnectable:true,onChange:state=>this.project(state)});
-    this.offState=this.peer.launcher?.subscribe(state=>{if(state.phase==='ready'&&this.conversation?.state.status==='error'&&!this.disposed)void this.reconnect().catch(()=>{})});
+    this.offState=this.peer.launcher?.subscribe(state=>{if(state.phase==='ready'&&this.conversation?.state.status==='error'&&!this.disposed)this.scheduleReconnect(0)});
   }
-  async connect(){if(!this.conversation&&this.record.officialId)this.bindConversation();if(this.conversation)await this.conversation.connect()}
-  async reconnect(){if(!this.conversation)return;await this.conversation.connect();for(const command of this.conversation.state.commands)if(command.state==='outcome-unknown'){const result=await this.conversation.queryCommand(command.commandId);this.commands.receipt(command.commandId,result)}await this.persist()}
+  async connect(){
+    if(this.disposed)throw fault('agent-disposed');
+    if(!this.conversation&&this.record.officialId)this.bindConversation();
+    if(!this.conversation||this.conversation.state.status==='live')return;
+    await this.ensureReady();
+    if(this.conversation.state.status==='error'&&this.conversation.state.subscriptionId&&!await this.conversation.suspend())throw fault('subscription-release-uncertain');
+    if(this.disposed)throw fault('agent-disposed');
+    await this.conversation.connect({forceSnapshot:true});
+    if(this.conversation.state.status==='error')throw fault(this.conversation.state.error??'execution-unavailable');
+  }
+  async reconnect(){
+    if(this.reconnecting)return this.reconnecting;
+    if(!this.conversation||this.disposed)return;
+    this.reconnecting=(async()=>{await this.connect();for(const command of this.conversation.state.commands)if(command.state==='outcome-unknown'){const result=await this.conversation.queryCommand(command.commandId);this.commands.receipt(command.commandId,result)}await this.persist()})().finally(()=>this.reconnecting=null);
+    return this.reconnecting;
+  }
+  scheduleReconnect(delay=this.reconnectDelayMs){
+    if(this.disposed||this.reconnectTimer)return;
+    this.reconnectTimer=setTimeout(()=>{this.reconnectTimer=null;void this.reconnect().catch(error=>{this.record.error=error.code??'execution-unavailable';this.persist();this.scheduleReconnect(Math.min(10000,Math.max(250,delay*2)))})},delay);
+    this.reconnectTimer.unref?.();
+  }
+  touch(){this.observedUntil=Date.now()+this.idleSubscriptionMs;clearTimeout(this.idleTimer);this.scheduleIdleRelease()}
+  canReleaseSubscription(){
+    const state=this.conversation?.state,snapshot=state?.snapshot;
+    if(this.disposed||state?.status!=='live'||!snapshot||snapshot.control.canStop||snapshot.control.activeWorks.length||snapshot.queue.items.length||snapshot.pendingInteractions.length||state.commands.some(command=>['sent-unconfirmed','outcome-unknown'].includes(command.state)||['sendText','stop'].includes(command.type)&&['accepted-awaiting-terminal','running','waiting'].includes(command.state))||this.commands.recoverable().length||this.dispatches.size)return false;
+    return true;
+  }
+  scheduleIdleRelease(){
+    clearTimeout(this.idleTimer);if(!this.canReleaseSubscription())return;
+    this.idleTimer=setTimeout(()=>{this.idleTimer=null;if(!this.canReleaseSubscription())return;if((this.observedUntil??0)>Date.now()){this.scheduleIdleRelease();return}void this.conversation.suspend().catch(error=>{this.record.error=error.code??'unsubscribe-failed';this.persist()})},this.idleSubscriptionMs);
+    this.idleTimer.unref?.();
+  }
   project(state){
     if(this.disposed)return;
-    if(state.error){this.record.error=state.error;this.flushStreams(true);this.setStatus('idle');this.persist();return}
+    for(const command of state.commands??[])if(this.record.operations?.[command.commandId])this.commands.receipt(command.commandId,command);
+    if(state.error){clearTimeout(this.idleTimer);this.record.error=state.error;this.flushStreams(true);this.setStatus('idle');this.persist();if(!this.reconnecting)this.scheduleReconnect();return}
+    if(state.status&&state.status!=='live')return;
+    clearTimeout(this.reconnectTimer);this.reconnectTimer=null;
     const snapshot=state.snapshot;if(!snapshot)return;
     const decision=this.mirror.accept(snapshot);if(!decision.accepted)return;
     const migrate=this.record.projectionIdentityVersion!==2&&(this.projected.size>0||(this.record.projected?.length??0)>0||Object.keys(this.record.prefixes??{}).length>0||(this.record.events??[]).some(event=>event.seq>=(this.record.historyStartSeq??0)&&(event.type==='turn/start'||['user/message','assistant/message'].includes(event.type)&&(event.data.id??event.data.message?.id??'').startsWith('zcode-'))));
@@ -79,13 +112,13 @@ export class ZCodeAgent {
     }
     }
     }
-    this.setStatus(snapshot.control.canStop?'running':'idle');
+    this.setStatus(snapshot.control.canStop||snapshot.control.activeWorks.length?'running':'idle');
     for(const interaction of snapshot.pendingInteractions)if(!this.pendingApprovals.has(interaction.interactionId)){
       const controller=new AbortController();this.pendingApprovals.set(interaction.interactionId,controller);
       void this.ask(interaction,controller).catch(error=>{this.record.error=error.code??'interaction-mapping-unavailable';this.persist()});
     }
     for(const [id,controller] of this.pendingApprovals)if(!snapshot.pendingInteractions.some(interaction=>interaction.interactionId===id)){controller.abort();this.pendingApprovals.delete(id)}
-    this.record.projected=[...this.projected];this.persist();
+    this.record.projected=[...this.projected];this.persist();this.scheduleIdleRelease();
   }
   turnFor(id){if(!this.turns.has(id)){this.turns.set(id,this.nextTurn++);this.record.turns=[...this.turns]}return this.turns.get(id)}
   reconcile(snapshot){
@@ -141,7 +174,7 @@ export class ZCodeAgent {
     if(message.content.some(part=>part.type!=='text'))throw fault('official-attachment-unavailable');
     const text=message.content.map(part=>part.text).join('\n');
     const {operation,duplicate}=this.commands.receive(message,target);if(duplicate)return;
-    const commandId=operation.commandId;
+    const commandId=operation.commandId;clearTimeout(this.idleTimer);
     // Native admission remains synchronous; its identified message is readable from inbox until
     // the matching official user row arrives. Dispatch waits for the durable association.
     const task=this.persist().then(async()=>{
@@ -161,13 +194,42 @@ export class ZCodeAgent {
     }).then(result=>{this.commands.receipt(commandId,result);return this.persist()},error=>{
       this.commands.mark(commandId,error.sent===false?'not-sent':(this.record.createCommandId===commandId||this.conversation?.command(commandId))?'outcome-unknown':'not-sent',{error:error.code??'send-failed'});this.record.error=error.code??'send-failed';return this.persist();
     });
-    this.dispatches.add(task);void task.finally(()=>this.dispatches.delete(task)).catch(()=>{});
+    this.dispatches.add(task);void task.finally(()=>{this.dispatches.delete(task);this.scheduleIdleRelease()}).catch(()=>{});
   }
 
   followup(message){this.send(message,'next-turn',true)}
   steer(message){this.send(message,'next-step',true)}
   inject(){throw fault('official-inject-unavailable')}
-  cancel(){for(const controller of this.pendingApprovals.values())controller.abort();const snapshot=this.conversation?.state.snapshot;const work=snapshot?.control.activeWorks.find(work=>work.foregroundExecutionId);if(snapshot?.control.canStop&&work)void this.conversation.submit({type:'stop',payload:{expectedForegroundExecutionId:work.foregroundExecutionId}}).catch(error=>{this.record.error=error.code;this.persist()})}
+  async stop(){
+    await this.connect();
+    if(!await this.whenProjectionReady())throw fault('projection-unconfirmed');
+    const snapshot=this.conversation.state.snapshot;
+    const work=snapshot.control.activeWorks.find(work=>work.foregroundExecutionId);
+    // submit re-checks the authoritative current target immediately before dispatch.
+    if(!snapshot.control.canStop||!work)throw fault('stop-target-unconfirmed');
+    const result=await this.submitControl({type:'stop',payload:{expectedForegroundExecutionId:work.foregroundExecutionId}});
+    this.record.lastControlCommand=result;await this.persist();return result;
+  }
+  cancel(){void this.stop().catch(error=>{this.record.error=error.code??'stop-failed';this.persist()})}
+  submitControl(command){
+    if(this.disposed)throw fault('agent-disposed');
+    const task=this.submitControlOwned(command);this.dispatches.add(task);
+    void task.finally(()=>{this.dispatches.delete(task);this.scheduleIdleRelease()}).catch(()=>{});return task;
+  }
+  async submitControlOwned({type,payload}){
+    clearTimeout(this.idleTimer);
+    const {commandId}=this.commands.prepareControl(type,payload);
+    await this.persist();
+    try{if(this.disposed)throw fault('agent-disposed');const result=await this.conversation.submit({type,payload,commandId});this.commands.receipt(commandId,result);await this.persist();return result}
+    catch(error){this.commands.mark(commandId,this.conversation.command(commandId)?'outcome-unknown':'not-sent',{error:error.code??'command-failed'});await this.persist();throw error}
+    finally{this.scheduleIdleRelease()}
+  }
+  async queueAction({queueItemId,action,newText}){
+    await this.connect();if(!await this.whenProjectionReady())throw fault('projection-unconfirmed');
+    if(!['edit','sendNow'].includes(action))throw fault('official-inbox-edit-unavailable');
+    const result=await this.submitControl({type:action==='edit'?'editQueueItem':'sendQueuedNow',payload:{queueItemId,...(action==='edit'?{newText}:{})}});
+    this.record.lastControlCommand=result;await this.persist();return result;
+  }
   whenIdle(){return this.status==='idle'?Promise.resolve():new Promise(resolve=>this.idleWaiters.push(resolve))}
   runMaintenance(task){if(this.status!=='idle')throw fault('agent-busy');return task(new AbortController().signal)}
   /** Wait until the mirror projection is live so a selection can be admitted. A freshly created
@@ -207,5 +269,5 @@ export class ZCodeAgent {
     return projection;
   }
   async dispose(){if(this.disposal)return this.disposal;this.disposed=true;return this.disposal=this.disposeOwned()}
-  async disposeOwned(){this.offState?.();await Promise.allSettled([...this.dispatches]);for(const controller of this.pendingApprovals.values())controller.abort();this.flushStreams(true);await this.conversation?.cancel();await this.scope.dispose();this.setStatus('idle')}
+  async disposeOwned(){clearTimeout(this.idleTimer);clearTimeout(this.reconnectTimer);this.offState?.();await Promise.allSettled([...this.dispatches]);for(const controller of this.pendingApprovals.values())controller.abort();this.flushStreams(true);await this.conversation?.cancel();await this.scope.dispose();this.setStatus('idle')}
 }

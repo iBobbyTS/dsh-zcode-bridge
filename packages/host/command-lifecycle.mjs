@@ -1,6 +1,6 @@
 import { newCommandId } from './conversation.mjs';
 const clone=value=>JSON.parse(JSON.stringify(value));
-const unresolved=new Set(['prepared','dispatching','outcome-unknown']);
+const unresolved=new Set(['prepared','dispatching','sent-unconfirmed','outcome-unknown']);
 /** One durable association owns native request dedup, official command receipts, and recovery.
  * Receiving a later command's ACK never changes an earlier command's uncertainty. */
 export class CommandLifecycle {
@@ -18,7 +18,12 @@ export class CommandLifecycle {
     const operation={commandId:newCommandId(),type:'sendText',state:'prepared',target,message:clone(message),...(requestId?{requestId}:{})};
     this.record.operations[operation.commandId]=operation;return {operation,duplicate:false};
   }
-  mark(commandId,state,extra={}){const operation=this.record.operations[commandId];if(!operation)return;Object.assign(operation,clone(extra));if(operation.state!=='projected')operation.state=state;this.record.lastCommand=clone(operation)}
+  prepareControl(type,payload){
+    if(Object.keys(this.record.operations).length>=4096)throw Object.assign(new Error('command-ledger-limit'),{code:'command-ledger-limit'});
+    const operation={commandId:newCommandId(),type,payload:clone(payload),state:'prepared'};
+    this.record.operations[operation.commandId]=operation;return operation;
+  }
+  mark(commandId,state,extra={}){const operation=this.record.operations[commandId];if(!operation)return;const projected=operation.state==='projected';Object.assign(operation,clone(extra));operation.state=projected?'projected':state;this.record.lastCommand=clone(operation)}
   receipt(commandId,result){if(result.commandId!==undefined&&result.commandId!==commandId||result.ack?.commandId!==undefined&&result.ack.commandId!==commandId)throw Object.assign(new Error('command-receipt-mismatch'),{code:'command-receipt-mismatch'});this.mark(commandId,result.state==='outcome-unknown'?'outcome-unknown':result.ack?.status??result.state,{...result});}
   project(commandId){const operation=this.record.operations[commandId];if(operation){operation.state='projected';this.record.lastCommand=clone(operation)}return operation?.requestId??commandId}
   nativeRequestId(commandId){return this.record.operations[commandId]?.requestId??commandId}

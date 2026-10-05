@@ -20,8 +20,15 @@ with a fresh ID automatically. Permission decisions use DSH's approval UI and re
 The composer displays “官方 GUI 可能正在运行本会话”. No deletion entry is provided.
 
 The fork-era conversation/directory bootstrap is retired from the shipped client.
-Catalog synchronization and additional lifecycle/settings surfaces belong to later
-sections. Development fixtures and capability spikes are excluded from publication.
+The official catalog supplies prefixed ZCode rows. The composer lifecycle dock shows
+the official queue, steer disposition, active work, stop availability, and distinct
+accepted/queued/rejected/unknown receipts. Queue edit and send-now use official guards;
+there is no queue removal control. Stop targets the currently confirmed foreground
+execution. Idle conversation subscriptions release after 30 seconds without a mounted
+composer, queued/active work, or unresolved input; the resident transcript stays intact.
+The carrier supports 64 simultaneous subscriptions and reports explicit capacity errors.
+After disconnect, the displayed prefix stays visible, recovery queries original command
+IDs, and a fresh official snapshot supplies the queue and control state. Development fixtures and capability spikes are excluded from publication.
 
 Only App-owned Electron Host/CLI artifacts are launched. Existing sandbox, HOME,
 credential, and exact-process ownership restrictions remain in force. The bridge
