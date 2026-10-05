@@ -47,7 +47,7 @@ export class HostLauncher {
     }catch(e){this.#publish({phase:'failed',reason:e.code??'launcher-configuration-failed',channelAvailable:false,services:[],landings:{passed:false}});return this.state}
   }
   read(operation,{address,signal}={}){
-    if(!['catalog','preflight','observation','taskUsage','sendMinimalTask'].includes(operation)||this.#state.phase!=='ready'||this.#state.landings?.mode!=='route-b'||!this.#child||this.#disposed)return Promise.reject(fault('route-b-read-unavailable'));
+    if(!['catalog','models','preflight','observation','taskUsage','sendMinimalTask'].includes(operation)||this.#state.phase!=='ready'||this.#state.landings?.mode!=='route-b'||!this.#child||this.#disposed)return Promise.reject(fault('route-b-read-unavailable'));
     if(signal?.aborted)return Promise.reject(fault('cancelled'));
     if(this.#reads.size>=32)return Promise.reject(fault('route-b-read-limit'));
     const id=++this.#readSeq;

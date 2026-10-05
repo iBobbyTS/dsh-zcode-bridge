@@ -21,8 +21,8 @@ export function approvalAnswer(interaction,outcome){
  * not a parallel implementation. Inbox mutation without an official route fails explicitly. */
 export class ZCodeAgent {
   status='idle';disposed=false;mirror=new MirrorState();streams=new Map();projected=new Set();turns=new Map();pendingApprovals=new Map();revision=0;idleWaiters=[];dispatches=new Set();
-  constructor(ctx,session,record,{peer,createScope,agentEvents,onPersist=()=>{},onReplacement=()=>{},approval}={}){
-    Object.assign(this,{id:session.id,session,record,peer,onPersist,onReplacement,approval});
+  constructor(ctx,session,record,{peer,createScope,agentEvents,onPersist=()=>{},onReplacement=()=>{},onFirstInput,approval}={}){
+    Object.assign(this,{id:session.id,session,record,peer,onPersist,onReplacement,onFirstInput,approval});
     this.turns=new Map(record.turns??[]);
     if(!record.turns&&record.snapshot){const ids=[...new Set(record.snapshot.rows.window.map(row=>row.turnId))];const starts=(record.events??[]).filter(event=>event.type==='turn/start'&&event.seq>=(record.historyStartSeq??0));ids.forEach((id,index)=>{if(starts[index])this.turns.set(id,starts[index].data.turn)})}
     this.nextTurn=Math.max(0,...(record.events??[]).filter(event=>event.type==='turn/start').map(event=>event.data.turn))+1;
@@ -32,14 +32,18 @@ export class ZCodeAgent {
     const unavailable=()=>{throw fault('official-inbox-edit-unavailable')};
     const commands=this.commands;
     this.inbox={get nextTurn(){return commands.pending('next-turn')},get nextStep(){return commands.pending('next-step')},clear:unavailable,replace:unavailable,remove:unavailable,splice:unavailable,append:(target,message)=>this.send(message,target,true),prepend:unavailable};
-    this.conversation=new V4Conversation(peer,{address:{runtime:'zcode',authority:record.authority,workspace:record.workspace,sessionId:record.officialId},workspace:{workspacePath:record.workspace,workspaceKey:record.workspace},connectionId:peer.connectionId,clientId:'dsh-zcode-bridge',clientMode:'desktop-continuous',runnable:true,managementAllowed:true,reconnectable:true,onChange:state=>this.project(state)});
-    this.offState=peer.launcher?.subscribe(state=>{if(state.phase==='ready'&&this.conversation.state.status==='error'&&!this.disposed)void this.reconnect().catch(()=>{})});
+    this.conversation=null;
+    if(record.officialId)this.bindConversation();
+    this.offState=peer.launcher?.subscribe(state=>{if(state.phase==='ready'&&this.conversation?.state.status==='error'&&!this.disposed)void this.reconnect().catch(()=>{})});
   }
   persist(){const promise=Promise.resolve().then(()=>this.onPersist());void promise.catch(()=>{});return promise}
   append(type,data,opts){const event=this.session.append(type,clean(data),opts);this.record.events??=[];this.record.events=this.session.snapshotEvents?clean(this.session.snapshotEvents()):[...this.record.events,clean(event)];this.persist();return event}
   setStatus(status){if(this.status===status)return;this.status=status;this.dispatch.emit('agent/status',{status});if(status==='idle')for(const resolve of this.idleWaiters.splice(0))resolve()}
-  async connect(){await this.conversation.connect()}
-  async reconnect(){await this.conversation.connect();for(const command of this.conversation.state.commands)if(command.state==='outcome-unknown'){const result=await this.conversation.queryCommand(command.commandId);this.commands.receipt(command.commandId,result)}await this.persist()}
+  bindConversation(){
+    this.conversation=new V4Conversation(this.peer,{address:{runtime:'zcode',authority:this.record.authority,workspace:this.record.workspace,sessionId:this.record.officialId},workspace:{workspacePath:this.record.workspace,workspaceKey:this.record.workspace},connectionId:this.peer.connectionId,clientId:'dsh-zcode-bridge',clientMode:'desktop-continuous',runnable:true,managementAllowed:true,reconnectable:true,onChange:state=>this.project(state)});
+  }
+  async connect(){if(this.conversation)await this.conversation.connect()}
+  async reconnect(){if(!this.conversation)return;await this.conversation.connect();for(const command of this.conversation.state.commands)if(command.state==='outcome-unknown'){const result=await this.conversation.queryCommand(command.commandId);this.commands.receipt(command.commandId,result)}await this.persist()}
   project(state){
     if(this.disposed)return;
     if(state.error){this.record.error=state.error;this.flushStreams(true);this.setStatus('idle');this.persist();return}
@@ -50,7 +54,7 @@ export class ZCodeAgent {
     const groups=new Map();for(const row of snapshot.rows.window){if(!groups.has(row.turnId))groups.set(row.turnId,[]);groups.get(row.turnId).push(row)}
     for(const rows of groups.values()){
     for(const sourceRow of rows){
-      const row={...sourceRow,entityId:sourceRow.entityId??snapshot.logEpoch+':row:'+sourceRow.rowId};
+      const row={...sourceRow,...(sourceRow.kind==='userInput'&&!sourceRow.sourceCommandId?{sourceCommandId:rows.find(item=>item.kind==='turnHeader')?.sourceCommandId}:{}),entityId:sourceRow.entityId??snapshot.logEpoch+':row:'+sourceRow.rowId};
       const turn=this.turnFor(row.turnId);
       if(row.kind==='turnHeader'&&!this.projected.has(row.entityId)){this.append('turn/start',{turn});this.append('step/start',{turn,step:1});this.projected.add(row.entityId)}
       if(row.kind==='userInput'&&!this.projected.has(row.entityId)){
@@ -133,12 +137,22 @@ export class ZCodeAgent {
     const commandId=operation.commandId;
     // Native admission remains synchronous; its identified message is readable from inbox until
     // the matching official user row arrives. Dispatch waits for the durable association.
-    const task=this.persist().then(()=>{
+    const task=this.persist().then(async()=>{
       if(this.disposed)throw fault('agent-disposed');
+      if(!this.record.officialId){
+        if(this.firstInputFlight)await this.firstInputFlight;
+        else {
+          if(this.record.createCommandId)throw fault('create-outcome-unknown');
+          operation.type='createSession';this.record.createCommandId=commandId;
+          this.firstInputFlight=this.onFirstInput(this,operation,text);
+          try{return await this.firstInputFlight}finally{this.firstInputFlight=null}
+        }
+      }
+      if(!await this.whenProjectionReady())throw fault('projection-unconfirmed');
       this.commands.mark(commandId,'dispatching');
       return this.conversation.submit({type:'sendText',commandId,payload:{text,...(this.record.selection?{modelSelection:this.record.selection}:{}),requestedDelivery:target==='next-step'?'guide':'queue',mode:this.record.mode??'build'}});
     }).then(result=>{this.commands.receipt(commandId,result);return this.persist()},error=>{
-      this.commands.mark(commandId,this.conversation.command(commandId)?'outcome-unknown':'not-sent',{error:error.code??'send-failed'});this.record.error=error.code??'send-failed';return this.persist();
+      this.commands.mark(commandId,(this.record.createCommandId===commandId||this.conversation?.command(commandId))?'outcome-unknown':'not-sent',{error:error.code??'send-failed'});this.record.error=error.code??'send-failed';return this.persist();
     });
     this.dispatches.add(task);void task.finally(()=>this.dispatches.delete(task)).catch(()=>{});
   }
@@ -146,14 +160,14 @@ export class ZCodeAgent {
   followup(message){this.send(message,'next-turn',true)}
   steer(message){this.send(message,'next-step',true)}
   inject(){throw fault('official-inject-unavailable')}
-  cancel(){for(const controller of this.pendingApprovals.values())controller.abort();const snapshot=this.conversation.state.snapshot;const work=snapshot?.control.activeWorks.find(work=>work.foregroundExecutionId);if(snapshot?.control.canStop&&work)void this.conversation.submit({type:'stop',payload:{expectedForegroundExecutionId:work.foregroundExecutionId}}).catch(error=>{this.record.error=error.code;this.persist()})}
+  cancel(){for(const controller of this.pendingApprovals.values())controller.abort();const snapshot=this.conversation?.state.snapshot;const work=snapshot?.control.activeWorks.find(work=>work.foregroundExecutionId);if(snapshot?.control.canStop&&work)void this.conversation.submit({type:'stop',payload:{expectedForegroundExecutionId:work.foregroundExecutionId}}).catch(error=>{this.record.error=error.code;this.persist()})}
   whenIdle(){return this.status==='idle'?Promise.resolve():new Promise(resolve=>this.idleWaiters.push(resolve))}
   runMaintenance(task){if(this.status!=='idle')throw fault('agent-busy');return task(new AbortController().signal)}
   /** Wait until the mirror projection is live so a selection can be admitted. A freshly created
    * session's default binding races its own subscribe; without this the submit fails as
    * projection-unconfirmed before the first snapshot. */
   async whenProjectionReady(timeoutMs=5000){
-    const ready=()=>this.conversation.state.admission.allowed===true;
+    const ready=()=>this.conversation?.state.admission.allowed===true;
     if(ready())return true;
     await this.connect().catch(()=>{});
     const deadline=Date.now()+timeoutMs;
@@ -164,6 +178,7 @@ export class ZCodeAgent {
    * The runtime selection is only installed on a confirmed/unchanged outcome; the caller decides
    * what the user sees, so a failed/outcome-unknown ACK never looks like a success. */
   async select(official){
+    if(!this.record.officialId&&!this.record.createCommandId){this.record.selection=clean(official);await this.persist();return {outcome:'confirmed',state:'staged'}}
     await this.whenProjectionReady();
     const result=await this.conversation.submit({type:'switchModelConfig',payload:{provider:official.providerId,model:official.modelId,thought:official.options?.reasoningLevel??''}});
     const outcome=selectionOutcome(result);
@@ -184,5 +199,5 @@ export class ZCodeAgent {
     return projection;
   }
   async dispose(){if(this.disposal)return this.disposal;this.disposed=true;return this.disposal=this.disposeOwned()}
-  async disposeOwned(){this.offState?.();await Promise.allSettled([...this.dispatches]);for(const controller of this.pendingApprovals.values())controller.abort();this.flushStreams(true);await this.conversation.cancel();await this.scope.dispose();this.setStatus('idle')}
+  async disposeOwned(){this.offState?.();await Promise.allSettled([...this.dispatches]);for(const controller of this.pendingApprovals.values())controller.abort();this.flushStreams(true);await this.conversation?.cancel();await this.scope.dispose();this.setStatus('idle')}
 }

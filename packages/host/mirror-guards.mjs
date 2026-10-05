@@ -38,7 +38,16 @@ export function installMirrorGuards(ctx,runtime){
       agent.confirmSelection(resolved);
       return {selected:{...resolved.display}};
     };
-    const restore=guardController(scope.sessionController,runtime,['rename','fork','selectModel','attachment','updateQueue'],{selectModel});
+    const controller=scope.sessionController;
+    const list=controller.list,search=controller.search;
+    const visible=item=>!runtime.absent?.has(item.sessionId);
+    const project=item=>runtime.store.records.get(item.sessionId)?.officialId?{...item,blank:false}:item;
+    if(list)controller.list=async function(...args){const value=await list.apply(this,args);return {...value,items:value.items.filter(visible).map(project)}};
+    if(search)controller.search=async function(...args){const value=await search.apply(this,args);return {...value,items:value.items.filter(visible).map(project)}};
+    runtime.publishDirectory=async()=>{if(!list)return;const value=await controller.list({},new AbortController().signal);for(const item of value.items)if(runtime.store.records.has(item.sessionId)&&!runtime.absent?.has(item.sessionId))ctx.emit?.('api-session/added',item)};
+    scope.effect(()=>()=>{if(list)controller.list=list;if(search)controller.search=search;delete runtime.publishDirectory},'zcode-bridge: native catalog projection');
+    void runtime.publishDirectory?.().catch(()=>{});
+    const restore=guardController(scope.sessionController,runtime,['rename','fork','selectModel','attachment','updateQueue'],{selectModel,rename:(_original,request)=>runtime.rename(request.sessionId,request.title)});
     scope.effect(()=>restore,'zcode-bridge: official session write guards');
   });
   ctx.inject(['workspaceController'],scope=>{const restore=guardController(scope.workspaceController,runtime,['archiveSession','unarchiveSession','pinSession','unpinSession','rename','delete','insertBefore','insertSessionBefore']);scope.effect(()=>restore,'zcode-bridge: official workspace write guards')});

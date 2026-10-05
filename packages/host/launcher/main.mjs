@@ -6,6 +6,7 @@ import { ROUTE_B_READ_CALLS, ROUTE_B_SEND_CALLS, authProjection, usageProjection
 import { SharedWriteGate, usageActivity } from './write-gate.mjs';
 import { createExecutionRelay, EXECUTION_CALLS, EXECUTION_EVENTS } from './execution.mjs';
 import { createMinimalTurn } from './minimal-turn.mjs';
+import { projectModels } from './models.mjs';
 import { projectTask, projectTaskCatalog } from './task-catalog.mjs';
 import { createInterface } from 'node:readline';
 import { ELECTRON_VERSION, assertLandings, fault } from './config.mjs';
@@ -60,7 +61,7 @@ control.on('line',line=>{
     if(!Number.isSafeInteger(m.id)||m.nonce!==config.executionNonce||!executionRelay||state.auth!=='authenticated')return;
     void executionRelay.request(m.method,m.params).then(value=>process.stdout.write(JSON.stringify({type:'launcher-read',id:m.id,ok:true,value})+'\n'),error=>process.stdout.write(JSON.stringify({type:'launcher-read',id:m.id,ok:false,code:error.code??'execution-command-failed'})+'\n'));return;
   }
-  if(!Number.isSafeInteger(m.id)||!['catalog','preflight','observation','taskUsage','sendMinimalTask'].includes(m.operation)||Object.keys(m).some(k=>!['id','operation','address'].includes(k)))return;
+  if(!Number.isSafeInteger(m.id)||!['catalog','models','preflight','observation','taskUsage','sendMinimalTask'].includes(m.operation)||Object.keys(m).some(k=>!['id','operation','address'].includes(k)))return;
   reading=reading.then(async()=>{
     if(closing)return;
     try{
@@ -78,6 +79,7 @@ control.on('line',line=>{
         process.stdout.write(JSON.stringify({type:'launcher-read',id:m.id,ok:true,value})+'\n');
         return;
       }
+      if(m.operation==='models'){const value=projectModels(await safeCall('provider-settings','getView'));if(!closing)process.stdout.write(JSON.stringify({type:'launcher-read',id:m.id,ok:true,value})+'\n');return;}
       const tasks=await readTasks();let value;
       if(m.operation==='catalog')value={tasks,observedAt:Date.now()};
       if(m.operation==='preflight'){
@@ -154,7 +156,7 @@ app.whenReady().then(()=>{
         const auth=authProjection(cached,active,view);
         if(auth.auth!=='authenticated')throw fault('official-provider-not-executable');
         publish({...auth,authVerified:true,execution:'zcode-agent-v4',schedulerPolicy});
-        executionRelay=createExecutionRelay({channel,workspacePath:config.paths.workspace,workspaceIdentity:config.paths.workspace,onCommand:record=>{if(executionRpc.length>=4096)throw fault('execution-ledger-limit');executionRpc.push({...record,at:Date.now()})},emit:event=>process.stdout.write(JSON.stringify({type:'launcher-event',nonce:config.executionNonce,event})+'\n')});
+        executionRelay=createExecutionRelay({channel,workspacePath:config.paths.workspace,workspaceIdentity:config.paths.workspace,resolveWorkspace:async path=>(await readTasks()).find(task=>task.workspacePath===path&&!task.workspaceIdentity?.startsWith('ssh:')&&!task.workspaceIdentity?.startsWith('wsl:')),onCommand:record=>{if(executionRpc.length>=4096)throw fault('execution-ledger-limit');executionRpc.push({...record,at:Date.now()})},emit:event=>process.stdout.write(JSON.stringify({type:'launcher-event',nonce:config.executionNonce,event})+'\n')});
         const tasks=await readTasks();
         // Read-only CLI acquisition: no initializeWorkspace/resume/stream recovery/warmup.
         const sample=tasks.find(t=>!t.workspaceIdentity?.startsWith('ssh:')&&!t.workspaceIdentity?.startsWith('wsl:'));

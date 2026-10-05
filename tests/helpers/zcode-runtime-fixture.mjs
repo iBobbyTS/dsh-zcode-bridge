@@ -13,7 +13,7 @@ export function sampleProviders(){return [
 ]}
 export function baseSnapshot(id='official-session'){const snapshot=structuredClone(captured.initial.frame.payload.snapshot);snapshot.sessionId=id;return snapshot}
 export class MockPeer {
-  closed=false;connectionId='mock-connection';notifications=new Set();closers=new Set();calls=[];acks=new Map();ordinal=0;subscriptionSeq=0;subscriptions=new Map();delivered=new Map();snapshots=new Map();snapshot=baseSnapshot();loseAck=false;providers=sampleProviders();
+  closed=false;connectionId='mock-connection';notifications=new Set();closers=new Set();calls=[];acks=new Map();ordinal=0;subscriptionSeq=0;subscriptions=new Map();delivered=new Map();snapshots=new Map();drafts=new Set();snapshot=baseSnapshot();loseAck=false;providers=sampleProviders();
   /** Register an independent official session so per-session topics carry only their own frames. */
   registerSession(sessionId){const snapshot=baseSnapshot(sessionId);this.snapshots.set(sessionId,snapshot);return snapshot}
   /** Discovery seam consumed by the Zcode LLM adapter; returns detached provider groups. */
@@ -31,6 +31,8 @@ export class MockPeer {
     if(method==='hello')result={kind:'hello',protocolVersion:3,connectionId:this.connectionId,clientMode:'desktop-continuous',deliveryProfile:'continuous',serverTime:0,capabilities:{nativeDialogs:true,localTerminal:true,binaryFrames:false,compression:'none'},auth:{}};
     else if(method==='initialize')result=undefined;
     else if(method==='v4/command'){
+      const first=params.type==='createSession'?params.payload?.firstInput?.modelSelection:undefined;
+      if(first&&(!this.validateIdentity(first.providerId,first.modelId)||!this.validateEffort(first.providerId,first.modelId,first.options?.reasoningLevel))){result={commandId:params.commandId,status:'failed',reasonCode:'firstInput.model-unavailable',revisionAtDecision:0};this.acks.set(params.commandId,result);return onResult?onResult(result):result;}
       if(params.type==='switchModelConfig'&&!this.validateIdentity(params.payload?.provider,params.payload?.model)){
         const reasonCode=this.providers.some(item=>item.id===params.payload?.provider)?'model.notInRegistry':'provider.notInRegistry';
         result={commandId:params.commandId,status:'failed',reasonCode,revisionAtDecision:this.snapshot.revision};
@@ -39,11 +41,16 @@ export class MockPeer {
       }else{
         result={commandId:params.commandId,status:'accepted',revisionAtDecision:this.snapshot.revision,...(params.type==='createSession'?{result:{type:'createSession',sessionId:this.snapshot.sessionId}}:{})};
       }
+      if(params.type==='createSession'&&result.status==='accepted'){
+        const sessionId='official-'+params.commandId;result.result.sessionId=sessionId;
+        if(!params.payload.firstInput)this.drafts.add(sessionId);
+        else {const snapshot=this.registerSession(sessionId);snapshot.rows.window=[row('turnHeader',1,{origin:'userInput',state:'running',startedAt:0,sourceCommandId:params.commandId}),row('userInput',2,{text:params.payload.firstInput.text,origin:'realUser',sourceCommandId:params.commandId})];this.snapshot=snapshot;}
+      }
       this.acks.set(params.commandId,result);
       if(this.loseAck){this.loseAck=false;throw Object.assign(new Error('lost'),{code:'execution-outcome-unknown'})}
     }else if(method==='v4/commands/query')result={results:params.commands.map(key=>({key,result:this.acks.get(key.commandId)??'unknown'}))};
     else if(method==='v4/conversation/subscribe'){
-      const id='mock-sub-'+this.subscriptionSeq++;const sessionId=typeof params.topic==='string'?params.topic.slice('conversation/'.length):undefined;this.subscriptions.set(params.topic,id);const snapshot=this.snapshots.get(sessionId)??this.snapshot;result={ack:{subscriptionId:id,mode:'snapshot',logEpoch:snapshot.logEpoch}};setImmediate(()=>this.publish(snapshot));
+      const id='mock-sub-'+this.subscriptionSeq++;const sessionId=typeof params.topic==='string'?params.topic.slice('conversation/'.length):undefined;this.subscriptions.set(params.topic,id);const snapshot=this.snapshots.get(sessionId)??this.snapshot;result={ack:{subscriptionId:id,mode:'snapshot',logEpoch:snapshot.logEpoch}};if(!this.drafts.has(sessionId))setImmediate(()=>this.publish(snapshot));
     }else if(method==='v4/conversation/unsubscribe'){for(const [topic,id] of this.subscriptions)if(id===params.subscriptionId||topic===params.topic)this.subscriptions.delete(topic);result={ack:{subscriptionId:params.subscriptionId}}}else if(method==='v4/conversation/resync'){result={ack:{subscriptionId:params.subscriptionId,mode:'snapshot',logEpoch:this.snapshot.logEpoch}};setImmediate(()=>this.publish(this.snapshot,'recovery'))}
     return onResult?onResult(result):result;
   }

@@ -11,6 +11,7 @@ export function installMirrorHistory(ctx,runtime){
     const mirrored=request=>request?.address?.kind==='session'?runtime.store.records.get(request.address.sessionId):undefined;
     const wrappedFollow=async function*(request,signal){
       const record=mirrored(request);if(!record){yield* follow.call(this,request,signal);return}
+      if(runtime.host?.listSessions)await runtime.open(record.id);
       // Close this physical follow generation only. Native RemoteStream treats an accepted
       // end as carrier loss, retaining the resident window until a fresh opening replaces it.
       while(!signal?.aborted){

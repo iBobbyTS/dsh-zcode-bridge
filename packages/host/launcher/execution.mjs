@@ -14,9 +14,9 @@ const methods = {
 };
 /** Main owns workspace identity and capability allowlists. The private stdin pipe and nonce bind
  * every request to the exact launched child; browser callers never receive this transport. */
-export function createExecutionRelay({channel,workspacePath,workspaceIdentity,emit,onCommand=()=>{},maxPending=32}) {
+export function createExecutionRelay({channel,workspacePath,workspaceIdentity,emit,onCommand=()=>{},resolveWorkspace,maxPending=32}) {
   let pending=0,disposed=false;
-  const subscriptions=new Map();let eventOff;
+  const subscriptions=new Map(),eventOffs=new Map();
   // The official host treats the attachment workspace identity as authoritative: without it a
   // cold subscribe can only infer the workspace from the persisted session path, which a
   // just-created session does not have yet — the hydrate then misses and no initial frame flows.
@@ -30,10 +30,16 @@ export function createExecutionRelay({channel,workspacePath,workspaceIdentity,em
         if(method==='initialize')return await channel.call('zcode-agent','initializeConversationV4',[params]);
         const name=methods[method];if(!name)throw fault('execution-method-denied');
         let payload={...target};
+        if(params?.workspace&&params.workspace.workspacePath!==workspacePath){
+          const path=params.workspace.workspacePath;
+          if(typeof path!=='string'||params.workspace.workspaceKey!==path||!resolveWorkspace)throw fault('execution-workspace-denied');
+          const resolved=await resolveWorkspace(path);if(!resolved)throw fault('execution-workspace-denied');
+          payload={workspacePath:path,workspaceIdentity:resolved.workspaceIdentity??path};
+        }
         if(method==='v4/command') {
-          const parsed=parseCommandEnvelope(params);
+          const {workspace:_workspace,...envelope}=params;const parsed=parseCommandEnvelope(envelope);
           if(!parsed.ok||!EXECUTION_COMMANDS.has(params.type))throw fault('execution-command-denied');
-          payload.envelope=parsed.value??parsed.envelope??params;
+          payload.envelope=parsed.value??parsed.envelope??envelope;
           payload.clientMode='desktop-continuous';onCommand({commandId:params.commandId,type:params.type,sessionId:params.sessionId});
         } else if(method==='v4/conversation/subscribe') {
           if(typeof params.topic!=='string'||!params.topic.startsWith('conversation/'))throw fault('execution-topic-denied');
@@ -41,13 +47,14 @@ export function createExecutionRelay({channel,workspacePath,workspaceIdentity,em
           payload={...payload,sessionId:params.topic.slice(13),clientMode:'desktop-continuous',visibility:'foreground',...(params.base?{base:params.base}:{})};
           // Subscribe to the frame event before the initial request: the official ACK and initial
           // frame may arrive in one turn of the event loop.
-          eventOff??=channel.listen('zcode-agent','onDynamicConversationFrame',frame=>emit({method:'v4/conversation/frame',params:frame}),[target]);subscriptions.set(params.topic,true);
+          const eventTarget={workspacePath:payload.workspacePath,workspaceIdentity:payload.workspaceIdentity};
+          if(!eventOffs.has(payload.workspacePath))eventOffs.set(payload.workspacePath,channel.listen('zcode-agent','onDynamicConversationFrame',frame=>emit({method:'v4/conversation/frame',params:frame}),[eventTarget]));subscriptions.set(params.topic,true);
         } else if(method==='v4/commands/query')payload.commands=params.commands;
         else payload={...payload,subscriptionId:params.subscriptionId,...(method.includes('resync')?{base:params.base??null,forceSnapshot:params.forceSnapshot===true}:{})};
         const result=await channel.call('zcode-agent',name,[payload],{timeoutMs:25000});if(method==='v4/conversation/subscribe')subscriptions.set(params.topic,result.ack?.subscriptionId);if(method==='v4/conversation/unsubscribe')for(const [topic,id] of subscriptions)if(id===params.subscriptionId)subscriptions.delete(topic);return result;
       } finally {pending--;}
     },
-    dispose(){disposed=true;eventOff?.();subscriptions.clear()},
+    dispose(){disposed=true;for(const off of eventOffs.values())off();eventOffs.clear();subscriptions.clear()},
   };
 }
 
