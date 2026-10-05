@@ -1,6 +1,13 @@
 export const initialClientStatus=()=>({state:'unavailable',reason:'host-unreachable',auth:'unconfirmed',connected:false});
 const reasons={
- 'route-b-authorization-denied-scratch-fallback':'Route B authorization denied; isolated scratch fallback',
+ 'launcher-config-required':'Launcher configuration requires scratch, runtime, Electron and provider paths',
+ 'launcher-mode-invalid':'Launcher mode must be scratch or route-b',
+ 'route-b-desktop-home-invalid':'The desktop settings HOME must be an absolute path',
+ 'route-b-shared-probe-denied':'Route B cannot use the shared scratch database probe',
+ 'route-b-custom-cipher-env-unsupported':'A custom credential cipher environment override is unsupported',
+ 'official-host-missing':'The extracted official Host is missing or unreadable',
+ 'official-host-subtree-mismatch':'The extracted official Host differs from the verified runtime; startup stopped',
+ 'official-artifact-mismatch':'The official Host or CLI differs from the verified runtime; startup stopped',
  'route-b-temp-socket-path-too-long':'Route B stopped before launch: scratch Unix socket path is too long',
  'route-b-retry-disabled':'Route B stopped; automatic retry is disabled',
  'status-query-failed':'Official read-only service initialization failed; launcher stopped',

@@ -87,8 +87,6 @@ control.on('line',line=>{
         const gate=new SharedWriteGate({
           isOwned:()=>authority.owns(config.hostId,t??{taskId:m.address?.sessionId,workspacePath:m.address?.workspace}),
           readTask:async()=>{const raw=t?await safeCall('zcode-task','getTaskMeta',[{taskId:t.taskId,workspacePath:t.workspacePath,...(t.workspaceIdentity?{workspaceIdentity:t.workspaceIdentity}:{})}]):null;return raw?projectTask(raw):null;},
-          readActivity:()=>safeCall('zcode-agent','getTaskTokenUsage',[{sessionId:t.taskId,workspacePath:t.workspacePath,...(t.workspaceIdentity?{workspaceIdentity:t.workspaceIdentity}:{})}]),
-          windowMs:config.activityWindowMs,
         });
         value=await gate.preflight(m.address);
       }

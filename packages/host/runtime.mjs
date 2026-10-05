@@ -221,7 +221,7 @@ export class BridgeHost {
   async #connect(){
     if(this.authorityMode==='host-backed'){
       if(!this.launcher){this.#publish({state:'unavailable',reason:'launcher-unconfigured',connected:false});return this.status}
-      const project=state=>{if(!this.#disposed)this.#publish({state:state.phase==='ready'?(state.auth==='authenticated'?'authenticated':'restricted'):'unavailable',reason:state.routeB?.allowed===false?'route-b-authorization-denied-scratch-fallback':state.phase==='ready'?(state.auth==='authenticated'?'route-b-authenticated-read-only':'host-execution-disabled-s03'):state.reason??'launcher-'+state.phase,connected:state.phase==='ready'&&state.auth==='authenticated',sessionAuthority:'official-host:'+state.mainPid,workspacePath:'official-task-catalog',auth:state.auth??'unconfirmed',authority:'official-host-channel',launcher:state,authorityMode:'host-backed'})};
+      const project=state=>{if(!this.#disposed)this.#publish({state:state.phase==='ready'?(state.auth==='authenticated'?'authenticated':'restricted'):'unavailable',reason:state.phase==='ready'?(state.auth==='authenticated'?'route-b-authenticated-read-only':'host-execution-disabled-s03'):state.reason??'launcher-'+state.phase,connected:state.phase==='ready'&&state.auth==='authenticated',sessionAuthority:'official-host:'+state.mainPid,workspacePath:'official-task-catalog',auth:state.auth??'unconfirmed',authority:'official-host-channel',launcher:state,authorityMode:'host-backed'})};
       this.launcherUnsubscribe??=this.launcher.subscribe(project);project(await this.launcher.start());return this.status;
     }
     let peer,stop,terminalReason;
