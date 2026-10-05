@@ -14,10 +14,13 @@ const methods = {
 };
 /** Main owns workspace identity and capability allowlists. The private stdin pipe and nonce bind
  * every request to the exact launched child; browser callers never receive this transport. */
-export function createExecutionRelay({channel,workspacePath,emit,onCommand=()=>{},maxPending=32}) {
+export function createExecutionRelay({channel,workspacePath,workspaceIdentity,emit,onCommand=()=>{},maxPending=32}) {
   let pending=0,disposed=false;
   const subscriptions=new Map();let eventOff;
-  const target={workspacePath};
+  // The official host treats the attachment workspace identity as authoritative: without it a
+  // cold subscribe can only infer the workspace from the persisted session path, which a
+  // just-created session does not have yet — the hydrate then misses and no initial frame flows.
+  const target={workspacePath,...(workspaceIdentity?{workspaceIdentity}:{})};
   return {
     async request(method,params) {
       if(disposed||pending>=maxPending)throw fault(disposed?'execution-disposed':'execution-pending-limit');
@@ -35,7 +38,7 @@ export function createExecutionRelay({channel,workspacePath,emit,onCommand=()=>{
         } else if(method==='v4/conversation/subscribe') {
           if(typeof params.topic!=='string'||!params.topic.startsWith('conversation/'))throw fault('execution-topic-denied');
           if(subscriptions.size>=16&&!subscriptions.has(params.topic))throw fault('execution-subscription-limit');
-          payload={...payload,sessionId:params.topic.slice(13),visibility:'foreground',...(params.base?{base:params.base}:{})};
+          payload={...payload,sessionId:params.topic.slice(13),clientMode:'desktop-continuous',visibility:'foreground',...(params.base?{base:params.base}:{})};
           // Subscribe to the frame event before the initial request: the official ACK and initial
           // frame may arrive in one turn of the event loop.
           eventOff??=channel.listen('zcode-agent','onDynamicConversationFrame',frame=>emit({method:'v4/conversation/frame',params:frame}),[target]);subscriptions.set(params.topic,true);

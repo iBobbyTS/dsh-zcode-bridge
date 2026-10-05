@@ -154,7 +154,7 @@ app.whenReady().then(()=>{
         const auth=authProjection(cached,active,view);
         if(auth.auth!=='authenticated')throw fault('official-provider-not-executable');
         publish({...auth,authVerified:true,execution:'zcode-agent-v4',schedulerPolicy});
-        executionRelay=createExecutionRelay({channel,workspacePath:config.paths.workspace,onCommand:record=>{if(executionRpc.length>=4096)throw fault('execution-ledger-limit');executionRpc.push({...record,at:Date.now()})},emit:event=>process.stdout.write(JSON.stringify({type:'launcher-event',nonce:config.executionNonce,event})+'\n')});
+        executionRelay=createExecutionRelay({channel,workspacePath:config.paths.workspace,workspaceIdentity:config.paths.workspace,onCommand:record=>{if(executionRpc.length>=4096)throw fault('execution-ledger-limit');executionRpc.push({...record,at:Date.now()})},emit:event=>process.stdout.write(JSON.stringify({type:'launcher-event',nonce:config.executionNonce,event})+'\n')});
         const tasks=await readTasks();
         // Read-only CLI acquisition: no initializeWorkspace/resume/stream recovery/warmup.
         const sample=tasks.find(t=>!t.workspaceIdentity?.startsWith('ssh:')&&!t.workspaceIdentity?.startsWith('wsl:'));
