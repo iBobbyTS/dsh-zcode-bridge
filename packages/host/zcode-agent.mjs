@@ -1,6 +1,7 @@
 import { V4Conversation } from './conversation.mjs';
 import { CommandLifecycle } from './command-lifecycle.mjs';
 import { MirrorState } from './mirror-state.mjs';
+import { displayProjection, officialSelection, sameSelection, selectionOutcome } from './model-selection.mjs';
 const fault=code=>Object.assign(new Error(code),{code});
 const clean=value=>JSON.parse(JSON.stringify(value));
 export const SHARED_GUI_HINT='官方 GUI 可能正在运行本会话';
@@ -148,7 +149,40 @@ export class ZCodeAgent {
   cancel(){for(const controller of this.pendingApprovals.values())controller.abort();const snapshot=this.conversation.state.snapshot;const work=snapshot?.control.activeWorks.find(work=>work.foregroundExecutionId);if(snapshot?.control.canStop&&work)void this.conversation.submit({type:'stop',payload:{expectedForegroundExecutionId:work.foregroundExecutionId}}).catch(error=>{this.record.error=error.code;this.persist()})}
   whenIdle(){return this.status==='idle'?Promise.resolve():new Promise(resolve=>this.idleWaiters.push(resolve))}
   runMaintenance(task){if(this.status!=='idle')throw fault('agent-busy');return task(new AbortController().signal)}
-  async select(selection){const result=await this.conversation.submit({type:'switchModelConfig',payload:{provider:selection.providerId,model:selection.modelId,thought:selection.options?.reasoningLevel??''}});if(['accepted','duplicate'].includes(result.ack?.status)){this.record.selection=clean(selection);this.options.model=selection.modelId;this.options.reasoningEffort=selection.options?.reasoningLevel;this.persist()}return result}
+  /** Wait until the mirror projection is live so a selection can be admitted. A freshly created
+   * session's default binding races its own subscribe; without this the submit fails as
+   * projection-unconfirmed before the first snapshot. */
+  async whenProjectionReady(timeoutMs=5000){
+    const ready=()=>this.conversation.state.admission.allowed===true;
+    if(ready())return true;
+    await this.connect().catch(()=>{});
+    const deadline=Date.now()+timeoutMs;
+    while(!ready()&&!this.disposed&&Date.now()<deadline)await new Promise(resolve=>setTimeout(resolve,25));
+    return ready();
+  }
+  /** Dispatch one OFFICIAL-identity selection through the app-server and classify the ACK.
+   * The runtime selection is only installed on a confirmed/unchanged outcome; the caller decides
+   * what the user sees, so a failed/outcome-unknown ACK never looks like a success. */
+  async select(official){
+    await this.whenProjectionReady();
+    const result=await this.conversation.submit({type:'switchModelConfig',payload:{provider:official.providerId,model:official.modelId,thought:official.options?.reasoningLevel??''}});
+    const outcome=selectionOutcome(result);
+    if(outcome.outcome==='confirmed'||outcome.outcome==='unchanged'){this.record.selection=clean(official);this.options.model=official.modelId;this.options.reasoningEffort=official.options?.reasoningLevel;this.persist()}
+    return {...outcome,state:result?.state};
+  }
+  /** Commit a confirmed selection: keep the official identity for execution (sendText/switchModelConfig)
+   * and append the DSH presentation route as the durable `model/selection` projection. The event goes
+   * through `append`, so record.events/persistence capture it and the picker restores after restart. */
+  confirmSelection({display,official}){
+    const execution=officialSelection(official);
+    if(!sameSelection(this.record.selection,execution)){this.record.selection=clean(execution);this.persist()}
+    this.options.model=display.model;this.options.reasoningEffort=display.reasoningEffort;
+    const projection=displayProjection(display);
+    const events=this.session.snapshotEvents?.()??this.record.events??[];
+    const last=[...events].reverse().find(event=>event.type==='model/selection')?.data;
+    if(!sameSelection(last,projection))this.append('model/selection',projection);else this.persist();
+    return projection;
+  }
   async dispose(){if(this.disposal)return this.disposal;this.disposed=true;return this.disposal=this.disposeOwned()}
   async disposeOwned(){this.offState?.();await Promise.allSettled([...this.dispatches]);for(const controller of this.pendingApprovals.values())controller.abort();this.flushStreams(true);await this.conversation.cancel();await this.scope.dispose();this.setStatus('idle')}
 }

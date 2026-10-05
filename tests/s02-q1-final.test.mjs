@@ -1,13 +1,22 @@
-// S02 Q1-final closure: official ModelSelect fed by a registered `zcode` provider, additive
-// badge/locked-runtime slots, per-session default binding, and official selectModel routing.
+// S02 Q1-final closure + selection-path repair: official ModelSelect fed by a registered `zcode`
+// provider, additive badge/locked slots, per-session default binding, and one coherent selection
+// owner (identity translation, ACK outcome propagation, no native-default save, durable projection).
 // All mock: no model stream is ever executed.
 import {test} from 'node:test';import assert from 'node:assert/strict';
 import {createElement} from 'react';import {renderToStaticMarkup} from 'react-dom/server';
 import {ZCODE_PROVIDER,ZCODE_STREAM_FAIL_CLOSED,createZCodeAdapter,installZCodeLlm,zcodeModels} from '../packages/host/zcode-llm.mjs';
 import {guardController,installMirrorGuards} from '../packages/host/mirror-guards.mjs';
+import {resolveIdentity,resolveMirrorSelection,resolveDiscovered,selectionOutcome,selectionFailure,officialSelection} from '../packages/host/model-selection.mjs';
+import {ZCodeAgent} from '../packages/host/zcode-agent.mjs';
 import {RuntimeControls} from '../packages/client/runtime.mjs';
 import {ProviderBadge,RuntimeLockedLabel,installRuntimeControls} from '../packages/client/runtime-controls.mjs';
-import {sampleProviders} from './helpers/zcode-runtime-fixture.mjs';
+import {MockPeer,sampleProviders,tick} from './helpers/zcode-runtime-fixture.mjs';
+
+const fakeLlm=()=>({listModels:async provider=>provider===ZCODE_PROVIDER?[
+  {provider:ZCODE_PROVIDER,id:'A/model_a',name:'A/model_a'},
+  {provider:ZCODE_PROVIDER,id:'A/model_b',name:'A/model_b'},
+  {provider:ZCODE_PROVIDER,id:'B/model_c',name:'B/model_c'},
+]:[],resolveModelInfo:async(provider,model)=>({provider,id:model,name:model,reasoning:{efforts:[{id:'low',name:'Low'},{id:'medium',name:'Medium'},{id:'high',name:'High'}],defaultEffort:model.startsWith('B/')?'low':model==='A/model_b'?'high':'medium'}})});
 
 test('S02-Q1 discovery maps sample providers A/B into the zcode route with efforts and fails closed',async()=>{
  const models=zcodeModels(sampleProviders());
@@ -20,7 +29,6 @@ test('S02-Q1 discovery maps sample providers A/B into the zcode route with effor
  assert.deepEqual((await adapter.listModels(ZCODE_PROVIDER)).map(model=>model.id),['A/model_a','A/model_b','B/model_c']);
  const resolved=await adapter.resolveModel(ZCODE_PROVIDER,'B/model_c');
  assert.equal(resolved.provider,ZCODE_PROVIDER);assert.equal(resolved.id,'B/model_c');assert.equal(resolved.reasoning.defaultEffort,'low');
- // Every method the built official registry calls unguarded must exist on the plain adapter.
  for(const method of ['providerInfo','providerRetryPolicy','imageRequestPricing','listModels','resolveModel','prepareCall','stream'])assert.equal(typeof adapter[method],'function',method);
  const prepared=await adapter.prepareCall(ZCODE_PROVIDER,'A/model_a');
  assert.equal(prepared.model.id,'A/model_a');assert.throws(()=>prepared.stream(),{code:ZCODE_STREAM_FAIL_CLOSED});
@@ -35,30 +43,94 @@ test('S02-Q1 install registers exactly one zcode route on the official LLM regis
  assert.throws(()=>installZCodeLlm({},{discover:async()=>[]}),{code:'llm-unavailable'});
 });
 
-test('S02-Q1 official selectModel on a zcode session commits officially then routes switchModelConfig',async()=>{
- const routed=[];const commits=[];const original=async function(request){commits.push(request);return {selected:{provider:request.provider,model:request.model}}};
- const controller={selectModel:original,rename:original,fork:original};
- const runtime={store:{records:new Map([['z1',{}]])},agents:{get:id=>id==='z1'?{select:async selection=>{routed.push(selection)}}:undefined},ctx:{workspaceRegistry:{get:()=>undefined}}};
- const restore=guardController(controller,runtime,['selectModel','rename','fork'],{selectModel:async function(original,request,...args){const result=await original.call(this,request,...args);const agent=runtime.agents.get(request.sessionId);if(!agent)throw Object.assign(new Error('unavailable'),{code:'session/official-route-unavailable'});await agent.select({providerId:request.provider,modelId:request.model,...(request.reasoningEffort===undefined?{}:{options:{reasoningLevel:request.reasoningEffort}})});return result}});
- try{
-  const result=await controller.selectModel({sessionId:'z1',provider:'zcode',model:'A/model_a',reasoningEffort:'high'});
-  assert.deepEqual(result,{selected:{provider:'zcode',model:'A/model_a'}});
-  assert.deepEqual(commits,[{sessionId:'z1',provider:'zcode',model:'A/model_a',reasoningEffort:'high'}]);
-  assert.deepEqual(routed,[{providerId:'zcode',modelId:'A/model_a',options:{reasoningLevel:'high'}}]);
-  assert.throws(()=>controller.rename({sessionId:'z1'}),{code:'session/official-route-unavailable'});
-  // Native sessions keep the untouched official method.
-  assert.deepEqual(await controller.selectModel({sessionId:'native',provider:'deepseek',model:'x'}),{selected:{provider:'deepseek',model:'x'}});
-  assert.equal(routed.length,1);
- }finally{restore();assert.equal(controller.selectModel,original)}
-});
-test('S02-Q1 native selectModel passes through when no override applies',async()=>{
- const original=async request=>({native:request.sessionId});const controller={selectModel:original};
- const runtime={store:{records:new Map([['z1',{}]])},ctx:{workspaceRegistry:{get:()=>undefined}}};
- const restore=guardController(controller,runtime,['selectModel']);
- try{assert.deepEqual(await controller.selectModel({sessionId:'n1',provider:'deepseek',model:'x'}),{native:'n1'})}finally{restore()}
+test('S02-Q1 B1 identity translation: display route unwraps to the real provider/model',async()=>{
+ assert.deepEqual(resolveIdentity({provider:'zcode',model:'A/model_a'}),{display:{provider:'zcode',model:'A/model_a'},official:{provider:'A',model:'model_a',reasoningEffort:undefined}});
+ assert.deepEqual(resolveIdentity({provider:'deepseek-official',model:'deepseek-flash'}).official,{provider:'deepseek-official',model:'deepseek-flash',reasoningEffort:undefined});
+ const resolved=await resolveMirrorSelection(fakeLlm(),{provider:'zcode',model:'B/model_c'});
+ assert.deepEqual(resolved.official,{provider:'B',model:'model_c',reasoningEffort:'low'});
+ assert.deepEqual(resolved.display,{provider:'zcode',model:'B/model_c',reasoningEffort:'low'});
+ assert.throws(()=>resolveIdentity({provider:'zcode',model:'malformed'}),{code:'session/model-unavailable'});
+ await assert.rejects(resolveMirrorSelection(fakeLlm(),{provider:'zcode',model:'A/missing'}),{code:'session/model-unavailable'});
+ await assert.rejects(resolveMirrorSelection(undefined,{provider:'zcode',model:'A/model_a'}),{code:'session/model-unavailable'});
+ assert.deepEqual(resolveDiscovered({provider:'zcode',model:'A/model_a'},sampleProviders()).official,{provider:'A',model:'model_a',reasoningEffort:'medium'});
+ assert.throws(()=>resolveDiscovered({provider:'zcode',model:'Z/model_z'},sampleProviders()),{code:'session/model-unavailable'});
 });
 
-test('S02-Q1 zcode session creation binds the first discovered model through the official selection service',async()=>{
+test('S02-Q1 B1 structural: MockPeer rejects identities outside its advertised registry',async()=>{
+ const peer=new MockPeer();
+ const accepted=await peer.request('v4/command',{commandId:'c1',type:'switchModelConfig',payload:{provider:'A',model:'model_a',thought:'low'}});
+ assert.equal(accepted.status,'accepted');
+ const wrongProvider=await peer.request('v4/command',{commandId:'c2',type:'switchModelConfig',payload:{provider:'zcode',model:'A/model_a',thought:''}});
+ assert.equal(wrongProvider.status,'failed');assert.equal(wrongProvider.reasonCode,'provider.notInRegistry');
+ const wrongModel=await peer.request('v4/command',{commandId:'c3',type:'switchModelConfig',payload:{provider:'A',model:'missing',thought:''}});
+ assert.equal(wrongModel.status,'failed');assert.equal(wrongModel.reasonCode,'model.notInRegistry');
+});
+
+test('S02-Q1 B2 outcome classification covers every ACK category',()=>{
+ assert.equal(selectionOutcome({ack:{status:'accepted'}}).outcome,'confirmed');
+ assert.equal(selectionOutcome({ack:{status:'duplicate'}}).outcome,'confirmed');
+ assert.equal(selectionOutcome({ack:{status:'noop',reasonCode:'config.unchanged'}}).outcome,'unchanged');
+ assert.equal(selectionOutcome({ack:{status:'noop',reasonCode:'other'}}).outcome,'failed');
+ assert.equal(selectionOutcome({ack:{status:'failed',reasonCode:'provider.notInRegistry'}}).outcome,'failed');
+ assert.equal(selectionOutcome({ack:{status:'rejected',reasonCode:'x'}}).outcome,'failed');
+ assert.equal(selectionOutcome({ack:{status:'stale',reasonCode:'x'}}).outcome,'stale');
+ assert.equal(selectionOutcome({state:'outcome-unknown'}).outcome,'outcome-unknown');
+ assert.equal(selectionFailure({outcome:'failed',ack:{status:'failed',reasonCode:'provider.notInRegistry'}}).isDSHRemoteError,true);
+});
+
+test('S02-Q1 B2 guard propagates non-confirmed outcomes and never commits the projection',async()=>{
+ for(const [ack,outcome] of [[{status:'failed',reasonCode:'provider.notInRegistry'},'failed'],[{status:'rejected',reasonCode:'x'},'failed'],[{status:'stale',reasonCode:'x'},'stale'],[undefined,'outcome-unknown']]){
+  const {controller,confirmed,calls}=guardWorld(async()=>({outcome,ack,state:ack?'accepted':'outcome-unknown'}));
+  await assert.rejects(controller.selectModel({sessionId:'z1',provider:'zcode',model:'A/model_a'}),{code:'session/model-unavailable'});
+  assert.equal(calls.length,1);assert.equal(confirmed.length,0,`no confirmation for ${outcome}`);
+ }
+ const accepted=guardWorld(async()=>({outcome:'confirmed',ack:{status:'accepted'},state:'accepted'}));
+ const result=await accepted.controller.selectModel({sessionId:'z1',provider:'zcode',model:'A/model_a'});
+ assert.deepEqual(result,{selected:{provider:'zcode',model:'A/model_a',reasoningEffort:'medium'}});
+ assert.deepEqual(accepted.calls[0],{providerId:'A',modelId:'model_a',options:{reasoningLevel:'medium'}});
+ assert.equal(accepted.confirmed.length,1);
+ const unchanged=guardWorld(async()=>({outcome:'unchanged',ack:{status:'noop',reasonCode:'config.unchanged'},state:'accepted-awaiting-terminal'}));
+ assert.deepEqual((await unchanged.controller.selectModel({sessionId:'z1',provider:'zcode',model:'A/model_a'})).selected.model,'A/model_a');
+ assert.equal(unchanged.confirmed.length,1);
+});
+
+test('S02-Q1 B3 mirrored selections never enqueue a native deployment-default save',async()=>{
+ const thrown=guardWorld(async()=>{throw Object.assign(new Error('boom'),{code:'transport'})});
+ await assert.rejects(thrown.controller.selectModel({sessionId:'z1',provider:'zcode',model:'A/model_a'}));
+ assert.equal(thrown.saved,0,'throw path must not save');
+ const effortOnly=guardWorld(async()=>({outcome:'confirmed',ack:{status:'accepted'}}));
+ await effortOnly.controller.selectModel({sessionId:'z1',provider:'zcode',model:'A/model_a',reasoningEffort:'high'});
+ assert.equal(effortOnly.calls[0].options.reasoningLevel,'high');
+ assert.equal(effortOnly.saved,0,'effort-only mirrored selection must not save');
+ // A concurrent native selection keeps the official default save (original command runs untouched).
+ await effortOnly.controller.selectModel({sessionId:'native',provider:'deepseek-official',model:'deepseek-flash'});
+ assert.equal(effortOnly.saved,1,'native selection keeps the official default save');
+});
+
+test('S02-Q1 B4 confirmed selection persists the display projection and executes the official identity',async()=>{
+ const peer=new MockPeer();const events=[];const session={id:'z1',seq:0,snapshotEvents:()=>events,append(type,data,opts){const event={type,data,...opts,seq:this.seq++,time:0};events.push(event);return event}};
+ const record={id:'z1',officialId:'official-session',workspace:'/w',authority:'official-host',events:[],selection:null};
+ const agent=new ZCodeAgent({},session,record,{peer,createScope:(ctx,key)=>({ctx:{key,inject(){}},dispose:async()=>{}}),agentEvents:()=>({emit(){},waterfall:()=>Promise.resolve('unavailable')})});
+ await agent.connect();await tick();
+ const resolved=await resolveMirrorSelection(fakeLlm(),{provider:'zcode',model:'A/model_a'});
+ const outcome=await agent.select(officialSelection(resolved.official));
+ assert.equal(outcome.outcome,'confirmed');
+ agent.confirmSelection(resolved);
+ assert.deepEqual(record.selection,{providerId:'A',modelId:'model_a',options:{reasoningLevel:'medium'}});
+ const projection=events.find(event=>event.type==='model/selection')?.data;
+ assert.deepEqual(projection,{provider:'zcode',model:'A/model_a',reasoningEffort:'medium'});
+ assert.ok((record.events??[]).some(event=>event.type==='model/selection'&&event.data.model==='A/model_a'),'record.events captures the projection');
+ // Restart: seeding a fresh session with the persisted events restores the picker projection.
+ const restored=[];const restoredSession={id:'z1',seq:0,snapshotEvents:()=>restored,append(type,data,opts){const event={type,data,...opts,seq:this.seq++,time:0};restored.push(event);return event}};
+ for(const event of record.events)restoredSession.append(event.type,event.data,event.opts);
+ assert.ok(restoredSession.snapshotEvents().some(event=>event.type==='model/selection'&&event.data.provider==='zcode'));
+ // Execution keeps the official identity for the next prompt.
+ agent.followup({content:[{type:'text',text:'after selection'}]});await tick();
+ const send=peer.calls.find(call=>call.params?.type==='sendText');
+ assert.deepEqual(send.params.payload.modelSelection,{providerId:'A',modelId:'model_a',options:{reasoningLevel:'medium'}});
+});
+
+test('S02-Q1 default binding uses the official selection service for a new ZCode session',async()=>{
  const bound=[];const original=async options=>options?.sessionId??'native-new';
  const sessions={create:original,list:{getSnapshot:()=>({byId:{}})}};
  const controls=new RuntimeControls({call:async(channel,endpoint,payload)=>({ok:true,value:payload.operation==='create'?{sessionId:'zcode-created'}:{runtime:'zcode',locked:true}})},{});
@@ -72,7 +144,7 @@ test('S02-Q1 zcode session creation binds the first discovered model through the
 });
 
 test('S02-Q1 badge switches whale/Z by selection provider and the global store drives it',()=>{
- const store=state=>{let current=state;return {getSnapshot:()=>current,subscribe:()=>()=>{},setState:next=>{current=next}}};
+ const store=state=>{let current=state;return {getSnapshot:()=>current,subscribe:()=>()=>{}}};
  const zcode=store({current:{provider:'zcode',model:'A/model_a'}});
  const deepseek=store({current:{provider:'deepseek-account',model:'deepseek-flash'}});
  assert.match(renderToStaticMarkup(createElement(ProviderBadge,{store:zcode})),/data-zcode-provider-badge="zcode"/);
@@ -104,3 +176,17 @@ test('S02-Q1 installation registers additive badge/locked slots and never shadow
   assert.equal(registered.find(options=>options.name==='conversation.input.left').registrant,'zcode-runtime-locked');
  }finally{controls.dispose()}
 });
+
+/** installMirrorGuards harness with a fake sessionController, LLM catalog and default-model service.
+ * The native original command emulates the official default save; mirrored selections must not. */
+function guardWorld(agentSelect){
+ const calls=[],confirmed=[];let saved=0;
+ const agent={select:async selection=>{calls.push(selection);return agentSelect(selection)},confirmSelection:resolved=>{confirmed.push(resolved)}};
+ const defaults={currentSelection:()=>({provider:'deepseek-official',model:'deepseek-flash'}),saveSelection:async()=>{saved++}};
+ const controller={selectModel:async request=>{if(request.sessionId==='native')await defaults.saveSelection({provider:request.provider,model:request.model});return {original:request}},rename:async()=>{},fork:async()=>{}};
+ const scope={sessionController:controller,get:name=>name==='llm'?fakeLlm():name==='agentDefaultModel'?defaults:undefined,effect:()=>{}};
+ const runtime={store:{records:new Map([['z1',{}]])},agents:{get:id=>id==='z1'?agent:undefined},ctx:{workspaceRegistry:{get:()=>undefined}}};
+ const ctx={inject:(keys,apply)=>{apply(keys.includes('workspaceController')?{workspaceController:{},effect:()=>{}}:scope)},effect:()=>{}};
+ installMirrorGuards(ctx,runtime);
+ return {controller,runtime,calls,confirmed,get saved(){return saved}};
+}

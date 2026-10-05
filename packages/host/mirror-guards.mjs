@@ -1,3 +1,4 @@
+import { officialSelection, resolveMirrorSelection, selectionFailure } from './model-selection.mjs';
 const unavailable=method=>Object.assign(new Error(`Official ZCode route unavailable for ${method}`),{code:'session/official-route-unavailable',details:{operation:method}});
 function isMirrorRequest(runtime,request){
   if(runtime?.store?.records?.has(request?.sessionId))return true;
@@ -20,20 +21,22 @@ export function guardController(controller,runtime,methods,overrides={}){
 }
 export function installMirrorGuards(ctx,runtime){
   ctx.inject(['sessionController'],scope=>{
-    // Official selectModel on a ZCode Session is the Q1 selection entry. The official command
-    // commits the durable model/selection projection first, then the mirrored Agent forwards
-    // the same choice through the official switchModelConfig route. Native sessions are untouched.
-    const defaults=typeof scope.get==='function'?scope.get('agentDefaultModel'):undefined;
-    const selectModel=async function(original,request,...args){
-      let previous;
-      try{previous=defaults?.currentSelection?.()}catch{}
-      const result=await original.call(this,request,...args);
+    // Official selectModel on a ZCode Session is the one selection owner. It resolves the display
+    // route against the official catalog, translates to the real provider/model identity, dispatches
+    // switchModelConfig, and only commits the durable projection after a confirmed/unchanged outcome.
+    // The native SessionCommandController path is deliberately not used: it would append the
+    // projection before the runtime settles and enqueue a native deployment-default save.
+    const selectModel=async function(_original,request,_args){
       const agent=runtime.agents?.get(request.sessionId);
       if(!agent)throw unavailable('selectModel');
-      await agent.select({providerId:request.provider,modelId:request.model,...(request.reasoningEffort===undefined?{}:{options:{reasoningLevel:request.reasoningEffort}})});
-      // A mirrored route must never replace the native deployment default.
-      if(defaults&&previous&&(previous.provider!==request.provider||previous.model!==request.model)){try{await defaults.saveSelection(previous)}catch{}}
-      return result;
+      const llm=typeof scope.get==='function'?scope.get('llm'):undefined;
+      const resolved=await resolveMirrorSelection(llm,request);
+      let outcome;
+      try{outcome=await agent.select(officialSelection(resolved.official))}
+      catch(error){if(error?.isDSHRemoteError)throw error;throw selectionFailure({outcome:'failed',ack:{reasonCode:error?.code??'selection-failed'}})}
+      if(outcome.outcome!=='confirmed'&&outcome.outcome!=='unchanged')throw selectionFailure(outcome);
+      agent.confirmSelection(resolved);
+      return {selected:{...resolved.display}};
     };
     const restore=guardController(scope.sessionController,runtime,['rename','fork','selectModel','attachment','updateQueue'],{selectModel});
     scope.effect(()=>restore,'zcode-bridge: official session write guards');

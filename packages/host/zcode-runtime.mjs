@@ -6,6 +6,7 @@ import { CommandLifecycle } from './command-lifecycle.mjs';
 import { installMirrorHistory } from './mirror-history.mjs';
 import { installMirrorGuards } from './mirror-guards.mjs';
 import { installZCodeLlm } from './zcode-llm.mjs';
+import { officialSelection, resolveDiscovered, selectionFailure } from './model-selection.mjs';
 import { LauncherPeer } from './launcher/execution.mjs';
 import { ZCodeAgent, SHARED_GUI_HINT } from './zcode-agent.mjs';
 import { negotiatedClientHello, newCommandId } from './conversation.mjs';
@@ -106,7 +107,19 @@ export class ZCodeRuntime {
     const agent=this.agents.get(payload.sessionId);if(!agent)throw fault('runtime-identity-locked');
     if(payload.operation==='usage')return this.host.taskUsage(this.info(payload.sessionId).officialAddress);
     if(payload.operation==='cancel'){agent.cancel();return {requested:true}}
-    return agent.select(payload.selection);
+    return this.selectSession(payload.sessionId,payload.selection,agent);
+  }
+  /** Legacy bridge selection entry: same identity translation/outcome contract as the official
+   * selectModel guard. Confirmed choices commit the durable presentation projection. */
+  async selectSession(id,request,agent=this.agents.get(id)){
+    if(!agent)throw fault('runtime-identity-locked');
+    const resolved=resolveDiscovered(request,await this.modelProviders());
+    let outcome;
+    try{outcome=await agent.select(officialSelection(resolved.official))}
+    catch(error){if(error?.isDSHRemoteError)throw error;throw selectionFailure({outcome:'failed',ack:{reasonCode:error?.code??'selection-failed'}})}
+    if(outcome.outcome!=='confirmed'&&outcome.outcome!=='unchanged')throw selectionFailure(outcome);
+    agent.confirmSelection(resolved);
+    return {selected:{...resolved.display}};
   }
   async dispose(){this.disposed=true;this.offRecovery?.();await Promise.allSettled([...this.disposers.values()].map(dispose=>dispose()));this.peer?.close();await this.store.writing}
 }

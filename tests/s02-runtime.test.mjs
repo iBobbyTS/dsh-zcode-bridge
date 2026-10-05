@@ -19,8 +19,8 @@ test('S02 official Agent scope, stream/tools/approval, selected model/effort, st
   f.peer.publish(snapshot);await tick();await tick();
   const answer=f.peer.calls.find(call=>call.params?.type==='resolveInteraction');assert.deepEqual(answer.params.payload.answer,{optionId:'once',action:'accept'});assert.equal(f.record.approval.settlement,'assumed-single-answerer');
   f.agent.cancel();await tick();assert.equal(f.peer.calls.filter(call=>call.params?.type==='stop').length,1);
-  await f.agent.select({providerId:'new-provider',modelId:'new-model',options:{reasoningLevel:'medium'}});
-  assert.deepEqual(f.peer.calls.find(call=>call.params?.type==='switchModelConfig').params.payload,{provider:'new-provider',model:'new-model',thought:'medium'});
+  await f.agent.select({providerId:'A',modelId:'model_a',options:{reasoningLevel:'medium'}});
+  assert.deepEqual(f.peer.calls.find(call=>call.params?.type==='switchModelConfig').params.payload,{provider:'A',model:'model_a',thought:'medium'});
   assert.ok(f.publications.some(event=>event.type==='agent/assistant-stream'&&event.frame.chunk?.text==='Hello'));
   snapshot.seq=2;snapshot.pendingInteractions=[];snapshot.rows.window[2].text='Hello world';snapshot.rows.window[2].state='complete';snapshot.rows.window[3].status='success';snapshot.rows.window[3].output={text:'done'};
   f.peer.publish(snapshot);await tick();assert.ok(f.events.some(event=>event.type==='assistant/message'&&event.data.message.content[0].text==='Hello world'));assert.ok(f.events.some(event=>event.type==='tool/result'));
