@@ -19,6 +19,9 @@ export class MockPeer {
   /** Validate one OFFICIAL provider/model identity against the advertised registry, mirroring the
    * real handler's provider.notInRegistry/model rejection so identity bugs fail loudly in mock. */
   validateIdentity(provider,model){const group=this.providers.find(item=>item.id===provider);return group!==undefined&&group.models.some(item=>item.id===model)}
+  /** Validate a requested effort against that model's advertised reasoning levels, like the real
+   * handler. An empty/missing effort is always acceptable (the provider default applies). */
+  validateEffort(provider,model,effort){if(!effort)return true;const group=this.providers.find(item=>item.id===provider);const entry=group?.models.find(item=>item.id===model);return entry!==undefined&&(entry.reasoningLevels??[]).includes(effort)}
   onNotification(listener){this.notifications.add(listener);return ()=>this.notifications.delete(listener)}
   onClosed(listener){this.closers.add(listener);return ()=>this.closers.delete(listener)}
   async request(method,params,{onResult}={}){
@@ -29,6 +32,8 @@ export class MockPeer {
       if(params.type==='switchModelConfig'&&!this.validateIdentity(params.payload?.provider,params.payload?.model)){
         const reasonCode=this.providers.some(item=>item.id===params.payload?.provider)?'model.notInRegistry':'provider.notInRegistry';
         result={commandId:params.commandId,status:'failed',reasonCode,revisionAtDecision:this.snapshot.revision};
+      }else if(params.type==='switchModelConfig'&&!this.validateEffort(params.payload?.provider,params.payload?.model,params.payload?.thought)){
+        result={commandId:params.commandId,status:'failed',reasonCode:'effort.unavailable',revisionAtDecision:this.snapshot.revision};
       }else{
         result={commandId:params.commandId,status:'accepted',revisionAtDecision:this.snapshot.revision,...(params.type==='createSession'?{result:{type:'createSession',sessionId:this.snapshot.sessionId}}:{})};
       }

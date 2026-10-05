@@ -12,11 +12,13 @@ import {RuntimeControls} from '../packages/client/runtime.mjs';
 import {ProviderBadge,RuntimeLockedLabel,installRuntimeControls} from '../packages/client/runtime-controls.mjs';
 import {MockPeer,sampleProviders,tick} from './helpers/zcode-runtime-fixture.mjs';
 
-const fakeLlm=()=>({listModels:async provider=>provider===ZCODE_PROVIDER?[
-  {provider:ZCODE_PROVIDER,id:'A/model_a',name:'A/model_a'},
-  {provider:ZCODE_PROVIDER,id:'A/model_b',name:'A/model_b'},
-  {provider:ZCODE_PROVIDER,id:'B/model_c',name:'B/model_c'},
-]:[],resolveModelInfo:async(provider,model)=>({provider,id:model,name:model,reasoning:{efforts:[{id:'low',name:'Low'},{id:'medium',name:'Medium'},{id:'high',name:'High'}],defaultEffort:model.startsWith('B/')?'low':model==='A/model_b'?'high':'medium'}})});
+const EFFORT_LEVELS={'A/model_a':['low','medium','high'],'A/model_b':['low','medium','high'],'B/model_c':['low']};
+const effortDefault=model=>model.startsWith('B/')?'low':model==='A/model_b'?'high':'medium';
+const fakeLlm=()=>({
+  listModels:async provider=>provider===ZCODE_PROVIDER?Object.keys(EFFORT_LEVELS).map(id=>({provider:ZCODE_PROVIDER,id,name:id})):[],
+  resolveModelInfo:async(provider,model)=>({provider,id:model,name:model,reasoning:{efforts:(EFFORT_LEVELS[model]??[]).map(id=>({id,name:id})),defaultEffort:effortDefault(model)}}),
+  resolveCallConfig:async config=>{const levels=EFFORT_LEVELS[config.model]??[];const effective=config.reasoningEffort??effortDefault(config.model);if(config.reasoningEffort!==undefined&&!levels.includes(config.reasoningEffort))throw Object.assign(new Error(`unsupported ${config.reasoningEffort}`),{code:'UNSUPPORTED_REASONING_EFFORT'});return {...config,reasoningEffort:effective}},
+});
 
 test('S02-Q1 discovery maps sample providers A/B into the zcode route with efforts and fails closed',async()=>{
  const models=zcodeModels(sampleProviders());
@@ -64,6 +66,29 @@ test('S02-Q1 B1 structural: MockPeer rejects identities outside its advertised r
  assert.equal(wrongProvider.status,'failed');assert.equal(wrongProvider.reasonCode,'provider.notInRegistry');
  const wrongModel=await peer.request('v4/command',{commandId:'c3',type:'switchModelConfig',payload:{provider:'A',model:'missing',thought:''}});
  assert.equal(wrongModel.status,'failed');assert.equal(wrongModel.reasonCode,'model.notInRegistry');
+ const wrongEffort=await peer.request('v4/command',{commandId:'c4',type:'switchModelConfig',payload:{provider:'A',model:'model_a',thought:'ultra'}});
+ assert.equal(wrongEffort.status,'failed');assert.equal(wrongEffort.reasonCode,'effort.unavailable');
+});
+
+test('S02-Q1 B5 unsupported effort is rejected before any dispatch or projection write',async()=>{
+ const world=guardWorld(async()=>({outcome:'confirmed',ack:{status:'accepted'}}));
+ await assert.rejects(world.controller.selectModel({sessionId:'z1',provider:'zcode',model:'B/model_c',reasoningEffort:'max'}),{code:'session/model-unavailable'});
+ assert.equal(world.calls.length,0,'no switchModelConfig dispatch');
+ assert.equal(world.confirmed.length,0,'no projection write');
+ // The same validation runs on the legacy bridge entry against the discovered effort list.
+ assert.throws(()=>resolveDiscovered({provider:'zcode',model:'A/model_a',reasoningEffort:'ultra'},sampleProviders()),{code:'session/model-unavailable'});
+});
+
+test('S02-Q1 B5 metadata-resolution failure is Remote-recognized with no dispatch or projection',async()=>{
+ const failing={listModels:async()=>[{provider:'zcode',id:'A/model_a',name:'A/model_a'}],resolveCallConfig:async()=>{throw Object.assign(new Error('metadata source down'),{code:'METADATA_FAILED'})}};
+ const world=guardWorld(async()=>({outcome:'confirmed',ack:{status:'accepted'}}),{llm:failing});
+ await assert.rejects(world.controller.selectModel({sessionId:'z1',provider:'zcode',model:'A/model_a'}),{code:'session/model-unavailable'});
+ assert.equal(world.calls.length,0);assert.equal(world.confirmed.length,0);
+ // Fallback path (no resolveCallConfig): validate the explicit effort against the discovered metadata.
+ const fallback={listModels:async()=>[{provider:'zcode',id:'A/model_a',name:'A/model_a'}],resolveModelInfo:async(provider,model)=>({provider,id:model,name:model,reasoning:{efforts:[{id:'low',name:'Low'}],defaultEffort:'low'}})};
+ const world2=guardWorld(async()=>({outcome:'confirmed',ack:{status:'accepted'}}),{llm:fallback});
+ await assert.rejects(world2.controller.selectModel({sessionId:'z1',provider:'zcode',model:'A/model_a',reasoningEffort:'high'}),{code:'session/model-unavailable'});
+ assert.equal(world2.calls.length,0);assert.equal(world2.confirmed.length,0);
 });
 
 test('S02-Q1 B2 outcome classification covers every ACK category',()=>{
@@ -179,12 +204,12 @@ test('S02-Q1 installation registers additive badge/locked slots and never shadow
 
 /** installMirrorGuards harness with a fake sessionController, LLM catalog and default-model service.
  * The native original command emulates the official default save; mirrored selections must not. */
-function guardWorld(agentSelect){
+function guardWorld(agentSelect,{llm=fakeLlm()}={}){
  const calls=[],confirmed=[];let saved=0;
  const agent={select:async selection=>{calls.push(selection);return agentSelect(selection)},confirmSelection:resolved=>{confirmed.push(resolved)}};
  const defaults={currentSelection:()=>({provider:'deepseek-official',model:'deepseek-flash'}),saveSelection:async()=>{saved++}};
  const controller={selectModel:async request=>{if(request.sessionId==='native')await defaults.saveSelection({provider:request.provider,model:request.model});return {original:request}},rename:async()=>{},fork:async()=>{}};
- const scope={sessionController:controller,get:name=>name==='llm'?fakeLlm():name==='agentDefaultModel'?defaults:undefined,effect:()=>{}};
+ const scope={sessionController:controller,get:name=>name==='llm'?llm:name==='agentDefaultModel'?defaults:undefined,effect:()=>{}};
  const runtime={store:{records:new Map([['z1',{}]])},agents:{get:id=>id==='z1'?agent:undefined},ctx:{workspaceRegistry:{get:()=>undefined}}};
  const ctx={inject:(keys,apply)=>{apply(keys.includes('workspaceController')?{workspaceController:{},effect:()=>{}}:scope)},effect:()=>{}};
  installMirrorGuards(ctx,runtime);

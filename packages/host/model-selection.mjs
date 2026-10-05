@@ -18,17 +18,33 @@ export function resolveIdentity(request){
   const {provider,model}=splitQualified(request.model);
   return {display:displayOf(request,request?.reasoningEffort),official:{provider,model,reasoningEffort:request?.reasoningEffort}};
 }
+/** Metadata-only effort resolution: `resolveCallConfig` when the registry exposes it (the official
+ * validating path the native controller used), otherwise an equivalent check against the model's
+ * advertised efforts. An unsupported explicit effort or a failed metadata lookup is a hard error;
+ * nothing is dispatched and no projection is written. */
+async function resolveEffectiveEffort(llm,request){
+  if(typeof llm.resolveCallConfig==='function'){
+    const config=await llm.resolveCallConfig({provider:request.provider,model:request.model,...(request.reasoningEffort===undefined?{}:{reasoningEffort:request.reasoningEffort})});
+    return config?.reasoningEffort??request.reasoningEffort;
+  }
+  const info=typeof llm.resolveModelInfo==='function'?await llm.resolveModelInfo(request.provider,request.model):undefined;
+  const reasoning=info?.reasoning;
+  if(request.reasoningEffort!==undefined){
+    if(reasoning===undefined||!reasoning.efforts.some(effort=>effort.id===request.reasoningEffort))throw Object.assign(new Error(`provider "${request.provider}" model "${request.model}" does not support reasoning effort "${request.reasoningEffort}"`),{code:'UNSUPPORTED_REASONING_EFFORT'});
+    return request.reasoningEffort;
+  }
+  return reasoning?.defaultEffort;
+}
 /** Resolve a mirrored selection against the live official LLM catalog: the display id must exist in
- * the advertised route, and the official identity is the qualified id unwrapped. Materializes the
- * adapter default effort when the caller omitted one. Throws a Remote failure before any dispatch. */
+ * the advertised route, and the official identity is the qualified id unwrapped. The effective
+ * effort is resolved and validated before any dispatch. Throws a Remote failure on any failure. */
 export async function resolveMirrorSelection(llm,request){
   if(!llm||typeof llm.listModels!=='function')throw remoteFault('session/model-unavailable','the official model catalog is unavailable',{});
   let models;
   try{models=await llm.listModels(request.provider)}catch(error){throw remoteFault('session/model-unavailable',error?.message??String(error),{provider:request.provider})}
   if(!(models??[]).some(model=>model.id===request.model))throw remoteFault('session/model-unavailable',`model "${request.model}" is not available for provider "${request.provider}"`,{provider:request.provider,model:request.model});
-  let resolved;
-  try{resolved=await llm.resolveModelInfo(request.provider,request.model)}catch{resolved=undefined}
-  const reasoningEffort=request.reasoningEffort??resolved?.reasoning?.defaultEffort;
+  let reasoningEffort;
+  try{reasoningEffort=await resolveEffectiveEffort(llm,request)}catch(error){throw remoteFault('session/model-unavailable',error?.message??String(error),{provider:request.provider,model:request.model,reason:error?.code})}
   const {display,official}=resolveIdentity({...request,...(reasoningEffort?{reasoningEffort}:{})});
   return {display,official:{...official,reasoningEffort}};
 }
@@ -38,6 +54,8 @@ export function resolveDiscovered(request,providers){
   const {provider,model}=splitQualified(request.model);
   const entry=(providers??[]).find(item=>item.id===provider)?.models?.find(item=>item.id===model);
   if(!entry)throw remoteFault('session/model-unavailable',`mirrored model "${request.model}" is not in the discovered registry`,{provider,model});
+  const levels=entry.reasoningLevels??[];
+  if(request.reasoningEffort!==undefined&&!levels.includes(request.reasoningEffort))throw remoteFault('session/model-unavailable',`model "${provider}/${model}" does not support reasoning effort "${request.reasoningEffort}"`,{provider,model,reason:'UNSUPPORTED_REASONING_EFFORT'});
   const reasoningEffort=request.reasoningEffort??entry.defaultReasoningLevel;
   const {display,official}=resolveIdentity({...request,...(reasoningEffort?{reasoningEffort}:{})});
   return {display,official:{...official,reasoningEffort}};
