@@ -2,6 +2,7 @@ import {approvalAnswer} from '../host/zcode-agent.mjs';
 import {DriverInbox} from './inbox.mjs';
 import {commandFault,inputCommandId,ROUTED_COMMANDS,rejectOperation,validateMessage,promptPayload,requestedDelivery} from './commands.mjs';
 import {queueSteerTransfer,requireAcceptedCommand} from './queue-steer.mjs';
+import {captureControlReceipt} from './control-receipts.mjs';
 import {ConversationEventTranslator} from './events.mjs';
 
 export class DriverAgent {
@@ -132,12 +133,16 @@ export class DriverAgent {
   }
   submitControl(command){
     this.assertAvailable();if(!ROUTED_COMMANDS.has(command.type))rejectOperation(command.type);
-    return this.track((async()=>{
+    return captureControlReceipt(this,command.type,this.track((async()=>{
       await this.ready();const snapshot=this.conversation.state.snapshot;
       if(command.baseRevision!==undefined&&command.baseRevision!==snapshot.revision)throw commandFault('proto.staleRevision');
       if(command.type==='resolveInteraction'&&snapshot.pendingInteractions.find(item=>item.interactionId===command.payload?.interactionId)?.kind!=='permission')rejectOperation('userInput');
-      return this.conversation.submit(command);
-    })());
+      const result=await this.conversation.submit(command);
+      // V4 returns negative receipts as values. Preserve that ledger, but fail
+      // the control boundary so track reports them even while transport is live.
+      if(['rejected','stale','failed','not-sent','outcome-unknown'].includes(result.state)||['rejected','stale','failed'].includes(result.ack?.status))requireAcceptedCommand(result);
+      return result;
+    })()));
   }
   rename(title){return this.submitControl({type:'renameSession',payload:{title}})}
   async renameAndRead(title){

@@ -10,7 +10,10 @@ export function queueSteerTransfer(agent,id){
 }
 export function requireAcceptedCommand(result){
   if(!['accepted','duplicate'].includes(result?.ack?.status)||['outcome-unknown','failed','rejected','stale','not-sent'].includes(result.state)){
-    throw commandFault(result?.ack?.reasonCode??result?.error??(result?.state==='outcome-unknown'?'command-outcome-unknown':'command-rejected'));
+    const code=result?.state==='outcome-unknown'?'command-outcome-unknown':result?.ack?.reasonCode??result?.error??'command-rejected';
+    const error=Object.assign(commandFault(code),{commandId:result?.commandId,state:result?.state});
+    if(result?.error&&result.error!==code)error.message+=`: ${result.error}`;
+    throw error;
   }
   return result;
 }

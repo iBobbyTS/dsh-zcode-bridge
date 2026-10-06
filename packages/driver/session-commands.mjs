@@ -1,6 +1,7 @@
 import {DriverAgent} from './agent.mjs';
 import {commandFault} from './commands.mjs';
 import {withQueueSteer} from './queue-steer.mjs';
+import {withControlReceipts} from './control-receipts.mjs';
 
 /** rc.2 Remote methods delegate to this command object even when already bound.
  * sessionTitle.rename itself is synchronous; the async ACK/read barrier belongs
@@ -9,9 +10,9 @@ import {withQueueSteer} from './queue-steer.mjs';
 export function installSessionCommandSeams(ctx,factory,{normalizeSessionTitle,RemoteError}){
   const controller=ctx.get('sessionController'),titles=ctx.get('sessionTitle');
   const commands=controller?.commands;
-  if(!commands||typeof commands.rename!=='function'||typeof commands.updateQueue!=='function'||typeof controller.resolveAgent!=='function')throw commandFault('driver-session-command-contract-unavailable');
+  if(!commands||typeof commands.rename!=='function'||typeof commands.updateQueue!=='function'||typeof commands.cancel!=='function'||typeof controller.resolveAgent!=='function')throw commandFault('driver-session-command-contract-unavailable');
   const owned=agent=>agent instanceof DriverAgent&&agent.transport===factory.transport;
-  const rename=commands.rename,updateQueue=commands.updateQueue;
+  const rename=commands.rename,updateQueue=commands.updateQueue,cancel=commands.cancel;
   const wrappedRename=async function(request){
     const found=await controller.resolveAgent(request.sessionId);
     if(found.error)throw found.error;
@@ -30,18 +31,27 @@ export function installSessionCommandSeams(ctx,factory,{normalizeSessionTitle,Re
     })());
   };
   const wrappedUpdateQueue=async function(request){
-    if(request.action.kind!=='steer')return updateQueue.call(this,request);
+    if(!['steer','edit'].includes(request.action.kind))return updateQueue.call(this,request);
     const found=await controller.resolveAgent(request.sessionId);
     if(found.error)throw found.error;
     if(!owned(found.agent))return updateQueue.call(this,request);
     if(!factory.accepting)throw commandFault('driver-not-active');
-    return withQueueSteer(found.agent,request.itemId,()=>updateQueue.call(this,request));
+    return request.action.kind==='steer'
+      ?withQueueSteer(found.agent,request.itemId,()=>updateQueue.call(this,request))
+      :withControlReceipts(found.agent,'editQueueItem',()=>updateQueue.call(this,request));
+  };
+  const wrappedCancel=function(request){
+    // Preserve the official attached-only cancel lookup; never cold-resume here.
+    const agent=ctx.agents.get(request.sessionId);
+    if(!owned(agent))return cancel.call(this,request);
+    if(!factory.accepting)throw commandFault('driver-not-active');
+    return withControlReceipts(agent,'stop',()=>cancel.call(this,request));
   };
   return ctx.effect(()=>{
-    const descriptors=new Map(['rename','updateQueue'].map(name=>[name,Object.getOwnPropertyDescriptor(commands,name)]));
-    commands.rename=wrappedRename;commands.updateQueue=wrappedUpdateQueue;
+    const descriptors=new Map(['rename','updateQueue','cancel'].map(name=>[name,Object.getOwnPropertyDescriptor(commands,name)]));
+    commands.rename=wrappedRename;commands.updateQueue=wrappedUpdateQueue;commands.cancel=wrappedCancel;
     return ()=>{
-      for(const [name,wrapper] of [['rename',wrappedRename],['updateQueue',wrappedUpdateQueue]]){
+      for(const [name,wrapper] of [['rename',wrappedRename],['updateQueue',wrappedUpdateQueue],['cancel',wrappedCancel]]){
         if(commands[name]!==wrapper)continue;
         const descriptor=descriptors.get(name);
         if(descriptor)Object.defineProperty(commands,name,descriptor);else delete commands[name];

@@ -29,7 +29,7 @@ for(const [entry,states] of Object.entries(writeOracle))for(const [state,guard] 
         const pending=w.agent.submitControl({type:'setAutoDrain',commandId:'uncertain-original',payload:{autoDrain:false}});
         await sent;w.peer.disconnect();
         assert.equal(w.agent.conversation.command('uncertain-original').state,'outcome-unknown','classification is synchronous, before reconnect or successor');
-        assert.equal((await pending).state,'outcome-unknown');
+        await assert.rejects(pending,{code:'command-outcome-unknown',commandId:'uncertain-original',state:'outcome-unknown'});
         if(entry==='disconnect'){assert.equal(w.peer.calls.filter(c=>c.method==='v4/command').length,1);return}
         w.peer.request=original;
       }else{
@@ -61,6 +61,10 @@ for(const [entry,states] of Object.entries(writeOracle))for(const [state,guard] 
       if(guard){
         assert.equal(error?.code,guard);assert.equal(result,undefined);
         assert.equal(w.peer.calls.filter(c=>c.method==='v4/command').length,state==='transport-lost'?1:0);
+      }else if(['queue-edit','stop'].includes(entry)&&['outcome-unknown','explicit-reject'].includes(outcome)){
+        assert.equal(result,undefined);assert.equal(error?.code,outcome==='outcome-unknown'?'command-outcome-unknown':'oracle.explicitReject');
+        const receipt=w.agent.conversation.command(error.commandId);assert.equal(receipt.state,outcome==='outcome-unknown'?'outcome-unknown':'rejected');
+        assert.ok(w.notifications.some(event=>event.type==='agent/error'&&event.payload.error===error));
       }else{
         assert.equal(error,undefined);
         if(outcome==='outcome-unknown')assert.equal(result.state,'outcome-unknown');

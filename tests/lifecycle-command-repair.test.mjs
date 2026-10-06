@@ -25,7 +25,7 @@ async function officialWorld(){
   ctx.provide('attachments',{imageLimits:{maxImageBytes:100,maxImagesPerMessage:1,maxMessageImageBytes:100,maxImagePixels:100,maxImageDimension:10,mediaTypes:['image/png']}});
   const titles=new SessionTitleService(ctx,{fallbackMaxWords:8,fallbackMaxBytes:80,maxTitleBytes:120});
   const controller=new SessionController(ctx,{nativeOpen:false});
-  const originalRename=controller.commands.rename,originalUpdate=controller.commands.updateQueue;
+  const originalRename=controller.commands.rename,originalUpdate=controller.commands.updateQueue,originalCancel=controller.commands.cancel;
   const peer=new MockPeer();peer.snapshot=baseSnapshot();peer.snapshot.rows.window=[];peer.snapshot.control.canStop=true;
   peer.snapshot.control.activeWorks=[{kind:'primaryTurn',foregroundExecutionId:'work',startedAt:0}];peer.snapshot.control.phase='running';
   peer.snapshot.inputRouting={mode:'enqueue'};peer.snapshot.availability.sendQueuedNow={allowed:true};
@@ -40,7 +40,7 @@ async function officialWorld(){
   }});
   await provider.await();
   const {agent}=await ctx.agents.create({sessionId:'native-repair',meta:{cwd:'/workspace'}});await agent.ready();await tick();
-  return {ctx,peer,agent,controller,titles,driver,provider,originalRename,originalUpdate,recoveries,
+  return {ctx,peer,agent,controller,titles,driver,provider,originalRename,originalUpdate,originalCancel,recoveries,
     async drain(){await Promise.allSettled([...agent.tasks]);await tick()},async close(){await provider.dispose();await ctx.fiber.dispose()}};
 }
 
@@ -197,7 +197,7 @@ test('real Cordis restores the command seams and preserves another owner wrapper
     try{
       assert.notEqual(w.controller.commands.rename,w.originalRename);assert.notEqual(w.controller.commands.updateQueue,w.originalUpdate);
       const successor=async()=>({title:'successor',seq:0});if(newerOwner)w.controller.commands.rename=successor;
-      await w.provider.dispose();assert.equal(w.controller.commands.rename,newerOwner?successor:w.originalRename);assert.equal(w.controller.commands.updateQueue,w.originalUpdate);
+      await w.provider.dispose();assert.equal(w.controller.commands.rename,newerOwner?successor:w.originalRename);assert.equal(w.controller.commands.updateQueue,w.originalUpdate);assert.equal(w.controller.commands.cancel,w.originalCancel);
     }finally{await w.close()}
   }
 });
@@ -229,5 +229,62 @@ test('launcher ready automatically recovers pending input and real Cordis remove
     assert.equal(writes(w.peer).filter(c=>c.commandId===input.commandId).length,1);
     await w.provider.dispose();assert.equal(w.recoveries.size,0);
     assert.equal(w.controller.commands.rename,w.originalRename);
+  }finally{await w.close()}
+});
+
+for(const operation of ['edit','cancel'])for(const outcome of ['rejected','outcome-unknown']){
+  test(`official control receipt: ${operation} / ${outcome} / live subscription`,real,async()=>{
+    const w=await officialWorld(),original=w.peer.request.bind(w.peer),errors=[],apiErrors=[];
+    w.ctx.on('agent/error',payload=>errors.push(payload));w.ctx.on('api-session/error',(id,error)=>apiErrors.push({id,error}));
+    try{
+      publish(w.peer,s=>{s.queue.items=[queueItem()]});await w.drain();
+      const id=w.agent.inbox.nextTurn[0].id,expectedType=operation==='edit'?'editQueueItem':'stop';
+      w.peer.request=async(method,params,options)=>{
+        if(params?.type!==expectedType)return original(method,params,options);
+        if(outcome==='outcome-unknown'){w.peer.loseAck=true;return original(method,params,options)}
+        w.peer.calls.push({method,params:structuredClone(params)});
+        return options.onResult({commandId:params.commandId,status:'rejected',reasonCode:'test.control-rejected',revisionAtDecision:w.peer.snapshot.revision});
+      };
+      const request=operation==='edit'?w.controller.updateQueue({sessionId:w.agent.id,itemId:id,action:{kind:'edit',content:[{type:'text',text:'replacement'}]}}):w.controller.cancel({sessionId:w.agent.id});
+      let failure;
+      await assert.rejects(Promise.resolve(request),error=>{failure=error;assert.equal(error.code,outcome==='rejected'?'test.control-rejected':'command-outcome-unknown');return true});
+      await w.drain();
+      const calls=writes(w.peer).filter(command=>command.type===expectedType);assert.equal(calls.length,1);
+      const receipt=w.agent.conversation.command(calls[0].commandId);
+      assert.equal(receipt.state,outcome);assert.equal(failure.commandId,receipt.commandId);assert.equal(failure.state,receipt.state);
+      assert.ok(errors.some(event=>event.agent===w.agent&&event.error.code===failure.code));
+      assert.ok(apiErrors.some(event=>event.id===w.agent.id));
+      assert.equal(w.agent.conversation.state.status,'live','ACK loss does not close observation');
+      assert.equal(w.peer.closed,false);assert.equal(w.peer.subscriptions.size,1);
+      assert.equal(w.agent.inbox.nextTurn[0].content[0].text,'queued','receipt handling does not fabricate a snapshot mutation');
+      assert.equal(w.agent.status,'running');
+      if(outcome==='outcome-unknown'){
+        const reconciled=await w.agent.conversation.queryCommand(receipt.commandId);
+        assert.equal(reconciled.commandId,receipt.commandId);assert.equal(reconciled.ack.status,'accepted');
+        assert.equal(writes(w.peer).filter(command=>command.type===expectedType).length,1,'query never retransmits');
+      }
+    }finally{await w.close()}
+  });
+}
+
+test('control seam preserves accepted/noop receipts and idle cancellation semantics',real,async()=>{
+  const w=await officialWorld(),request=w.peer.request.bind(w.peer),errors=[];
+  w.ctx.on('agent/error',payload=>errors.push(payload));
+  try{
+    publish(w.peer,s=>{s.queue.items=[queueItem()]});await w.drain();const id=w.agent.inbox.nextTurn[0].id;
+    const entered=Promise.withResolvers(),release=Promise.withResolvers();
+    w.peer.request=async(method,params,options)=>{if(params?.type==='editQueueItem'){entered.resolve();await release.promise}return request(method,params,options)};
+    let settled=false;const edit=w.controller.updateQueue({sessionId:w.agent.id,itemId:id,action:{kind:'edit',content:[{type:'text',text:'edit'}]}}).then(value=>{settled=true;return value});
+    await entered.promise;await tick();assert.equal(settled,false,'API acceptance waits for its own ACK');release.resolve();assert.deepEqual(await edit,{accepted:true});
+    w.peer.request=async(method,params,options)=>{
+      if(params?.type!=='editQueueItem')return request(method,params,options);
+      w.peer.calls.push({method,params:structuredClone(params)});
+      return options.onResult({commandId:params.commandId,status:'noop',reasonCode:'queue.unchanged',revisionAtDecision:w.peer.snapshot.revision});
+    };
+    assert.deepEqual(await w.controller.updateQueue({sessionId:w.agent.id,itemId:id,action:{kind:'edit',content:[{type:'text',text:'queued'}]}}),{accepted:true});
+    assert.deepEqual(await w.controller.cancel({sessionId:w.agent.id}),{accepted:true});assert.equal(w.agent.status,'running','ACK acceptance does not imply stopped execution');
+    publish(w.peer,s=>{s.control.canStop=false;s.control.activeWorks=[]});await w.drain();const count=writes(w.peer).length;
+    assert.deepEqual(await w.controller.cancel({sessionId:w.agent.id}),{accepted:true});assert.equal(writes(w.peer).length,count,'idle cancel sends no command');
+    assert.equal(errors.length,0);
   }finally{await w.close()}
 });
