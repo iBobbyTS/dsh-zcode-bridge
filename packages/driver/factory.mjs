@@ -29,7 +29,28 @@ function cancellable(call,signal,abandoned=()=>{}){
 
 export class DriverFactory {
   accepting=true;transactions=new Set();
-  constructor(ctx,{transport,createScope,agentEvents,interruptedTurnClosers}){Object.assign(this,{ctx,transport,createScope,agentEvents,interruptedTurnClosers})}
+  gate={state:'open',fn:null,error:null,waiters:[]};
+  constructor(ctx,{transport,createScope,agentEvents,interruptedTurnClosers,beforeResume}){
+    Object.assign(this,{ctx,transport,createScope,agentEvents,interruptedTurnClosers});
+    if(beforeResume)this.gate={state:'bound',fn:beforeResume,error:null,waiters:[]};
+  }
+  /** Claim the legacy write gate synchronously when the factory becomes callable. Until the gate is
+   * bound (or failed) every resume waits: an unbound hook must never mean "pass through", otherwise a
+   * resume in the installation window would publish a title-only placeholder before the archive/state
+   * load finished. Direct factory installs without legacy wiring keep the default open gate. */
+  claimWriteGate(){if(this.gate.state==='open')this.gate.state='initializing'}
+  setWriteGate(fn){this.gate.fn=fn;this.#settleGate('bound')}
+  openWriteGate(){this.#settleGate('open')}
+  failWriteGate(error){this.gate.error=error;this.#settleGate('failed')}
+  writeGateState(){return this.gate.state}
+  #settleGate(state){this.gate.state=state;for(const resolve of this.gate.waiters.splice(0))resolve()}
+  async #awaitWriteGate(signal){
+    while(this.gate.state==='initializing'){
+      await new Promise(resolve=>{this.gate.waiters.push(resolve);signal?.addEventListener('abort',resolve,{once:true})});
+      signal?.throwIfAborted();
+    }
+    if(this.gate.state==='failed')throw this.gate.error??Object.assign(new Error('legacy-write-gate-unavailable'),{code:'legacy-write-gate-unavailable'});
+  }
   createAgent(ownerCtx,options){return this.open(ownerCtx,options,'startup')}
   resume(ownerCtx,options){return this.open(ownerCtx,options,'resume')}
   async open(ownerCtx,options,source){
@@ -56,6 +77,14 @@ export class DriverFactory {
     this.transactions.add(dispose);
     try{
       unfollowOwner=ownerCtx.effect(()=>()=>!loadGuard||disposal?undefined:dispose(true),`zcode-driver.lifecycle(${id})`);
+      // A resume is the write gate for an imported legacy Session: the complete history must be in
+      // the store before the Session is announced, so an open/prompt never reads a partial transcript.
+      // While the gate is initializing the resume waits; a failed initialization keeps rejecting; an
+      // undeclared legacy row resolves immediately for ordinary driver Sessions once the gate is open.
+      if(source==='resume'){
+        await this.#awaitWriteGate(signal);
+        if(this.gate.fn)await cancellable(()=>this.gate.fn(id,signal),signal);
+      }
       const persistence=this.ctx.get('sessionPersistence');
       let session,storedCount=0,zcodeConversationId;
       if(source==='startup'){

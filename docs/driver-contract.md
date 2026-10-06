@@ -101,6 +101,32 @@ node scripts/start-npm-acceptance.mjs --prepare-only --diagnose-version-seams --
 
 **EVIDENCE_GAP**：以上支持运行态投递原语与官方 steer 前置对齐，尚不能证明 sendQueuedNow 必然注入当前 guide，或必然开启新 product turn。测试注释冻结该证据等级，待 **S05 隔离验收 --driver-mode 实证** 补齐；本次不发真实模型输入。
 
-**歧义 create 的孤儿风险仍未修复**：`packages/driver/transport.mjs` 的每次 create 调用会生成新的 commandId。丢 ACK 时异常携带原 commandId/outcome-unknown，但 factory 尚未持久化该未绑定 create 的恢复指针；再次创建同一 DSH ID 可能铸新 commandId，令原已创建的 ZCode 会话成为未绑定孤儿。后续 catalogSync 可能重复收养这两个会话。该项需要 create 原 ID 对账、身份绑定和 catalog 去重 owner 联合收口，本次按授权仅记录风险。
+**歧义 create 的孤儿风险仍未修复（create 侧）**：`packages/driver/transport.mjs` 的每次 create 调用会生成新的 commandId。丢 ACK 时异常携带原 commandId/outcome-unknown，但 factory 尚未持久化该未绑定 create 的恢复指针；再次创建同一 DSH ID 可能铸新 commandId，令原已创建的 ZCode 会话成为未绑定孤儿。该项需要 create 原 ID 对账、身份绑定和 catalog 去重 owner 联合收口，本次按授权仅记录风险。
 
 本次对应回归在 `tests/lifecycle-command-repair.test.mjs`：真实 npm SessionController/SessionTitle/Cordis 驱动复合入口、普通删除与并发隔离、rename ACK/回读/失败、方法恢复；fake peer 配真实 V4Conversation 覆盖断连在途后的同 ID 派发、失败保留及同步错误通知。效应与清理断言使用真实 Cordis。
+
+## 存量迁移与目录检查点（本节）
+
+### catalog 读侧与 rowsRange 读通道
+
+- host 侧 `packages/host/zcode-runtime.mjs` 新增只读 `catalogSnapshot()`（`host.listSessions()` 或 launcher read `catalog` 的规范化投影：sessionId/workspace/title），并在 `installZCodeRuntime` 暴露为 `zcodeBridgeHost.zcodeCatalog`；mirror 发布链（`installMirrorGuards`/`refreshDirectory`/`publishDirectory`）未改动。
+- `v4/conversation/rowsRange` 经 `PARITY_METHODS` 放行为 `conversationRowsRangeV4`，随 `PARITY_CALLS` 自动进入 `EXECUTION_CALLS`；launcher Main 的 `allowCalls` 由 `EXECUTION_CALLS` 组成，故 relay 与 `requestParity` 均可调用，`__zcodeTrustedV4Connection` 仍由官方 facade 从连接事实注入，调用方伪造被 `parity-identity-denied` 拒绝。
+- 分页由 `packages/driver/history-backfill.mjs` 的 `collectHistoryPages` 实现：首页无 `beforeRowId`（尾部向前）、每页 ≤200（`PROTOCOL_V4_LIMITS.rowsRangeMaxLimit`）、`hasMore:false` 终止；游标停滞、超限页、畸形结果是显式错误（`rows-range-*`），不把部分历史当完整。
+
+### 原生隐藏（迁移器）
+
+- `packages/driver/legacy-archive.mjs` 的 `runNativeArchive`：首启对 `sessionQuery.listSessions()` 的既有会话做**快照**（排除已含 `zcode-driver/conversation-bound` 的 ZCode 会话），快照先于归档落盘到 `DriverStateStore.value.nativeArchive`；逐条 `workspaceRegistry.archiveSession(id)`（durable、幂等、数据不删、可 unarchive）。中断重跑只续完冻结快照成员，迁移开始后新建的会话不会被归档。
+- `packages/driver/driver-state.mjs` 为 driver 自有原子 JSON 状态（`zcode-bridge/driver-state.json`），与 mirror `RuntimeStore` 分离。
+
+### 导入与急切回填
+
+- `packages/driver/legacy-directory.mjs` 的 `LegacyDirectory.sync` 消费 `zcodeCatalog`：对每个 catalog 行 ensure DSH 会话，**SessionId = ZCode conversation id**，因此同一 ZCode 会话（含歧义 create 的两个 commandId 收养结果）按 id 天然去重，不会重复 ensure；`listPersistedIds` 保证跨重启也只收养一次。状态机 `placeholder`（`persistence.create` header + catalog 标题事件）→ `backfilling` → `readable`（或显式 `error`，由 `DriverStateStore` 持久化）。
+- 回填复用 S02.B `ConversationEventTranslator.replay`/`mergeEventWindows`：整段 rowsRange 窗口一次性 `mergeEventWindows` 后重放，事件按 `session.append` 单调 seq 落盘；重复回填零新增（含 `session/end-seed` 边界只写一次）。附件经 `historyAttachmentReader`（row-scoped `v4/conversation/attachmentRead`）→ `renderAttachments` → DSH attachment store，历史行的附件引用可在 store 解析。
+- **初始化屏障**：factory 变为可调用时即同步 `claimWriteGate()`（index 在 `installDriver` 之后、任何 `await` 之前调用）；在门被绑定或判定失败之前，resume 一律等待，绝不因「钩子未绑定」放行。绑定（`setWriteGate`→`directory.ensureReadable`）前若遗留服务未挂载/初始化抛错则 `failWriteGate`（显式 `legacy-write-gate-unavailable`），30s 未绑定则 `legacy-write-gate-timeout`，保持拒绝。直接 `installDriver`（无遗留接线，如单测）默认门为 open。catalog 轮询用构造器已解析的 `directory.intervalMs`（默认 5000ms），不接受未设置参数坍缩成 ~1ms 重叠循环。
+- **写入门**：resume 在读取持久化之前经 `setWriteGate` 绑定的 `directory.ensureReadable` 完成/等待回填。占位态收到 open/prompt 时先完成回填，再公布会话；普通 driver 会话立即透传。回填失败显式记录为 `error`，不静默产生空转录。门不以「内存 catalog 行缺失」为由放行：只要持久化 `legacy[id]` 存在且非 `readable`、又无行/在途回填（重启、catalog 未 sync、peer 未连），即返回显式 `legacy-backfill-unavailable`；catalog 恢复后 sync 复入同 id 回填完成，下一次调用放行——不会把 title-only 占位 announce 出去，也不会把历史追加到 live turn 之后。
+- **archived 语义**：`catalogSnapshot` 从 host-backed 的 `row.sharedTask.archived` 读取（顶层 `archived` 兼容保留）；restricted-cli 目录无 archived 概念，缺省即「未归档、不跳过」。
+
+### 本次证据与缺口
+
+- `tests/driver-legacy-migration.test.mjs`：迁移幂等/中断重跑/快照与 ZCode 会话排除、driver 状态文件往返、rowsRange 200 分页与跨页合并、幂等重放零新增、分页负例、状态机与发消息先行回填、同 id 去重、附件引用可解析、parity/relay 放行、resume 门时序；端到端用**真实 rc.2 `SessionStore` + JSONL persistence**：>200 行旧 zcode 会话在未激活 Agent 的情况下回填完成，冷读（`persistence.open/read`）含首窗口内容且 seq gap-free。
+- **缺口（记录，不报为通过）**：未装配真实 `sessionQuery` 搜索与真实 workspace registry 的 `archiveSession/archivedSessionIds` 全链路（归档按 `archive(id)` 契约以注入替身验证，归档集合语义由 driver 状态断言）；官方列表/分页/搜索经 `sessionQuery` 的隔离环境实证仍归 S05 隔离验收。

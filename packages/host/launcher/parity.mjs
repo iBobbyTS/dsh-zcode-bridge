@@ -23,6 +23,7 @@ export const PARITY_METHODS = Object.freeze({
   'v4/conversation/workflowRunNodeResult':'conversationWorkflowRunNodeResultV4',
   'v4/usage/stats':'getAppUsageStats', 'v4/conversation/usage':'getTaskTokenUsage',
   'v4/conversation/plans':'conversationPlansV4',
+  'v4/conversation/rowsRange':'conversationRowsRangeV4',
   'v4/conversation/fileChanges':'conversationFileChangesV4',
   'v4/conversation/fileRewindPreview':'conversationFileRewindPreviewV4',
   'provider/testModelConnectivity':'testModelConnectivity',

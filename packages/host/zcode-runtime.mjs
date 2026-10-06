@@ -44,6 +44,22 @@ export class ZCodeRuntime {
   }
   /** Discovered executable official account provider/model groups, projected by launcher Main. */
   modelProviders(){return this.discoverModels()}
+  /** Driver-facing catalog read side: normalized official task rows (ZCode conversation id,
+   * workspace, title). Read-only: no mirror record, identity adoption or publication is performed
+   * here — the driver owns the DSH import/backfill state. */
+  async catalogSnapshot(){
+    if(this.host.listSessions){
+      const response=await this.host.listSessions();
+      // The host-backed catalog projects task metadata onto row.sharedTask; the restricted-cli
+      // catalog carries no archived concept at all. A missing flag means "not archived" (do not skip).
+      return (response.sessions??[]).map(row=>{
+        const archived=row.sharedTask?.archived===true||row.archived===true;
+        return {sessionId:row.address.sessionId,workspacePath:row.address.workspace,workspaceIdentity:row.address.workspace,authority:row.address.authority,title:row.title,...(archived?{archived:true}:{})};
+      });
+    }
+    const value=await this.host.launcher?.read?.('catalog');
+    return (value?.tasks??[]).map(task=>({sessionId:task.taskId,workspacePath:task.workspacePath,workspaceIdentity:task.workspaceIdentity,title:task.title,...(task.archived===true?{archived:true}:{})}));
+  }
   persist(){const promise=this.store.save();void promise.catch(()=>{this.persistError='runtime-persistence-failed'});return promise}
   async start(){await this.settings.load();this.parity=new ParityService(this);await this.store.load();for(const record of this.store.records.values())for(const retired of record.retiredMirrors??[])this.absent.add(retired.id);for(const record of this.store.records.values()){if(record.catalogSeen&&this.host.listSessions)continue;if(record.officialId||record.localDraft)await this.register(record);else record.error='create-outcome-unknown'}this.offRecovery=this.host.launcher?.subscribe(state=>{if(state.phase!=='ready')this.handshake=null;if(state.phase==='ready')void this.recoverAll().catch(()=>{})});if(this.host.launcher?.state.phase==='ready')await this.recoverAll();if(this.host.listSessions){await this.refreshDirectory();this.scheduleDirectorySync()}}
   scheduleDirectorySync(){clearInterval(this.directoryTimer);if(!this.disposed&&this.host.listSessions&&this.settings.value.catalogSync){this.directoryTimer=setInterval(()=>{void this.refreshDirectory().catch(()=>{})},5000);this.directoryTimer.unref?.()}}
@@ -292,5 +308,8 @@ export async function installZCodeRuntime(ctx,host,options={}){
   const {createScope}=options.createScope?options:await import('@deepseek-ai/dsh-scope');
   const {agentEvents}=options.agentEvents?options:await import('@deepseek-ai/dsh-agent');
   const runtime=new ZCodeRuntime(ctx,host,{...options,createScope,agentEvents});
-  await runtime.start();installMirrorGuards(ctx,runtime);installMirrorHistory(ctx,runtime);installZCodeLlm(ctx,{discover:()=>runtime.modelProviders()});return runtime;
+  await runtime.start();installMirrorGuards(ctx,runtime);installMirrorHistory(ctx,runtime);installZCodeLlm(ctx,{discover:()=>runtime.modelProviders()});
+  // Expose only the catalog read side to the in-process driver; the mirror publication chain is untouched.
+  host.zcodeCatalog=()=>runtime.catalogSnapshot();
+  return runtime;
 }
