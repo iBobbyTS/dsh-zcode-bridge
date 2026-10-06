@@ -1,5 +1,6 @@
 import {inboxProjectionDefinition} from './projections.mjs';
 import {commandFault,rejectOperation,validateMessage} from './commands.mjs';
+import {queueSteerTransfer} from './queue-steer.mjs';
 
 /** Only the standard durable splice log stores inbox state. No command settlement lives here. */
 export class DriverInbox {
@@ -32,9 +33,23 @@ export class DriverInbox {
   append(target,message){this.agent.send(message,target,true)}
   prepend(){rejectOperation('prepend')}
   splice(){rejectOperation('splice')}
-  remove(){rejectOperation('remove')}
+  remove(id){
+    const transfer=queueSteerTransfer(this.agent,id);
+    if(!transfer)rejectOperation('remove');
+    const location=this.locate(id);if(!location)return false;
+    const state=this.agent.conversation.state;
+    if(transfer.removed||location.target!=='next-turn'||this.agent.status!=='running'||!state.admission.allowed)throw commandFault('official-queue-steer-unavailable');
+    const queueItemId=this.queueIds.get(id),input=this.agent.inputs.get(id);
+    if(!queueItemId&&(!input||this.agent.conversation.command(input.commandId)))throw commandFault('queue-item-unconfirmed');
+    transfer.removed={queueItemId,input,baseRevision:state.snapshot.revision,baseLogEpoch:state.snapshot.logEpoch};
+    // Remote items remain pending until the authoritative queue consumes them.
+    // Local-only input moves by native durable splices, without deleteQueueItem.
+    if(!queueItemId)this.commit(location.target,location.index,1,[]);
+    return true;
+  }
   clear(){
-    // There is no clear/delete command in the authenticated execution allowlist.
+    // DSH product policy exposes no remote queue deletion/clear operation.
+    // ZCode does define deleteQueueItem; this is not a protocol limitation.
     if(this.agent.conversation?.state.snapshot?.queue.items.length)rejectOperation('clearQueue');
     if(this.agent.conversation?.state.commands.some(command=>command.type==='sendText'&&['sent-unconfirmed','accepted-awaiting-terminal','running','waiting','outcome-unknown'].includes(command.state)))rejectOperation('clearQueue');
     for(const target of ['next-step','next-turn'])this.commit(target,0,this.current()[target].length,[],'canceled');
@@ -59,7 +74,7 @@ export class DriverInbox {
       // Foreign attachment refs cannot be reconstructed as DSH store refs.
       const association=[...this.agent.inputs].find(([,input])=>input.commandId===item.sourceCommandId);
       if(item.kind!=='sendText'||item.attachments.length&&!association){
-        this.agent.lastError=commandFault('official-queue-content-unavailable');continue;
+        this.agent.reportError(commandFault('official-queue-content-unavailable'));continue;
       }
       const id=association?.[0]??`zcode-queue:${item.queueItemId}`;
       const existing=this.locate(id);

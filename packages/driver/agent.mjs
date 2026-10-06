@@ -1,6 +1,7 @@
 import {approvalAnswer} from '../host/zcode-agent.mjs';
 import {DriverInbox} from './inbox.mjs';
 import {commandFault,inputCommandId,ROUTED_COMMANDS,rejectOperation,validateMessage,promptPayload,requestedDelivery} from './commands.mjs';
+import {queueSteerTransfer,requireAcceptedCommand} from './queue-steer.mjs';
 
 export class DriverAgent {
   status='idle';disposed=false;activity=null;tasks=new Set();inputs=new Map();approvals=new Map();idleWaiters=[];lastError=null;
@@ -13,30 +14,34 @@ export class DriverAgent {
     }
     this.conversation=transport?.conversation?.({zcodeConversationId,cwd:session.header.cwd});
     this.offConversation=this.conversation?.subscribe(state=>this.observe(state));
+    this.offRecovery=this.conversation?.peer.launcher?.subscribe(state=>{
+      if(state.phase==='ready'&&this.conversation.state.status==='error'&&!this.disposed)this.track(this.ready());
+    });
   }
   assertAvailable(){if(this.disposed)throw commandFault('agent-disposed');if(!this.conversation)throw commandFault('driver-command-unavailable')}
   track(task){
     this.tasks.add(task);
-    void task.catch(error=>{this.lastError=error;this.dispatch.emit('agent/error',{error})}).finally(()=>{this.tasks.delete(task);this.notifyIdle()});
+    void task.catch(error=>this.reportError(error)).finally(()=>{this.tasks.delete(task);this.notifyIdle()});
     return task;
   }
+  reportError(error){this.lastError=error;this.dispatch.emit('agent/error',{error})}
   setStatus(status){if(this.status!==status){this.status=status;this.dispatch.emit('agent/status',{status})}this.notifyIdle()}
   notifyIdle(){if(this.status==='idle'&&!this.activity&&!this.tasks.size)for(const resolve of this.idleWaiters.splice(0))resolve()}
   observe(state){
     if(this.disposed)return;
-    if(state.status!=='live'){if(state.error)this.lastError=commandFault(state.error);return}
+    if(state.status!=='live'){if(state.error)this.reportError(commandFault(state.error));return}
     const snapshot=state.snapshot;if(!snapshot)return;
     this.setStatus(snapshot.control.canStop||snapshot.control.activeWorks.length?'running':'idle');
     this.inbox.sync(snapshot);
     for(const [id,controller] of this.approvals)if(!snapshot.pendingInteractions.some(item=>item.interactionId===id))controller.abort();
     for(const interaction of snapshot.pendingInteractions){
       if(this.approvals.has(interaction.interactionId))continue;
-      if(interaction.kind!=='permission'){this.lastError=commandFault('interaction-mapping-unavailable');continue}
+      if(interaction.kind!=='permission'){this.reportError(commandFault('interaction-mapping-unavailable'));continue}
       const controller=new AbortController();this.approvals.set(interaction.interactionId,controller);
       this.track(this.ask(interaction,controller));
     }
   }
-  ready(){return this.readiness??=this.readyOwned().finally(()=>{this.readiness=null})}
+  ready(){return this.readiness??=this.readyOwned().then(()=>{this.dispatchPendingInputs()}).finally(()=>{this.readiness=null})}
   async readyOwned(){
     this.assertAvailable();
     if(!this.conversation.state.admission.allowed){
@@ -60,19 +65,46 @@ export class DriverAgent {
     this.inbox.admit(target,message);
     // Identity association only: command state always comes from V4Conversation.
     const input={message:structuredClone(message),commandId:inputCommandId(this.id,message.id),target};this.inputs.set(message.id,input);
+    this.dispatchInput(input);
+  }
+  dispatchPendingInputs(){
+    if(this.disposed||this.activity||this.conversation.state.snapshot.inputRouting.mode==='choice')return;
+    for(const [id,input] of this.inputs){
+      // A tracked command (including outcome-unknown) belongs to V4's ledger.
+      // Only an input that has not entered that ledger may be dispatched here.
+      if(!input.dispatching&&this.inbox.locate(id)&&!this.inbox.queueIds.has(id)&&!this.conversation.command(input.commandId))this.dispatchInput(input,true);
+    }
+  }
+  dispatchInput(input,ready=false){
+    if(input.dispatching)return input.task;
+    input.dispatching=true;
     const run=async()=>{
-      await this.ready();
-      if(!this.inbox.locate(message.id))throw commandFault('input-canceled');
+      if(!ready)await this.ready();
+      if(!this.inbox.locate(input.message.id))throw commandFault('input-canceled');
       const payload=await promptPayload(input.message,this.conversation,this.ctx.get?.('attachments')??this.ctx.attachments,{modelSelection:this.options.modelSelection,mode:this.options.mode});
       this.assertAvailable();
       const state=this.conversation.state;
       const pending=state.commands.some(command=>command.type==='sendText'&&['sent-unconfirmed','accepted-awaiting-terminal','running','waiting'].includes(command.state));
-      return this.conversation.submit({type:'sendText',commandId:input.commandId,payload:{...payload,requestedDelivery:target==='next-turn'&&pending?'queue':requestedDelivery(target,state.snapshot)}});
+      const result=await this.conversation.submit({type:'sendText',commandId:input.commandId,payload:{...payload,requestedDelivery:input.target==='next-turn'&&pending?'queue':requestedDelivery(input.target,state.snapshot)}});
+      try{requireAcceptedCommand(result)}catch(error){this.reportError(error)}
+      return result;
     };
-    input.task=this.track((this.activity?this.activity.done:Promise.resolve()).then(run));
+    input.task=this.track((this.activity?this.activity.done:Promise.resolve()).then(run).finally(()=>{input.dispatching=false}));
+    return input.task;
   }
   followup(message){this.send(message,'next-turn',true)}
-  steer(message){this.send(message,'next-step',true)}
+  steer(message){
+    const transfer=queueSteerTransfer(this,message?.id);
+    if(!transfer)return this.send(message,'next-step',true);
+    this.assertAvailable();
+    if(!transfer.removed||transfer.task)throw commandFault('official-queue-steer-unconfirmed');
+    const {queueItemId,input,baseRevision,baseLogEpoch}=transfer.removed;
+    if(queueItemId)transfer.task=this.submitControl({type:'sendQueuedNow',baseRevision,baseLogEpoch,payload:{queueItemId}});
+    else {
+      input.target='next-step';this.inbox.admit('next-step',input.message);
+      transfer.task=this.dispatchInput(input);
+    }
+  }
   inject(){this.assertAvailable();rejectOperation('inject')}
   confirmHeldInput({messageId,disposition,expectedQueueItemIds,baseRevision,baseLogEpoch}){
     this.assertAvailable();
@@ -100,6 +132,22 @@ export class DriverAgent {
     })());
   }
   rename(title){return this.submitControl({type:'renameSession',payload:{title}})}
+  async renameAndRead(title){
+    requireAcceptedCommand(await this.rename(title));
+    this.assertAvailable();
+    await this.conversation.resync({forceSnapshot:true});
+    if(this.conversation.state.status!=='live')await new Promise((resolve,reject)=>{
+      const timer=setTimeout(()=>{off();reject(commandFault('rename-title-unconfirmed'))},5000);
+      const off=this.conversation.subscribe(state=>{
+        if(state.status!=='live'&&!state.error&&state.status!=='closed')return;
+        clearTimeout(timer);off();state.status==='live'?resolve():reject(commandFault(state.error??'agent-disposed'));
+      });
+    });
+    this.assertAvailable();
+    const officialTitle=this.conversation.state.snapshot?.meta.title;
+    if(officialTitle!==title)throw commandFault('rename-title-unconfirmed');
+    return officialTitle;
+  }
   queueAction({queueItemId,action,newText,beforeQueueItemId,baseRevision,baseLogEpoch}){
     const type={edit:'editQueueItem',sendNow:'sendQueuedNow',reorder:'reorderQueueItem'}[action];
     if(!type)rejectOperation(action);
@@ -143,7 +191,7 @@ export class DriverAgent {
   async stopOwned(){
     this.disposed=true;this.activity?.controller.abort({kind:'disposed'});
     for(const controller of this.approvals.values())controller.abort();
-    this.offConversation?.();await this.conversation?.cancel();
+    this.offRecovery?.();this.offConversation?.();await this.conversation?.cancel();
     await this.activity?.done;await Promise.allSettled([...this.tasks]);this.setStatus('idle');
   }
 }

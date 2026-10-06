@@ -67,7 +67,7 @@ test('bidirectional queue edit/sendNow/reorder/autodrain and rename retain offic
     await w.agent.queueAction({queueItemId:'queue-1',action:'reorder',beforeQueueItemId:null});
     await w.agent.submitControl({type:'setAutoDrain',payload:{autoDrain:true}});
     await w.agent.submitControl({type:'switchModelConfig',payload:{provider:'A',model:'model_a',thought:''}});
-    const renamed=await w.agent.rename('new title');assert.equal(renamed.ack.status,'accepted');assert.equal(renamed.state,'accepted-awaiting-terminal','driver does not invent rename settlement');
+    const renamed=await w.agent.rename('new title');assert.equal(renamed.ack.status,'accepted');assert.equal(renamed.state,'completed','rename is settled by the authoritative V4 ACK ledger');
     assert.deepEqual(commands(w).map(c=>c.type),['editQueueItem','sendQueuedNow','reorderQueueItem','setAutoDrain','switchModelConfig','renameSession']);
     publish(w,s=>{s.queue.items=[]});assert.deepEqual(w.agent.inbox.nextTurn,[]);
     assert.ok(w.events.every(e=>e.seq===w.events.indexOf(e)));

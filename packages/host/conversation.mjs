@@ -45,7 +45,7 @@ const managementCommands=MANAGEMENT_COMMANDS;
 const availabilityCommands={editQueueItem:'queueEdit',reorderQueueItem:'queueEdit',deleteQueueItem:'queueEdit',sendQueuedNow:'sendQueuedNow',switchModelConfig:'switchModelConfig',setFollowupMode:'setFollowupMode',pauseGoal:'pauseGoal',resumeGoal:'resumeGoal',compact:'compact'};
 // These ACKs settle the control application, not an input turn. Promotion runs under
 // the queued input's original sourceCommandId, so its control ID cannot await a turn header.
-const ackSettledControls=new Set(['editQueueItem','sendQueuedNow','reorderQueueItem','setAutoDrain','setFollowupMode','switchCollaborationMode','pauseGoal','resumeGoal','setAssistantFeedback']);
+const ackSettledControls=new Set(['editQueueItem','sendQueuedNow','reorderQueueItem','setAutoDrain','setFollowupMode','switchCollaborationMode','pauseGoal','resumeGoal','setAssistantFeedback','renameSession']);
 const terminal=new Set(['completed','failed','interrupted','rejected','stale','noop','not-sent']);
 export const INPUT_COMMANDS=new Set(['sendText','sendGoalCommand','stop','sendQueuedNow','editQueueItem','reorderQueueItem','deleteQueueItem','setAutoDrain','switchModelConfig','switchCollaborationMode','setFollowupMode','pauseGoal','resumeGoal']);
 const workspaceCarriers={
