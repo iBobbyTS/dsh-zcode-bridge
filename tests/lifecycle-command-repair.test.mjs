@@ -202,13 +202,16 @@ test('real Cordis restores the command seams and preserves another owner wrapper
   }
 });
 
-test('snapshot error, unsupported interaction and unmappable queue each dispatch agent/error',async()=>{
+test('snapshot error, routed interaction and unmappable queue each surface explicitly',async()=>{
   const w=await commandWorld();
   try{
     w.peer.disconnect();assert.ok(w.notifications.some(event=>event.type==='agent/error'&&event.payload.error.code==='execution-disconnected'));
     await w.agent.ready();
-    publish(w.peer,s=>{s.pendingInteractions=[{interactionId:'ask',kind:'userInput',anchorRowId:null,createdAt:0,payload:{kind:'userInput',prompt:'?',freeText:true}}]});
-    assert.ok(w.notifications.some(event=>event.type==='agent/error'&&event.payload.error.code==='interaction-mapping-unavailable'));
+    // A restricted userInput variant is routed to the plugin card: it stays pending with no
+    // mapping error and no driver-side submission.
+    const before=w.notifications.length;
+    publish(w.peer,s=>{s.pendingInteractions=[{interactionId:'ask',kind:'userInput',anchorRowId:null,createdAt:0,payload:{kind:'userInput',prompt:'?',freeText:false}}]});
+    assert.equal(w.notifications.slice(before).some(event=>event.type==='agent/error'&&event.payload.error.code==='interaction-mapping-unavailable'),false);
     publish(w.peer,s=>{const item=queueItem();item.attachments=[{ref:'foreign',fileName:'one.png',mime:'image/png',bytes:1}];s.queue.items=[item]});
     assert.ok(w.notifications.some(event=>event.type==='agent/error'&&event.payload.error.code==='official-queue-content-unavailable'));
   }finally{await w.close()}

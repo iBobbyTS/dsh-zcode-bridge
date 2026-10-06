@@ -1,4 +1,5 @@
 export {HookReviewPanel} from './hook-review.jsx';
+export {UserInputCard} from './user-input-card.jsx';
 import React, { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { statusText } from './status.mjs';
 import { StatusController } from './controller.mjs';

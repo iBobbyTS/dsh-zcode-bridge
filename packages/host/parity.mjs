@@ -3,7 +3,7 @@ import { InsightsClient } from './insights.mjs';
 import { AutomationClient } from './automation.mjs';
 import { zcodeWorkspacePresentationSchema } from './vendor/zcode/v4.mjs';
 import { requestWorkflow } from './workflow.mjs';
-import {HOOK_REVIEW_COMMANDS,INTERACTION_COMMANDS,validateHookReview,grantWorkspaceHookTrust} from '../driver/hook-review.mjs';
+import {HOOK_REVIEW_COMMANDS,INTERACTION_COMMANDS,validateHookReview,validateInteractionRoute,grantWorkspaceHookTrust} from '../driver/hook-review.mjs';
 const fault=code=>Object.assign(new Error(code),{code,sent:false});
 const deletion=new Set(['delete','uninstall','marketplaceRemove']);
 /** Routing owner. Rebuild clients after each transport generation, retaining no unknown
@@ -89,7 +89,9 @@ export class ParityService {
         if(operation!=='submit'||!allowed.has(kind))throw fault('parity-command-denied');
         const snapshot=agent.conversation.state.snapshot;
         if(payload.baseLogEpoch!==snapshot.logEpoch||payload.baseRevision!==snapshot.revision)throw fault('parity-projection-stale');
-        validateHookReview(agent.conversation,{type:kind,payload:params,baseRevision:payload.baseRevision,baseLogEpoch:payload.baseLogEpoch});
+        const reviewCommand={type:kind,payload:params,baseRevision:payload.baseRevision,baseLogEpoch:payload.baseLogEpoch};
+        validateHookReview(agent.conversation,reviewCommand);
+        validateInteractionRoute(agent.conversation,reviewCommand);
         const input=['sendText','sendGoalCommand'].includes(kind);
         let heldQueue;
         if(input&&(snapshot.inputRouting.mode==='choice'||params.heldQueueDisposition!==undefined||payload.heldQueue!==undefined)){

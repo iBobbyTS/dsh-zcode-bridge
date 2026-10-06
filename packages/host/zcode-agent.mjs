@@ -2,16 +2,18 @@ import { V4Conversation } from './conversation.mjs';
 import { CommandLifecycle } from './command-lifecycle.mjs';
 import { MirrorState } from './mirror-state.mjs';
 import { displayProjection, officialSelection, sameSelection, selectionOutcome } from './model-selection.mjs';
+import { classifyUserInputRoute,USER_INPUT_OFFICIAL,officialRequestQuestions,officialAnswerPayload } from './user-input.mjs';
 const fault=code=>Object.assign(new Error(code),{code});
 const clean=value=>JSON.parse(JSON.stringify(value));
 // Persistent entities can own multiple rows. Rendering identity belongs to the epoch + rowId.
 export const projectionRowKey=(logEpoch,rowId)=>'row:'+JSON.stringify([logEpoch,rowId]);
 
+/** Permission-only outcome mapping. userInput no longer reaches this path: it is routed before
+ * asking (official live-root ask or the plugin card), so a userInput here is a routing bug. */
 export function approvalAnswer(interaction,outcome){
-  if(!['permission','userInput'].includes(interaction.kind))throw fault('interaction-mapping-unavailable');
+  if(interaction?.kind!=='permission')throw fault('interaction-mapping-unavailable');
   if(outcome==='unavailable')return null;
   if(outcome==='cancelled')return {action:'cancel'};
-  if(interaction.kind!=='permission')throw fault('interaction-mapping-unavailable');
   const options=interaction.payload?.options??[];
   const option=options.find(value=>value.kind===(outcome==='allowed-once'?'allowOnce':'deny'));
   if(!['allowed-once','rejected'].includes(outcome))throw fault('interaction-mapping-unavailable');
@@ -115,8 +117,17 @@ export class ZCodeAgent {
     }
     this.setStatus(snapshot.control.canStop||snapshot.control.activeWorks.length?'running':'idle');
     for(const interaction of snapshot.pendingInteractions)if(!this.pendingApprovals.has(interaction.interactionId)){
-      const controller=new AbortController();this.pendingApprovals.set(interaction.interactionId,controller);
-      void this.ask(interaction,controller).catch(error=>{this.record.error=error.code??'interaction-mapping-unavailable';this.persist()});
+      if(interaction.kind==='permission'){
+        const controller=new AbortController();this.pendingApprovals.set(interaction.interactionId,controller);
+        void this.ask(interaction,controller).catch(error=>{this.record.error=error.code??'interaction-mapping-unavailable';this.persist()});
+        continue;
+      }
+      // Only the generic, untimed userInput variant has an official surface; restricted/timed
+      // variants (and workspace hook review) stay pending for the plugin card. No mapping error.
+      if(interaction.kind==='userInput'&&classifyUserInputRoute(interaction)===USER_INPUT_OFFICIAL){
+        const controller=new AbortController();this.pendingApprovals.set(interaction.interactionId,controller);
+        void this.askUserInput(interaction,controller).catch(error=>{this.record.error=error.code??'interaction-mapping-unavailable';this.persist()});
+      }
     }
     for(const [id,controller] of this.pendingApprovals)if(!snapshot.pendingInteractions.some(interaction=>interaction.interactionId===id)){controller.abort();this.pendingApprovals.delete(id)}
     this.record.projected=[...this.projected];this.persist();this.scheduleIdleRelease();
@@ -168,6 +179,16 @@ export class ZCodeAgent {
     const answer=approvalAnswer(interaction,outcome);
     this.append('approval/decided',{id:interaction.interactionId,outcome});
     if(answer){const result=await this.conversation.submit({type:'resolveInteraction',payload:{interactionId:interaction.interactionId,answer}});this.record.approval={interactionId:interaction.interactionId,outcome,settlement:'assumed-single-answerer',ack:result.ack};this.persist()}
+  }
+  /** Official-path userInput for a live mirror agent: official live-root ask, answer mapped back
+   * into one resolveInteraction. Restricted/timed variants are never routed here. */
+  async askUserInput(interaction,controller){
+    const userQuestions=this.ctx.get?.('userQuestions');
+    if(!userQuestions||typeof userQuestions.ask!=='function')throw fault('user-questions-unavailable');
+    const answer=await userQuestions.ask({agent:this,questions:officialRequestQuestions(interaction),signal:controller.signal});
+    if(controller.signal.aborted||this.disposed)return;
+    const result=await this.conversation.submit({type:'resolveInteraction',payload:{interactionId:interaction.interactionId,answer:officialAnswerPayload(interaction,answer)}});
+    this.record.approval={interactionId:interaction.interactionId,outcome:'answered',settlement:'official-user-questions',ack:result.ack};this.persist();
   }
   send(message,target,wakeup){
     if(this.disposed)throw fault('agent-disposed');

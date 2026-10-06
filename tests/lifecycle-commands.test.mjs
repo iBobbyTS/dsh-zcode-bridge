@@ -125,18 +125,26 @@ test('frozen rejection table has no implicit fallthrough success',async()=>{
 });
 
 const permission={interactionId:'permission-1',kind:'permission',anchorRowId:null,createdAt:0,payload:{kind:'permission',toolCallId:'call-1',toolName:'Bash',summary:'Run?',detail:{},options:[{kind:'allowOnce',optionId:'once',label:'Once'},{kind:'deny',optionId:'deny',label:'Deny'}]}};
-test('permission waterfall maps allow/reject/cancel/unavailable once; userInput explicitly rejects',async()=>{
+test('permission waterfall maps allow/reject/cancel/unavailable once; userInput routes through the official asker',async()=>{
   for(const [outcome,answer] of [['allowed-once',{optionId:'once',action:'accept'}],['rejected',{optionId:'deny',action:'decline'}],['cancelled',{action:'cancel'}],['unavailable',null]]){
-    let calls=0;const w=await commandWorld('idle',{approval:async request=>{calls++;assert.equal(request.agent,w.agent);assert.equal(request.callId,'call-1');return outcome}});
+    let calls=0;const asked=[];
+    const w=await commandWorld('idle',{approval:async request=>{calls++;assert.equal(request.agent,w.agent);assert.equal(request.callId,'call-1');return outcome},
+      userQuestions:{async ask(request){asked.push(request);return {answers:[{id:'q0',selected:['Yes']}]}}}});
     try{
       publish(w,s=>{s.pendingInteractions=[permission]});await w.drain();
       assert.equal(calls,1);assert.equal(commands(w).length,answer?1:0);
       if(answer)assert.deepEqual(commands(w)[0].payload.answer,answer);
       publish(w,s=>{});await w.drain();assert.equal(calls,1);
       assert.deepEqual(w.events.filter(e=>e.type.startsWith('approval/')).map(e=>e.type),['approval/asked','approval/decided']);
-      publish(w,s=>{s.pendingInteractions=[{interactionId:'question',kind:'userInput',anchorRowId:null,createdAt:0,payload:{kind:'userInput',prompt:'Question?',freeText:true}}]});
-      assert.equal(w.agent.lastError.code,'interaction-mapping-unavailable');
-      await assert.rejects(w.agent.submitControl({type:'resolveInteraction',payload:{interactionId:'question',answer:{action:'accept'}}}),{code:'interaction-mapping-unavailable'});
+      // userInput no longer rejects: the generic variant routes through the official asker and the
+      // answer comes back as a resolveInteraction command.
+      const before=commands(w).length;
+      publish(w,s=>{s.pendingInteractions=[{interactionId:'question',kind:'userInput',anchorRowId:null,createdAt:0,payload:{kind:'userInput',prompt:'Question?',freeText:true,options:[{optionId:'yes',label:'Yes'}]}}]});
+      await w.drain();
+      assert.equal(asked.length,1,'the official asker is used');
+      const sent=commands(w).slice(before);
+      assert.equal(sent.length,1);
+      assert.deepEqual(sent[0].payload,{interactionId:'question',answer:{optionId:'yes'}});
     }finally{await w.close()}
   }
 });

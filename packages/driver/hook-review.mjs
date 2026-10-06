@@ -34,6 +34,15 @@ export async function grantWorkspaceHookTrust(peer,workspace,params,{signal,curr
 }
 const targetKeys=['sessionId','taskId','runId','remoteSessionId','workspaceIdentity','bundleDigest','reviewFlowId','generation','interactionId'];
 export function hookReviewTarget(payload){return Object.fromEntries(targetKeys.filter(key=>payload[key]!==undefined).map(key=>[key,payload[key]]))}
+/** Guard the shared resolveInteraction/snooze entry at every host boundary: only permission and
+ * userInput interactions may be answered through it. A workspace hook review has its own command
+ * family and must never be resolvable by pointing resolveInteraction at its interactionId. */
+export function validateInteractionRoute(conversation,command){
+  if(command?.type!=='resolveInteraction'&&command?.type!=='snoozeInteractionAutoResolution')return;
+  const interaction=conversation?.state?.snapshot?.pendingInteractions?.find(item=>item.interactionId===command.payload?.interactionId);
+  if(!interaction)return;
+  if(!['permission','userInput'].includes(interaction.kind))throw commandFault('interaction-mapping-unavailable');
+}
 export function validateHookReview(conversation,command){
   if(!HOOK_REVIEW_COMMANDS.has(command.type))return;
   const state=conversation.state,snapshot=state.snapshot;

@@ -4,7 +4,8 @@ import {DriverInbox} from './inbox.mjs';
 import {commandFault,inputCommandId,ROUTED_COMMANDS,rejectOperation,validateMessage,promptPayload,requestedDelivery} from './commands.mjs';
 import {queueSteerTransfer,requireAcceptedCommand} from './queue-steer.mjs';
 import {captureControlReceipt} from './control-receipts.mjs';
-import {validateHookReview,driverHookOperation} from './hook-review.mjs';
+import {validateHookReview,validateInteractionRoute,driverHookOperation} from './hook-review.mjs';
+import {classifyUserInputRoute,USER_INPUT_OFFICIAL,officialRequestQuestions,officialAnswerPayload} from '../host/user-input.mjs';
 import {ConversationEventTranslator} from './events.mjs';
 
 export class DriverAgent {
@@ -49,9 +50,18 @@ export class DriverAgent {
     for(const interaction of snapshot.pendingInteractions){
       if(interaction.kind==='workspaceHookReview')continue;
       if(this.approvals.has(interaction.interactionId))continue;
-      if(interaction.kind!=='permission'){this.reportError(commandFault('interaction-mapping-unavailable'));continue}
-      const controller=new AbortController();this.approvals.set(interaction.interactionId,controller);
-      this.track(this.ask(interaction,controller));
+      if(interaction.kind==='permission'){
+        const controller=new AbortController();this.approvals.set(interaction.interactionId,controller);
+        this.track(this.ask(interaction,controller));continue;
+      }
+      if(interaction.kind==='userInput'){
+        // Only the generic, untimed variant has an official surface. Restricted/timed variants stay
+        // pending for the plugin questionnaire card (masking / no draft / no free text / snooze).
+        if(classifyUserInputRoute(interaction)!==USER_INPUT_OFFICIAL)continue;
+        const controller=new AbortController();this.approvals.set(interaction.interactionId,controller);
+        this.track(this.askUserInput(interaction,controller));continue;
+      }
+      this.reportError(commandFault('interaction-mapping-unavailable'));
     }
   }
   ready(){return this.readiness??=this.readyOwned().then(()=>{this.dispatchPendingInputs()}).finally(()=>{this.readiness=null})}
@@ -156,7 +166,7 @@ export class DriverAgent {
       await this.ready();const snapshot=this.conversation.state.snapshot;
       validateHookReview(this.conversation,command);
       if(command.baseRevision!==undefined&&command.baseRevision!==snapshot.revision)throw commandFault('proto.staleRevision');
-      if(command.type==='resolveInteraction'&&snapshot.pendingInteractions.find(item=>item.interactionId===command.payload?.interactionId)?.kind!=='permission')rejectOperation('userInput');
+      validateInteractionRoute(this.conversation,command);
       const result=await this.conversation.submit(command,{signal:command.signal});
       // V4 returns negative receipts as values. Preserve that ledger, but fail
       // the control boundary so track reports them even while transport is live.
@@ -209,6 +219,18 @@ export class DriverAgent {
     const answer=approvalAnswer(interaction,outcome);
     this.session.append('approval/decided',{id:interaction.interactionId,outcome});
     if(answer)return this.submitControl({type:'resolveInteraction',payload:{interactionId:interaction.interactionId,answer}});
+  }
+  /** Official-path userInput: ask through the official live-root waterfall, then map the human
+   * answer back into one resolveInteraction command. The plugin-path variants never reach here, and
+   * a missing or refusing answerer surfaces the official error instead of resolving locally. */
+  async askUserInput(interaction,controller){
+    const userQuestions=this.ctx.get?.('userQuestions');
+    if(!userQuestions||typeof userQuestions.ask!=='function')throw commandFault('user-questions-unavailable');
+    let answer;
+    try{answer=await userQuestions.ask({agent:this,questions:officialRequestQuestions(interaction),signal:controller.signal})}
+    catch(error){if(!controller.signal.aborted&&!this.disposed)this.reportError(commandFault(error?.code??'user-questions-unavailable'));return}
+    if(controller.signal.aborted||this.disposed)return;
+    return this.submitControl({type:'resolveInteraction',payload:{interactionId:interaction.interactionId,answer:officialAnswerPayload(interaction,answer)}});
   }
   async whenIdle(){while(this.activity||this.tasks.size||this.status!=='idle')await new Promise(resolve=>this.idleWaiters.push(resolve))}
   runMaintenance(task){
