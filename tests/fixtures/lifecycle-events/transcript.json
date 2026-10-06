@@ -1,0 +1,649 @@
+{
+  "provenance": {
+    "kind": "injected-from-official-capture",
+    "source": "tests/fixtures/transport-v4/success.json",
+    "changes": "Rows, lifecycle and cumulative usage are injected schema-valid scenarios; no live model run."
+  },
+  "snapshots": [
+    {
+      "protocolVersion": 1,
+      "sessionId": "official-session",
+      "logEpoch": "musegv3e-mrqoweve",
+      "seq": 0,
+      "revision": 0,
+      "control": {
+        "phase": "draft",
+        "sessionEnded": false,
+        "canStop": false,
+        "stopState": "idle",
+        "stopTargetKind": "unknown",
+        "activeWorks": [],
+        "lastError": null,
+        "apiRetry": null
+      },
+      "availability": {
+        "fork": {
+          "allowed": false,
+          "reasonCode": "forkTargetNotStable"
+        },
+        "compact": {
+          "allowed": false,
+          "reasonCode": "idleCannotCompact"
+        },
+        "switchModelConfig": {
+          "allowed": true
+        },
+        "setFollowupMode": {
+          "allowed": true
+        },
+        "queueEdit": {
+          "allowed": true
+        },
+        "sendQueuedNow": {
+          "allowed": false,
+          "reasonCode": "sendQueuedNowRequiresRunning"
+        },
+        "pauseGoal": {
+          "allowed": false,
+          "reasonCode": "noGoalToPause"
+        },
+        "resumeGoal": {
+          "allowed": false,
+          "reasonCode": "noGoalToResume"
+        }
+      },
+      "inputRouting": {
+        "mode": "startNow"
+      },
+      "meta": {
+        "title": "",
+        "titleSource": "default"
+      },
+      "config": {
+        "provider": "deepseek",
+        "model": "deepseek-flash",
+        "thought": "max",
+        "thoughtLevels": [
+          "disabled",
+          "low",
+          "high",
+          "max"
+        ],
+        "followupMode": "queue",
+        "mode": "build",
+        "modelSelection": {
+          "providerId": "deepseek",
+          "modelId": "deepseek-flash",
+          "options": {
+            "reasoningLevel": "max"
+          }
+        },
+        "planEnabled": false
+      },
+      "modelTransition": null,
+      "usage": {
+        "contextWindow": null,
+        "cumulative": {
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "cacheReadTokens": 0,
+          "cacheWriteTokens": 0
+        }
+      },
+      "queue": {
+        "items": [],
+        "autoDrain": true
+      },
+      "pendingInteractions": [],
+      "pendingCommands": [],
+      "backgroundWorks": [],
+      "subagents": {
+        "revision": 0,
+        "childSessionIds": [],
+        "running": [],
+        "endedTotal": 0
+      },
+      "goal": null,
+      "plan": null,
+      "workspaceHookAdmission": null,
+      "rows": {
+        "window": [],
+        "totalCount": 0,
+        "firstRowId": null
+      }
+    },
+    {
+      "protocolVersion": 1,
+      "sessionId": "official-session",
+      "logEpoch": "musegv3e-mrqoweve",
+      "seq": 1,
+      "revision": 1,
+      "control": {
+        "phase": "running",
+        "sessionEnded": false,
+        "canStop": true,
+        "stopState": "idle",
+        "stopTargetKind": "unknown",
+        "activeWorks": [
+          {
+            "kind": "primaryTurn",
+            "foregroundExecutionId": "fixture-work",
+            "startedAt": 0
+          }
+        ],
+        "lastError": null,
+        "apiRetry": null
+      },
+      "availability": {
+        "fork": {
+          "allowed": false,
+          "reasonCode": "forkTargetNotStable"
+        },
+        "compact": {
+          "allowed": false,
+          "reasonCode": "idleCannotCompact"
+        },
+        "switchModelConfig": {
+          "allowed": true
+        },
+        "setFollowupMode": {
+          "allowed": true
+        },
+        "queueEdit": {
+          "allowed": true
+        },
+        "sendQueuedNow": {
+          "allowed": false,
+          "reasonCode": "sendQueuedNowRequiresRunning"
+        },
+        "pauseGoal": {
+          "allowed": false,
+          "reasonCode": "noGoalToPause"
+        },
+        "resumeGoal": {
+          "allowed": false,
+          "reasonCode": "noGoalToResume"
+        }
+      },
+      "inputRouting": {
+        "mode": "startNow"
+      },
+      "meta": {
+        "title": "",
+        "titleSource": "default"
+      },
+      "config": {
+        "provider": "deepseek",
+        "model": "deepseek-flash",
+        "thought": "max",
+        "thoughtLevels": [
+          "disabled",
+          "low",
+          "high",
+          "max"
+        ],
+        "followupMode": "queue",
+        "mode": "build",
+        "modelSelection": {
+          "providerId": "deepseek",
+          "modelId": "deepseek-flash",
+          "options": {
+            "reasoningLevel": "max"
+          }
+        },
+        "planEnabled": false
+      },
+      "modelTransition": null,
+      "usage": {
+        "contextWindow": null,
+        "cumulative": {
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "cacheReadTokens": 0,
+          "cacheWriteTokens": 0
+        }
+      },
+      "queue": {
+        "items": [],
+        "autoDrain": true
+      },
+      "pendingInteractions": [],
+      "pendingCommands": [],
+      "backgroundWorks": [],
+      "subagents": {
+        "revision": 0,
+        "childSessionIds": [],
+        "running": [],
+        "endedTotal": 0
+      },
+      "goal": null,
+      "plan": null,
+      "workspaceHookAdmission": null,
+      "rows": {
+        "window": [
+          {
+            "kind": "turnHeader",
+            "rowId": 1,
+            "entityId": "row-1",
+            "turnId": "turn-1",
+            "createdAt": 0,
+            "createdAtSeq": 1,
+            "origin": "userInput",
+            "state": "running",
+            "startedAt": 0,
+            "sourceCommandId": "native-command"
+          },
+          {
+            "kind": "userInput",
+            "rowId": 2,
+            "entityId": "row-2",
+            "turnId": "turn-1",
+            "createdAt": 0,
+            "createdAtSeq": 2,
+            "text": "Run a check",
+            "origin": "realUser",
+            "sourceCommandId": "native-command"
+          },
+          {
+            "kind": "reasoning",
+            "rowId": 3,
+            "entityId": "row-3",
+            "turnId": "turn-1",
+            "createdAt": 0,
+            "createdAtSeq": 3,
+            "assistantResponseId": "response-one",
+            "text": "Think",
+            "state": "streaming"
+          },
+          {
+            "kind": "assistantText",
+            "rowId": 4,
+            "entityId": "row-4",
+            "turnId": "turn-1",
+            "createdAt": 0,
+            "createdAtSeq": 4,
+            "assistantResponseId": "response-one",
+            "text": "Check",
+            "state": "streaming",
+            "model": "model_a"
+          },
+          {
+            "kind": "toolCall",
+            "rowId": 5,
+            "entityId": "row-5",
+            "turnId": "turn-1",
+            "createdAt": 0,
+            "createdAtSeq": 5,
+            "assistantResponseId": "response-one",
+            "toolCallId": "tool-one",
+            "toolName": "Bash",
+            "inputText": "{\"command\":\"true\"}",
+            "status": "inputStreaming"
+          }
+        ],
+        "totalCount": 0,
+        "firstRowId": null
+      }
+    },
+    {
+      "protocolVersion": 1,
+      "sessionId": "official-session",
+      "logEpoch": "musegv3e-mrqoweve",
+      "seq": 2,
+      "revision": 2,
+      "control": {
+        "phase": "running",
+        "sessionEnded": false,
+        "canStop": true,
+        "stopState": "idle",
+        "stopTargetKind": "unknown",
+        "activeWorks": [
+          {
+            "kind": "primaryTurn",
+            "foregroundExecutionId": "fixture-work",
+            "startedAt": 0
+          }
+        ],
+        "lastError": null,
+        "apiRetry": null
+      },
+      "availability": {
+        "fork": {
+          "allowed": false,
+          "reasonCode": "forkTargetNotStable"
+        },
+        "compact": {
+          "allowed": false,
+          "reasonCode": "idleCannotCompact"
+        },
+        "switchModelConfig": {
+          "allowed": true
+        },
+        "setFollowupMode": {
+          "allowed": true
+        },
+        "queueEdit": {
+          "allowed": true
+        },
+        "sendQueuedNow": {
+          "allowed": false,
+          "reasonCode": "sendQueuedNowRequiresRunning"
+        },
+        "pauseGoal": {
+          "allowed": false,
+          "reasonCode": "noGoalToPause"
+        },
+        "resumeGoal": {
+          "allowed": false,
+          "reasonCode": "noGoalToResume"
+        }
+      },
+      "inputRouting": {
+        "mode": "startNow"
+      },
+      "meta": {
+        "title": "",
+        "titleSource": "default"
+      },
+      "config": {
+        "provider": "deepseek",
+        "model": "deepseek-flash",
+        "thought": "max",
+        "thoughtLevels": [
+          "disabled",
+          "low",
+          "high",
+          "max"
+        ],
+        "followupMode": "queue",
+        "mode": "build",
+        "modelSelection": {
+          "providerId": "deepseek",
+          "modelId": "deepseek-flash",
+          "options": {
+            "reasoningLevel": "max"
+          }
+        },
+        "planEnabled": false
+      },
+      "modelTransition": null,
+      "usage": {
+        "contextWindow": null,
+        "cumulative": {
+          "inputTokens": 10,
+          "outputTokens": 4,
+          "cacheReadTokens": 2,
+          "cacheWriteTokens": 0
+        }
+      },
+      "queue": {
+        "items": [],
+        "autoDrain": true
+      },
+      "pendingInteractions": [],
+      "pendingCommands": [],
+      "backgroundWorks": [],
+      "subagents": {
+        "revision": 0,
+        "childSessionIds": [],
+        "running": [],
+        "endedTotal": 0
+      },
+      "goal": null,
+      "plan": null,
+      "workspaceHookAdmission": null,
+      "rows": {
+        "window": [
+          {
+            "kind": "turnHeader",
+            "rowId": 1,
+            "entityId": "row-1",
+            "turnId": "turn-1",
+            "createdAt": 0,
+            "createdAtSeq": 1,
+            "origin": "userInput",
+            "state": "running",
+            "startedAt": 0,
+            "sourceCommandId": "native-command"
+          },
+          {
+            "kind": "userInput",
+            "rowId": 2,
+            "entityId": "row-2",
+            "turnId": "turn-1",
+            "createdAt": 0,
+            "createdAtSeq": 2,
+            "text": "Run a check",
+            "origin": "realUser",
+            "sourceCommandId": "native-command"
+          },
+          {
+            "kind": "reasoning",
+            "rowId": 3,
+            "entityId": "row-3",
+            "turnId": "turn-1",
+            "createdAt": 0,
+            "createdAtSeq": 3,
+            "assistantResponseId": "response-one",
+            "text": "Think",
+            "state": "complete"
+          },
+          {
+            "kind": "assistantText",
+            "rowId": 4,
+            "entityId": "row-4",
+            "turnId": "turn-1",
+            "createdAt": 0,
+            "createdAtSeq": 4,
+            "assistantResponseId": "response-one",
+            "text": "Checking",
+            "state": "complete",
+            "model": "model_a"
+          },
+          {
+            "kind": "toolCall",
+            "rowId": 5,
+            "entityId": "row-5",
+            "turnId": "turn-1",
+            "createdAt": 0,
+            "createdAtSeq": 5,
+            "assistantResponseId": "response-one",
+            "toolCallId": "tool-one",
+            "toolName": "Bash",
+            "inputText": "{\"command\":\"true\"}",
+            "status": "running"
+          }
+        ],
+        "totalCount": 0,
+        "firstRowId": null
+      }
+    },
+    {
+      "protocolVersion": 1,
+      "sessionId": "official-session",
+      "logEpoch": "musegv3e-mrqoweve",
+      "seq": 3,
+      "revision": 3,
+      "control": {
+        "phase": "completedSuccess",
+        "sessionEnded": false,
+        "canStop": false,
+        "stopState": "idle",
+        "stopTargetKind": "unknown",
+        "activeWorks": [],
+        "lastError": null,
+        "apiRetry": null
+      },
+      "availability": {
+        "fork": {
+          "allowed": false,
+          "reasonCode": "forkTargetNotStable"
+        },
+        "compact": {
+          "allowed": false,
+          "reasonCode": "idleCannotCompact"
+        },
+        "switchModelConfig": {
+          "allowed": true
+        },
+        "setFollowupMode": {
+          "allowed": true
+        },
+        "queueEdit": {
+          "allowed": true
+        },
+        "sendQueuedNow": {
+          "allowed": false,
+          "reasonCode": "sendQueuedNowRequiresRunning"
+        },
+        "pauseGoal": {
+          "allowed": false,
+          "reasonCode": "noGoalToPause"
+        },
+        "resumeGoal": {
+          "allowed": false,
+          "reasonCode": "noGoalToResume"
+        }
+      },
+      "inputRouting": {
+        "mode": "startNow"
+      },
+      "meta": {
+        "title": "",
+        "titleSource": "default"
+      },
+      "config": {
+        "provider": "deepseek",
+        "model": "deepseek-flash",
+        "thought": "max",
+        "thoughtLevels": [
+          "disabled",
+          "low",
+          "high",
+          "max"
+        ],
+        "followupMode": "queue",
+        "mode": "build",
+        "modelSelection": {
+          "providerId": "deepseek",
+          "modelId": "deepseek-flash",
+          "options": {
+            "reasoningLevel": "max"
+          }
+        },
+        "planEnabled": false
+      },
+      "modelTransition": null,
+      "usage": {
+        "contextWindow": null,
+        "cumulative": {
+          "inputTokens": 18,
+          "outputTokens": 9,
+          "cacheReadTokens": 2,
+          "cacheWriteTokens": 0
+        }
+      },
+      "queue": {
+        "items": [],
+        "autoDrain": true
+      },
+      "pendingInteractions": [],
+      "pendingCommands": [],
+      "backgroundWorks": [],
+      "subagents": {
+        "revision": 0,
+        "childSessionIds": [],
+        "running": [],
+        "endedTotal": 0
+      },
+      "goal": null,
+      "plan": null,
+      "workspaceHookAdmission": null,
+      "rows": {
+        "window": [
+          {
+            "kind": "turnHeader",
+            "rowId": 1,
+            "entityId": "row-1",
+            "turnId": "turn-1",
+            "createdAt": 0,
+            "createdAtSeq": 1,
+            "origin": "userInput",
+            "state": "completedSuccess",
+            "startedAt": 0,
+            "sourceCommandId": "native-command"
+          },
+          {
+            "kind": "userInput",
+            "rowId": 2,
+            "entityId": "row-2",
+            "turnId": "turn-1",
+            "createdAt": 0,
+            "createdAtSeq": 2,
+            "text": "Run a check",
+            "origin": "realUser",
+            "sourceCommandId": "native-command"
+          },
+          {
+            "kind": "reasoning",
+            "rowId": 3,
+            "entityId": "row-3",
+            "turnId": "turn-1",
+            "createdAt": 0,
+            "createdAtSeq": 3,
+            "assistantResponseId": "response-one",
+            "text": "Think",
+            "state": "complete"
+          },
+          {
+            "kind": "assistantText",
+            "rowId": 4,
+            "entityId": "row-4",
+            "turnId": "turn-1",
+            "createdAt": 0,
+            "createdAtSeq": 4,
+            "assistantResponseId": "response-one",
+            "text": "Checking",
+            "state": "complete",
+            "model": "model_a"
+          },
+          {
+            "kind": "toolCall",
+            "rowId": 5,
+            "entityId": "row-5",
+            "turnId": "turn-1",
+            "createdAt": 0,
+            "createdAtSeq": 5,
+            "assistantResponseId": "response-one",
+            "toolCallId": "tool-one",
+            "toolName": "Bash",
+            "inputText": "{\"command\":\"true\"}",
+            "status": "success",
+            "output": {
+              "text": "ok",
+              "display": {
+                "kind": "bash_output",
+                "output": "ok",
+                "truncated": false
+              }
+            }
+          },
+          {
+            "kind": "assistantText",
+            "rowId": 6,
+            "entityId": "row-6",
+            "turnId": "turn-1",
+            "createdAt": 0,
+            "createdAtSeq": 6,
+            "assistantResponseId": "response-two",
+            "text": "Done",
+            "state": "complete",
+            "model": "model_a"
+          }
+        ],
+        "totalCount": 0,
+        "firstRowId": null
+      }
+    }
+  ]
+}

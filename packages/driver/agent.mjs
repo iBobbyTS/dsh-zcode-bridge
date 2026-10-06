@@ -2,6 +2,7 @@ import {approvalAnswer} from '../host/zcode-agent.mjs';
 import {DriverInbox} from './inbox.mjs';
 import {commandFault,inputCommandId,ROUTED_COMMANDS,rejectOperation,validateMessage,promptPayload,requestedDelivery} from './commands.mjs';
 import {queueSteerTransfer,requireAcceptedCommand} from './queue-steer.mjs';
+import {ConversationEventTranslator} from './events.mjs';
 
 export class DriverAgent {
   status='idle';disposed=false;activity=null;tasks=new Set();inputs=new Map();approvals=new Map();idleWaiters=[];lastError=null;
@@ -13,6 +14,12 @@ export class DriverAgent {
       if(!message.id.startsWith('zcode-queue:'))this.inputs.set(message.id,{message,commandId:inputCommandId(this.id,message.id),target});
     }
     this.conversation=transport?.conversation?.({zcodeConversationId,cwd:session.header.cwd});
+    if(this.conversation)this.translator=new ConversationEventTranslator({session,dispatch:this.dispatch,conversation:this.conversation,
+      attachments:()=>this.ctx.get?this.ctx.get('attachments'):this.ctx.attachments,
+      input:commandId=>[...this.inputs.values()].find(input=>input.commandId===commandId)?.message,
+      acceptInput:row=>this.conversation.command(row.sourceCommandId)?.ack?.status!=='rejected',
+      syncInbox:snapshot=>this.inbox.sync(snapshot),claim:id=>{const location=this.inbox.locate(id);if(location)this.inbox.commit(location.target,location.index,1,[])},
+    });
     this.offConversation=this.conversation?.subscribe(state=>this.observe(state));
     this.offRecovery=this.conversation?.peer.launcher?.subscribe(state=>{
       if(state.phase==='ready'&&this.conversation.state.status==='error'&&!this.disposed)this.track(this.ready());
@@ -29,10 +36,11 @@ export class DriverAgent {
   notifyIdle(){if(this.status==='idle'&&!this.activity&&!this.tasks.size)for(const resolve of this.idleWaiters.splice(0))resolve()}
   observe(state){
     if(this.disposed)return;
-    if(state.status!=='live'){if(state.error)this.reportError(commandFault(state.error));return}
+    if(state.status!=='live'){if(state.error){this.reportError(commandFault(state.error));this.translator&&this.track(this.translator.interrupt())}return}
     const snapshot=state.snapshot;if(!snapshot)return;
     this.setStatus(snapshot.control.canStop||snapshot.control.activeWorks.length?'running':'idle');
-    this.inbox.sync(snapshot);
+    this.inbox.sync(snapshot,{deferConsumption:true});
+    this.track(this.translator.enqueue(snapshot));
     for(const [id,controller] of this.approvals)if(!snapshot.pendingInteractions.some(item=>item.interactionId===id))controller.abort();
     for(const interaction of snapshot.pendingInteractions){
       if(this.approvals.has(interaction.interactionId))continue;
@@ -191,7 +199,8 @@ export class DriverAgent {
   async stopOwned(){
     this.disposed=true;this.activity?.controller.abort({kind:'disposed'});
     for(const controller of this.approvals.values())controller.abort();
-    this.offRecovery?.();this.offConversation?.();await this.conversation?.cancel();
+    this.translator?.abort();this.offRecovery?.();this.offConversation?.();await this.conversation?.cancel();
+    await this.translator?.close();
     await this.activity?.done;await Promise.allSettled([...this.tasks]);this.setStatus('idle');
   }
 }

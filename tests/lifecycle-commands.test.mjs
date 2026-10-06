@@ -23,7 +23,7 @@ test('delivery table and consecutive idle followups avoid busy startNow preempti
       assert.deepEqual(commands(w).map(c=>c.payload.requestedDelivery),[state==='idle'?'startNow':'queue','queue','guide']);
       assert.equal(w.events.filter(e=>e.type==='agent/inbox/spliced').length,3);
       const first=commands(w)[0];
-      publish(w,s=>{s.rows.window=[row('turnHeader',1,{origin:'userInput',state:'completedSuccess',startedAt:0,sourceCommandId:first.commandId})]});
+      publish(w,s=>{s.rows.window=[row('turnHeader',1,{origin:'userInput',state:'completedSuccess',startedAt:0,sourceCommandId:first.commandId})]});await w.drain();
       assert.equal(w.agent.conversation.command(first.commandId).state,'completed');
       assert.equal(w.agent.inbox.nextTurn.some(m=>m.id==='one'),false);
       assert.throws(()=>w.agent.followup(message('one')),{code:'official-message-already-admitted'});

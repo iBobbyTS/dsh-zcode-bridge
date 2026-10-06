@@ -29,7 +29,7 @@ function cancellable(call,signal,abandoned=()=>{}){
 
 export class DriverFactory {
   accepting=true;transactions=new Set();
-  constructor(ctx,{transport,createScope,agentEvents}){Object.assign(this,{ctx,transport,createScope,agentEvents})}
+  constructor(ctx,{transport,createScope,agentEvents,interruptedTurnClosers}){Object.assign(this,{ctx,transport,createScope,agentEvents,interruptedTurnClosers})}
   createAgent(ownerCtx,options){return this.open(ownerCtx,options,'startup')}
   resume(ownerCtx,options){return this.open(ownerCtx,options,'resume')}
   async open(ownerCtx,options,source){
@@ -75,7 +75,11 @@ export class DriverFactory {
         const cold=await cancellable(()=>handle.read(0,undefined,{signal}),signal);
         zcodeConversationId=boundConversationId(id,cold.events);
         storedCount=cold.events.length;
-        session=this.ctx.sessions.prepare(id,{seed:cold.events,meta:handle.header,inheritedEventCount:handle.inheritedEventCount,eventState:cold.eventState});
+        const open=cold.events.findLast(event=>event.type==='turn/start'||event.type==='turn/end')?.type==='turn/start';
+        if(open&&!this.interruptedTurnClosers)throw new Error('driver resume requires the official interruptedTurnClosers contract');
+        const closers=open?this.interruptedTurnClosers(cold.events).map(event=>event.type==='turn/end'?{...event,data:{...event.data,reason:{kind:'aborted',reason:{kind:'disposed'}}}}:event):[];
+        if(closers.length){await cancellable(()=>handle.append(closers),signal);storedCount+=closers.length}
+        session=this.ctx.sessions.prepare(id,{seed:[...cold.events,...closers],meta:handle.header,inheritedEventCount:handle.inheritedEventCount,eventState:cold.eventState});
         await cancellable(()=>this.transport.resume({zcodeConversationId,cwd:session.header.cwd,signal}),signal);
       }
       signal.throwIfAborted();

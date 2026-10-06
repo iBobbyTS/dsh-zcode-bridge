@@ -129,7 +129,7 @@ test('disconnect in flight -> followup -> recovered ready dispatches the retaine
     assert.equal(input.commandId,id);assert.equal(w.agent.conversation.command(id).ack.status,'accepted');
     assert.equal(writes(w.peer).filter(c=>c.commandId===id).length,1);assert.equal(writes(w.peer).filter(c=>c.commandId===first.commandId).length,1);
     await w.agent.ready();await w.drain();assert.equal(writes(w.peer).filter(c=>c.commandId===id).length,1);
-    publish(w.peer,s=>{s.rows.window=[first.commandId,id].map((commandId,index)=>row('turnHeader',index+1,{origin:'userInput',state:'completedSuccess',startedAt:0,sourceCommandId:commandId}))});
+    publish(w.peer,s=>{s.rows.window=[first.commandId,id].map((commandId,index)=>row('turnHeader',index+1,{origin:'userInput',state:'completedSuccess',startedAt:0,sourceCommandId:commandId}))});await w.drain();
     assert.deepEqual(w.agent.inbox.nextTurn,[]);
     assert.ok(w.events.some(event=>event.type==='agent/inbox/spliced'&&event.data.removedCount===1));
   }finally{await w.close()}

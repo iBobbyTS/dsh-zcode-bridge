@@ -6,11 +6,12 @@ export {DriverAgent} from './agent.mjs';
 export {DriverTransport} from './transport.mjs';
 export {COMMAND_REJECTIONS,ROUTED_COMMANDS,requestedDelivery} from './commands.mjs';
 export {installSessionCommandSeams} from './session-commands.mjs';
+export {ConversationEventTranslator,mergeEventWindows,turnEndReason} from './events.mjs';
 export const inject=['agents','sessions','sessionProjections','zcodeBridgeHost'];
 export async function apply(ctx){
-  const [{createScope},{agentEvents}]=await Promise.all([import('@deepseek-ai/dsh-scope'),import('@deepseek-ai/dsh-agent')]);
+  const [{createScope},{agentEvents},{interruptedTurnClosers}]=await Promise.all([import('@deepseek-ai/dsh-scope'),import('@deepseek-ai/dsh-agent'),import('@deepseek-ai/dsh-session')]);
   const host=ctx.zcodeBridgeHost;
-  const driver=installDriver(ctx,{createScope,agentEvents,transport:new DriverTransport(host)});
+  const driver=installDriver(ctx,{createScope,agentEvents,interruptedTurnClosers,transport:new DriverTransport(host)});
   host.driverState=driver.state;
   if(driver.state.state==='occupied'){
     const seams=ctx.inject(['sessionController','sessionTitle'],async seamCtx=>{

@@ -63,10 +63,11 @@ export class DriverInbox {
     this.agent.submitControl({type:'editQueueItem',payload:{queueItemId,newText:message.content.map(part=>part.text).join('\n')}});
     return true;
   }
-  sync(snapshot){
+  sync(snapshot,{deferConsumption=false}={}){
     const items=snapshot.queue.items;
     for(const [id,queueId] of this.queueIds){
       if(items.some(item=>item.queueItemId===queueId))continue;
+      if(deferConsumption&&snapshot.rows.window.some(row=>row.sourceCommandId===this.agent.inputs.get(id)?.commandId))continue;
       const location=this.locate(id);if(location)this.commit(location.target,location.index,1,[]);
       this.queueIds.delete(id);
     }
@@ -85,6 +86,7 @@ export class DriverInbox {
       this.queueIds.set(id,item.queueItemId);
     }
     for(const [id,input] of this.agent.inputs){
+      if(deferConsumption)continue;
       if(!snapshot.rows.window.some(row=>row.sourceCommandId===input.commandId))continue;
       const location=this.locate(id);if(location)this.commit(location.target,location.index,1,[]);
     }
