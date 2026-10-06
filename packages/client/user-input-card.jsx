@@ -1,5 +1,5 @@
 import React,{useEffect,useRef,useState} from 'react';
-import {classifyUserInputRoute,USER_INPUT_PLUGIN,userInputQuestions,buildElicitationContent,flatDraftContent} from '../host/user-input.mjs';
+import {classifyUserInputRoute,USER_INPUT_PLUGIN,userInputQuestions,buildElicitationContent,flatDraftContent,optionProtocolValue} from '../host/user-input.mjs';
 
 // Plugin questionnaire card for the ZCode userInput variants the official composer cannot honour:
 // sensitive (masked, no draft), freeText=false (no free-text row) and autoResolution (first action
@@ -19,9 +19,10 @@ function Questionnaire({interaction,disabled,onFirstAction,onSubmit}){
     return <fieldset key={index} data-zcode-user-input-question={index}>
       <legend>{question.header?`${question.header} · `:''}{question.question}</legend>
       {(question.options??[]).map(option=>{
-        const selected=draft.selectedValues.includes(option.label);
+        // The real consumer compares the protocol value, not the display label (`Approve`/`approve`).
+        const value=optionProtocolValue(option),selected=draft.selectedValues.includes(value);
         return <button type="button" key={option.label} aria-pressed={selected} data-zcode-user-input-option={`${index}:${option.label}`}
-          onClick={()=>update(index,{selectedValues:question.multiSelect?(selected?draft.selectedValues.filter(value=>value!==option.label):[...draft.selectedValues,option.label]):[option.label]})}>{option.label}</button>;
+          onClick={()=>update(index,{selectedValues:question.multiSelect?(selected?draft.selectedValues.filter(candidate=>candidate!==value):[...draft.selectedValues,value]):[value]})}>{option.label}</button>;
       })}
       {interaction.payload?.freeText!==false&&<label>Other <input
         data-zcode-user-input-custom={index}
@@ -29,7 +30,7 @@ function Questionnaire({interaction,disabled,onFirstAction,onSubmit}){
         autoComplete={interaction.payload?.sensitive===true?'new-password':'off'}
         value={draft.customAnswer} onChange={event=>update(index,{customAnswer:event.target.value})}/></label>}
     </fieldset>;
-  })}<button type="button" data-zcode-user-input-submit disabled={disabled||!complete} onClick={()=>onSubmit({content:buildElicitationContent(questions,drafts)})}>Submit answer</button></>;
+  })}<button type="button" data-zcode-user-input-submit disabled={disabled||!complete} onClick={()=>onSubmit({action:'accept',content:buildElicitationContent(questions,drafts)})}>Submit answer</button></>;
 }
 
 function FlatPrompt({interaction,disabled,onFirstAction,onSubmit}){

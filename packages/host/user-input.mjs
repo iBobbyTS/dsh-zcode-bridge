@@ -63,21 +63,36 @@ export function buildElicitationContent(questions,drafts){
   return content;
 }
 
-/** Convert one official `AskUserQuestionAnswer` back into the legacy drafts shape. */
+/** The ZCode protocol value a question option answers with. The official composer only knows the
+ * display label, while the real consumer compares the protocol value (`label:"Approve"` /
+ * `value:"approve"`), so labels must be translated back before they reach `content`. */
+export const optionProtocolValue=option=>option?.value??option?.label;
+/** Convert one official `AskUserQuestionAnswer` back into the legacy drafts shape, mapping each
+ * selected display label onto its question option's protocol value. */
 export function draftsFromOfficialAnswer(interaction,answer){
   const questions=userInputQuestions(interaction);
   const list=questions.length?questions:[{question:interaction?.payload?.prompt??''}];
   const items=new Map((answer?.answers??[]).map(item=>[item.id,item]));
-  return list.map((_question,index)=>({selectedValues:[...(items.get(`q${index}`)?.selected??[])],customAnswer:items.get(`q${index}`)?.custom??''}));
+  return list.map((question,index)=>({
+    selectedValues:(items.get(`q${index}`)?.selected??[]).map(label=>{
+      const option=(question.options??[]).find(candidate=>candidate.label===label);
+      return option?optionProtocolValue(option):label;
+    }),
+    customAnswer:items.get(`q${index}`)?.custom??'',
+  }));
 }
 
 /** ResolveInteraction answer body for an official-path completion. Questionnaires carry the
- * lossless multi-question `content`; the legacy flat prompt keeps the optionId/freeText path. */
+ * lossless multi-question `content`; the legacy flat prompt keeps the optionId/freeText path.
+ *
+ * `action:'accept'` is mandatory: the real broker treats an answer without `action`, `freeText`
+ * or an allow-type `optionId` as a decline, so a content-only questionnaire would be consumed as
+ * a refusal even though the command ACK was accepted. */
 export function officialAnswerPayload(interaction,answer){
   const questions=userInputQuestions(interaction);
   if(questions.length){
     const drafts=draftsFromOfficialAnswer(interaction,answer);
-    return {content:buildElicitationContent(questions,drafts)};
+    return {action:'accept',content:buildElicitationContent(questions,drafts)};
   }
   const item=(answer?.answers??[])[0]??{selected:[],custom:undefined};
   const options=interaction?.payload?.options??[];

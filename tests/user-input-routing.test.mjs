@@ -5,9 +5,11 @@
 // waterfall (an answerer registered on the official event is how the real forwarder consumes it).
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {existsSync} from 'node:fs';
+import {existsSync,readFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {pathToFileURL} from 'node:url';
+import vm from 'node:vm';
+import {transformSync} from 'esbuild';
 import {classifyUserInputRoute,USER_INPUT_OFFICIAL,USER_INPUT_PLUGIN,officialRequestQuestions,officialAnswerPayload,buildElicitationContent} from '../packages/host/user-input.mjs';
 import {validateInteractionRoute} from '../packages/driver/hook-review.mjs';
 import {commandWorld,tick} from './helpers/lifecycle-commands.mjs';
@@ -16,6 +18,29 @@ const npmRoot=process.env.DSH_DRIVER_NPM_NODE_MODULES??'/private/tmp/dsh-local-n
 const artifact=name=>join(npmRoot,'@deepseek-ai',name,'lib/index.js');
 const available=['cordis','dsh-user-questions','dsh-session-projection'].every(name=>existsSync(artifact(name)));
 const real={skip:available?false:'requires rc.2 npm artifacts; set DSH_DRIVER_NPM_NODE_MODULES'};
+
+const referenceRoot=process.env.DSH_ZCODE_REFERENCE_ROOT??'/Users/ibobby/Projects/dsh-zcode-acp/reference/ZCode';
+const brokerFile=join(referenceRoot,'apps/zcode-cli/packages/bootstrap/src/zcode-protocol/interaction-broker.ts');
+const brokerAvailable=existsSync(brokerFile);
+const realBroker={skip:brokerAvailable?false:'requires the reference/ZCode source tree'};
+/** Extract the real broker decoder/consumer functions (unmodified source slices) and run them. */
+function loadBroker(){
+  const lines=readFileSync(brokerFile,'utf8').split('\n');
+  const slice=(start,end)=>lines.slice(start-1,end).join('\n');
+  const source=[
+    slice(39,40),   // EXIT_PLAN_MODE_APPROVAL_QUESTION / _APPROVE
+    slice(250,267), // v4AnswerToUserInputResponse
+    slice(305,324), // v4AnswerToPlanApprovalResponse
+    slice(399,446), // planApprovalResponseToBrokerResult + normalizePlanApprovalAnswer
+    slice(617,631), // normalizeAnswerValue
+    slice(661,663), // isRecord
+    'export {v4AnswerToUserInputResponse,v4AnswerToPlanApprovalResponse,planApprovalResponseToBrokerResult,normalizePlanApprovalAnswer};',
+  ].join('\n');
+  const code=transformSync(source,{loader:'ts',format:'cjs'}).code;
+  const module={exports:{}};
+  vm.runInThisContext('(function(module,exports){'+code+'\n})')(module,module.exports);
+  return module.exports;
+}
 
 const userInput=(payload={},extra={})=>({interactionId:'ui-1',kind:'userInput',anchorRowId:null,createdAt:0,payload:{kind:'userInput',prompt:'Pick one',freeText:true,...payload},...extra});
 const publish=(w,edit)=>{const snapshot=structuredClone(w.peer.snapshot);snapshot.seq++;snapshot.revision++;edit(snapshot);w.peer.publish(snapshot)};
@@ -51,6 +76,7 @@ test('official mapping preserves multi-question options/multiSelect and maps the
     {id:'q1',question:'Notes?',header:'Notes'},
   ]);
   assert.deepEqual(officialAnswerPayload(interaction,{answers:[{id:'q0',selected:['staging']},{id:'q1',selected:[],custom:'looks fine'}]}),{
+    action:'accept',
     content:{answers:{'Which environment?':'staging','Notes?':'looks fine'},answer_0:'staging',answer_1:'looks fine'},
   });
   const flat=userInput({prompt:'Continue?',freeText:false,options:[{optionId:'yes',label:'Yes'},{optionId:'no',label:'No'}]});
@@ -58,6 +84,18 @@ test('official mapping preserves multi-question options/multiSelect and maps the
   assert.deepEqual(officialAnswerPayload(flat,{answers:[{id:'q0',selected:['Yes']}]}),{optionId:'yes'});
   assert.deepEqual(officialAnswerPayload(flat,{answers:[{id:'q0',selected:[],custom:'maybe'}]}),{freeText:'maybe'});
   assert.deepEqual(buildElicitationContent([{question:'Q',multiSelect:true,options:[]}],[{selectedValues:['a','b'],customAnswer:''}]),{answers:{Q:'a, b'},answer_0:['a','b'],answer:['a','b']});
+});
+
+test('a questionnaire answer carries action:accept and maps display labels onto protocol values',()=>{
+  const plan=userInput({prompt:'Plan',freeText:false,questions:[{question:'Review this implementation plan.',header:'Plan',options:[{label:'Approve',value:'approve',description:'Exit plan mode and start implementation.'}]}]});
+  assert.deepEqual(officialRequestQuestions(plan),[{id:'q0',question:'Review this implementation plan.',header:'Plan',options:[{label:'Approve',description:'Exit plan mode and start implementation.'}]}]);
+  assert.deepEqual(officialAnswerPayload(plan,{answers:[{id:'q0',selected:['Approve']}]}),{
+    action:'accept',
+    content:{answers:{'Review this implementation plan.':'approve'},answer_0:'approve',answer:'approve'},
+  });
+  // Without a protocol value the display label is the value.
+  const plain=userInput({questions:[{question:'Q',options:[{label:'Yes'}]}]});
+  assert.deepEqual(officialAnswerPayload(plain,{answers:[{id:'q0',selected:['Yes']}]}),{action:'accept',content:{answers:{Q:'Yes'},answer_0:'Yes',answer:'Yes'}});
 });
 
 test('the shared kind guard blocks hook review from the resolveInteraction entry and allows permission/userInput',()=>{
@@ -112,6 +150,28 @@ test('an official asker refusal surfaces the official error instead of resolving
     assert.equal(commands(w).some(command=>command.type==='resolveInteraction'),false);
     assert.ok(w.notifications.some(event=>event.type==='agent/error'&&event.payload.error.code==='NO_PROVIDER'),'the waterfall refusal is explicit');
   }finally{await w.close()}
+});
+
+test('the real ZCode broker consumer accepts the questionnaire answer and rejects a content-only or label-valued one',realBroker,()=>{
+  const broker=loadBroker();
+  const plan=userInput({prompt:'Plan',freeText:false,questions:[{question:'Review this implementation plan.',header:'Plan',options:[{label:'Approve',value:'approve',description:'Exit plan mode and start implementation.'}]}]});
+  const officialAnswer={answers:[{id:'q0',selected:['Approve']}]};
+  // Baseline: the content-only answer without action is consumed as a decline.
+  assert.deepEqual(broker.v4AnswerToUserInputResponse({content:{answers:{'Review this implementation plan.':'approve'}}}),{action:'decline'});
+  // Fixed payload: action:accept, and the display label mapped onto the protocol value.
+  const payload=officialAnswerPayload(plan,officialAnswer);
+  assert.deepEqual(payload,{action:'accept',content:{answers:{'Review this implementation plan.':'approve'},answer_0:'approve',answer:'approve'}});
+  assert.deepEqual(broker.v4AnswerToUserInputResponse(payload),{action:'accept',content:payload.content});
+  // Plan approval consumer: the accepted, value-mapped answer is a real approval.
+  assert.equal(broker.planApprovalResponseToBrokerResult(broker.v4AnswerToPlanApprovalResponse(payload)).decision,'allow');
+  // A label-valued answer with action accepted is still refused with the label as feedback.
+  const labelOnly={action:'accept',content:{answers:{'Review this implementation plan.':'Approve'},answer_0:'Approve',answer:'Approve'}};
+  const refused=broker.planApprovalResponseToBrokerResult(broker.v4AnswerToPlanApprovalResponse(labelOnly));
+  assert.equal(refused.decision,'deny');
+  assert.equal(refused.reason,'Approve');
+  assert.equal(refused.reasonSource,'plan_approval_feedback');
+  // The old content-only shape declines through the plan-approval decoder too.
+  assert.equal(broker.planApprovalResponseToBrokerResult(broker.v4AnswerToPlanApprovalResponse({content:{answers:{'Review this implementation plan.':'approve'}}})).decision,'deny');
 });
 
 test('the real official userQuestions waterfall consumes the mapped request and returns the answer',real,async()=>{

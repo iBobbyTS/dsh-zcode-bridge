@@ -169,7 +169,20 @@ test('the questionnaire card sends the lossless multi-question content for the p
   await React.act(async()=>Simulate.change(document.querySelector('[data-zcode-user-input-custom="1"]'),{target:{value:'looks fine'}}));
   await React.act(async()=>Simulate.click(document.querySelector('[data-zcode-user-input-submit]')));
   const sent=controller.calls.filter(call=>call.type==='resolveInteraction');
-  assert.deepEqual(sent[0].params,{interactionId:'ui-2',answer:{content:{answers:{'Which environment?':'staging','Notes?':'looks fine'},answer_0:'staging',answer_1:'looks fine'}}});
+  assert.deepEqual(sent[0].params,{interactionId:'ui-2',answer:{action:'accept',content:{answers:{'Which environment?':'staging','Notes?':'looks fine'},answer_0:'staging',answer_1:'looks fine'}}});
+  root.unmount();
+});
+
+test('the questionnaire card submits the option protocol value (label≠value) with action:accept',async()=>{
+  const {React,createRoot,Simulate,UserInputCard}=load();
+  const interaction={interactionId:'ui-4',kind:'userInput',anchorRowId:null,createdAt:0,payload:{kind:'userInput',prompt:'Plan',freeText:false,questions:[{question:'Review this implementation plan.',header:'Plan',options:[{label:'Approve',value:'approve',description:'Exit plan mode and start implementation.'}]}]}};
+  const controller=fakeController([interaction]);
+  const root=createRoot(document.getElementById('root'));
+  await React.act(async()=>root.render(React.createElement(UserInputCard,{controller,pollMs:0})));
+  await React.act(async()=>Simulate.click(document.querySelector('[data-zcode-user-input-option="0:Approve"]')));
+  await React.act(async()=>Simulate.click(document.querySelector('[data-zcode-user-input-submit]')));
+  const sent=controller.calls.filter(call=>call.type==='resolveInteraction');
+  assert.deepEqual(sent[0].params,{interactionId:'ui-4',answer:{action:'accept',content:{answers:{'Review this implementation plan.':'approve'},answer_0:'approve',answer:'approve'}}});
   root.unmount();
 });
 
