@@ -55,6 +55,7 @@ export function UserInputCard({controller,pollMs=1500}){
     catch(err){if(token===owner.current&&!abort.signal.aborted)setError(err.code??err.message)}
     finally{if(flight.current===abort)flight.current=null}
   }
+  const readSnapshot=()=>controller.call('snapshot','read',undefined,{});
   useEffect(()=>{
     const reset=()=>{flight.current?.abort();flight.current=null;owner.current={};acting.current=false;setState(null);setBusy(false);setError(null);setNotice(null);void refresh(owner.current)};
     reset();const off=controller.subscribe(reset),timer=pollMs>0?setInterval(()=>void refresh(),pollMs):null;
@@ -67,22 +68,42 @@ export function UserInputCard({controller,pollMs=1500}){
   async function firstAction(interaction){
     if(!interaction.autoResolution||interaction.autoResolution.state==='snoozed'||snoozed.current.has(interaction.interactionId))return;
     snoozed.current.add(interaction.interactionId);
-    try{accepted(await controller.command('snoozeInteractionAutoResolution',{interactionId:interaction.interactionId},snapshot))}
-    catch(err){snoozed.current.delete(interaction.interactionId);setError(err.code??err.message)}
+    const token=owner.current;
+    try{
+      accepted(await controller.command('snoozeInteractionAutoResolution',{interactionId:interaction.interactionId},snapshot));
+      // The snooze advances the official revision. Re-read immediately so a submit in the same
+      // render (before the poll interval) does not inherit the pre-snooze CAS baseline.
+      const current=await readSnapshot();
+      if(token===owner.current)setState(current);
+    }
+    catch(err){snoozed.current.delete(interaction.interactionId);if(token===owner.current)setError(err.code??err.message)}
   }
   async function answer(interaction,answer){
     if(!ready||acting.current)return;
-    const token=owner.current,base=snapshot;acting.current=true;setBusy(true);setError(null);setNotice(null);
+    const token=owner.current;acting.current=true;setBusy(true);setError(null);setNotice(null);
+    const id=interaction.interactionId,timed=interaction.autoResolution!=null;
+    const resolve=async snapshot=>accepted(await controller.command('resolveInteraction',{interactionId:id,answer},snapshot));
     try{
-      // If the first-operation hook did not run (programmatic submit), snooze now and re-read the
-      // official state before submitting so the answer is never sent to an already-settled call.
-      if(interaction.autoResolution&&interaction.autoResolution.state!=='snoozed'&&!snoozed.current.has(interaction.interactionId)){
-        accepted(await controller.command('snoozeInteractionAutoResolution',{interactionId:interaction.interactionId},base));
-        const current=await controller.call('snapshot','read',undefined,{});
-        if(token!==owner.current)return;
-        if(!current.snapshot?.pendingInteractions.some(item=>item.interactionId===interaction.interactionId)){setNotice('The official interaction is already settled; the answer was not resubmitted.');return}
-        accepted(await controller.command('resolveInteraction',{interactionId:interaction.interactionId,answer},current.snapshot));
-      }else accepted(await controller.command('resolveInteraction',{interactionId:interaction.interactionId,answer},base));
+      if(timed&&interaction.autoResolution.state!=='snoozed'&&!snoozed.current.has(id)){
+        accepted(await controller.command('snoozeInteractionAutoResolution',{interactionId:id},snapshot));
+        snoozed.current.add(id);
+      }
+      // A timed interaction always submits on a freshly read CAS: the first-operation snooze (or the
+      // poll) may have advanced the revision after this render's closure captured `snapshot`.
+      let base=snapshot;
+      if(timed){
+        const current=await readSnapshot();if(token!==owner.current)return;setState(current);
+        if(!current.snapshot?.pendingInteractions.some(item=>item.interactionId===id)){setNotice('The official interaction is already settled; the answer was not resubmitted.');return}
+        base=current.snapshot;
+      }
+      try{await resolve(base)}
+      catch(error){
+        // Bounded single recovery for a stale CAS baseline; a persistent staleness is surfaced.
+        if(!['parity-projection-stale','proto.staleRevision'].includes(error?.code))throw error;
+        const current=await readSnapshot();if(token!==owner.current)return;setState(current);
+        if(!current.snapshot?.pendingInteractions.some(item=>item.interactionId===id)){setNotice('The official interaction is already settled; the answer was not resubmitted.');return}
+        await resolve(current.snapshot);
+      }
       if(token===owner.current)setNotice('Answer accepted by ZCode; waiting for the official interaction state.');
     }catch(err){if(token===owner.current)setError(err.code??err.message)}
     finally{if(token===owner.current){acting.current=false;setBusy(false);void refresh(token)}}

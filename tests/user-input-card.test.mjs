@@ -24,14 +24,24 @@ function load(){
   vm.runInThisContext('(function(require,module,exports){'+code+'\n})')(require,mod,mod.exports);
   return {React,createRoot,Simulate,UserInputCard:mod.exports.UserInputCard,dom};
 }
-function fakeController(interactions,{commandError}={}){
+function fakeController(interactions,{commandError,cas=false,alwaysStale=false}={}){
   let state={admission:{allowed:true},managementAdmission:{allowed:true},snapshot:{pendingInteractions:interactions,revision:1,logEpoch:'epoch-1'}};
   const calls=[];
   return {calls,
     setInteractions(next){state={...state,snapshot:{...state.snapshot,pendingInteractions:next}}},
+    bumpRevision(){state={...state,snapshot:{...state.snapshot,revision:state.snapshot.revision+1}}},
+    get revision(){return state.snapshot.revision},
     subscribe:()=>()=>{},
     async call(domain,operation){if(domain==='snapshot'&&operation==='read')return structuredClone(state);throw Object.assign(new Error('unexpected '+domain),{code:'unexpected'})},
-    async command(type,params,snapshot){calls.push({type,params,snapshot:structuredClone(snapshot)});if(commandError)throw commandError;return {ack:{status:'accepted'},state:'accepted-awaiting-terminal'}},
+    async command(type,params,snapshot){
+      calls.push({type,params,snapshot:structuredClone(snapshot)});
+      if(commandError)throw commandError;
+      // Model the official CAS: a command carries the revision it was rendered against.
+      if((cas||alwaysStale)&&snapshot?.revision!==state.snapshot.revision)throw Object.assign(new Error('stale projection'),{code:'parity-projection-stale'});
+      if(alwaysStale)throw Object.assign(new Error('stale projection'),{code:'parity-projection-stale'});
+      if(type==='snoozeInteractionAutoResolution')state={...state,snapshot:{...state.snapshot,revision:state.snapshot.revision+1}};
+      return {ack:{status:'accepted'},state:'accepted-awaiting-terminal'};
+    },
   };
 }
 const masked=(id='ui-1',extra={})=>({interactionId:id,kind:'userInput',anchorRowId:null,createdAt:0,payload:{kind:'userInput',prompt:'Secret',freeText:true,sensitive:true,...extra}});
@@ -80,6 +90,56 @@ test('a timed variant snoozes on the first operation before the answer is sent',
   await React.act(async()=>Simulate.click(document.querySelector('[data-zcode-user-input-submit]')));
   assert.deepEqual(controller.calls.map(call=>call.type),['snoozeInteractionAutoResolution','resolveInteraction']);
   assert.equal(controller.calls.filter(call=>call.type==='snoozeInteractionAutoResolution').length,1,'snooze is idempotent per interaction');
+  root.unmount();
+});
+
+test('after the first-operation snooze advances the revision, the immediate submit uses the fresh CAS and succeeds first try',async()=>{
+  const {React,createRoot,Simulate,UserInputCard}=load();
+  const interaction=flat({freeText:false,options:[{optionId:'yes',label:'Yes'}]},{autoResolution:{state:'visibleCountdown',startedAt:0,visibleAt:0,deadlineAt:9}});
+  const controller=fakeController([interaction],{cas:true});
+  const root=createRoot(document.getElementById('root'));
+  await React.act(async()=>root.render(React.createElement(UserInputCard,{controller,pollMs:0})));
+  await React.act(async()=>Simulate.click(document.querySelector('[data-zcode-user-input-option="yes"]')));
+  assert.equal(controller.revision,2,'the snooze advanced the official revision');
+  // Immediately submit inside the poll window: the render closure still holds revision 1.
+  await React.act(async()=>Simulate.click(document.querySelector('[data-zcode-user-input-submit]')));
+  const resolved=controller.calls.filter(call=>call.type==='resolveInteraction');
+  assert.equal(resolved.length,1,'the timed submit needs no retry: it reads the post-snooze CAS itself');
+  assert.equal(resolved[0].snapshot.revision,2,'the command carries the current revision');
+  assert.deepEqual(resolved[0].params,{interactionId:'ui-1',answer:{optionId:'yes'}});
+  assert.equal(document.querySelector('[data-zcode-user-input-error]'),null);
+  assert.ok(document.querySelector('[data-zcode-user-input-notice]'));
+  root.unmount();
+});
+
+test('a stale CAS baseline is recovered by one re-read and resend, never an unbounded retry',async()=>{
+  const {React,createRoot,Simulate,UserInputCard}=load();
+  const interaction=flat({freeText:false,options:[{optionId:'yes',label:'Yes'}]});
+  const controller=fakeController([interaction],{cas:true});
+  const root=createRoot(document.getElementById('root'));
+  await React.act(async()=>root.render(React.createElement(UserInputCard,{controller,pollMs:0})));
+  controller.bumpRevision();
+  await React.act(async()=>Simulate.click(document.querySelector('[data-zcode-user-input-option="yes"]')));
+  await React.act(async()=>Simulate.click(document.querySelector('[data-zcode-user-input-submit]')));
+  const resolved=controller.calls.filter(call=>call.type==='resolveInteraction');
+  assert.equal(resolved.length,2,'exactly one retry after the stale rejection');
+  assert.equal(resolved[0].snapshot.revision,1);
+  assert.equal(resolved[1].snapshot.revision,2,'the resend uses the freshly read baseline');
+  assert.ok(document.querySelector('[data-zcode-user-input-notice]'));
+  assert.equal(document.querySelector('[data-zcode-user-input-error]'),null);
+  root.unmount();
+});
+
+test('a persistently stale projection is surfaced after exactly one retry',async()=>{
+  const {React,createRoot,Simulate,UserInputCard}=load();
+  const interaction=flat({freeText:false,options:[{optionId:'yes',label:'Yes'}]});
+  const controller=fakeController([interaction],{alwaysStale:true});
+  const root=createRoot(document.getElementById('root'));
+  await React.act(async()=>root.render(React.createElement(UserInputCard,{controller,pollMs:0})));
+  await React.act(async()=>Simulate.click(document.querySelector('[data-zcode-user-input-option="yes"]')));
+  await React.act(async()=>Simulate.click(document.querySelector('[data-zcode-user-input-submit]')));
+  assert.equal(controller.calls.filter(call=>call.type==='resolveInteraction').length,2,'one retry, not a loop');
+  assert.match(document.querySelector('[data-zcode-user-input-error]').textContent,/parity-projection-stale/);
   root.unmount();
 });
 
