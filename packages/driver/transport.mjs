@@ -19,7 +19,7 @@ export class DriverTransport {
       this.offRecovery=this.host.launcher.subscribe(state=>{if(state.phase!=='ready')this.handshake=null});
     }
     if(!this.handshake){
-      const flight=(async()=>{const hello=await this.peer.request('hello',undefined,{signal});await this.peer.request('initialize',negotiatedClientHello(hello,{clientId:'dsh-zcode-driver',appVersion:'0.1.0'}),{signal})})().catch(error=>{if(this.handshake===flight)this.handshake=null;throw error});
+      const flight=(async()=>{const hello=await this.peer.request('hello',undefined,{signal});await this.peer.request('initialize',negotiatedClientHello(hello,{clientId:'dsh-zcode-driver',appVersion:'0.1.0',workspaceHookReviewUi:true}),{signal})})().catch(error=>{if(this.handshake===flight)this.handshake=null;throw error});
       this.handshake=flight;
     }
     await this.handshake;

@@ -3,6 +3,7 @@ import { InsightsClient } from './insights.mjs';
 import { AutomationClient } from './automation.mjs';
 import { zcodeWorkspacePresentationSchema } from './vendor/zcode/v4.mjs';
 import { requestWorkflow } from './workflow.mjs';
+import {HOOK_REVIEW_COMMANDS,INTERACTION_COMMANDS,validateHookReview,grantWorkspaceHookTrust} from '../driver/hook-review.mjs';
 const fault=code=>Object.assign(new Error(code),{code,sent:false});
 const deletion=new Set(['delete','uninstall','marketplaceRemove']);
 /** Routing owner. Rebuild clients after each transport generation, retaining no unknown
@@ -13,9 +14,12 @@ export class ParityService {
   async handle(payload,signal){
     if(!payload||typeof payload!=='object'||Array.isArray(payload)||Object.keys(payload).some(key=>!['domain','operation','kind','params','sessionId','operationId','baseRevision','baseLogEpoch','heldQueue'].includes(key)))throw fault('invalid-payload');
     const {domain,operation,kind,sessionId,operationId}=payload,params=payload.params??{};
-    if(!params||typeof params!=='object'||Array.isArray(params)||['workspace','workspacePath','workspaceIdentity','sessionId','connectionId','__zcodeTrustedV4Connection'].some(key=>Object.hasOwn(params,key)))throw fault('invalid-payload');
+    const review=domain==='command'&&operation==='submit'&&HOOK_REVIEW_COMMANDS.has(kind);
+    if(!params||typeof params!=='object'||Array.isArray(params)||['workspace','workspacePath','workspaceIdentity','sessionId','connectionId','__zcodeTrustedV4Connection'].some(key=>Object.hasOwn(params,key)&&!(review&&['workspaceIdentity','sessionId'].includes(key))))throw fault('invalid-payload');
     if(this.runtime.disposed)throw fault('disposed');
     signal?.throwIfAborted();
+    const native=sessionId&&this.runtime.ctx.agents.get(sessionId);
+    if(native?.hookOperation&&(domain==='snapshot'||domain==='hooks'||domain==='command'&&INTERACTION_COMMANDS.has(kind)))return native.hookOperation(payload,signal);
     await this.runtime.ensurePeer();if(this.runtime.disposed)throw fault('disposed');
     const record=sessionId===undefined?null:this.runtime.store.records.get(sessionId);
     if(sessionId!==undefined&&(!record||this.runtime.absent.has(sessionId)))throw fault('runtime-identity-locked');
@@ -24,6 +28,7 @@ export class ParityService {
     const workspace={workspacePath:path,workspaceKey:path};
     const peer=this.runtime.peer;
     const scopedPeer={request:(method,p,options)=>peer.request(method,{...p,workspace},options)};
+    if(domain==='hooks'&&operation==='grant')return grantWorkspaceHookTrust(peer,workspace,params,{signal,current:()=>!this.runtime.disposed&&peer===this.runtime.peer});
     let clients=this.clients.get(path);
     if(!clients||clients.peer!==peer||clients.generation!==peer.generation){clients?.catalog.dispose();clients?.insights.dispose();clients?.automation.dispose();
       const scoped={request:(method,p,options)=>peer.request(method,{...p,workspace},options),onNotification:fn=>peer.onNotification(fn),get closed(){return peer.closed}};
@@ -80,10 +85,11 @@ export class ParityService {
         throw fault('parity-operation-denied');
       }
       if(domain==='command'){
-        const allowed=new Set(['setAssistantFeedback','startSavedWorkflow','resumeWorkflowRun','amendWorkflowRunSettings','cancelBackgroundWork','sendText','sendGoalCommand','reorderQueueItem','setAutoDrain','setFollowupMode','switchCollaborationMode','pauseGoal','resumeGoal']);
+        const allowed=new Set(['setAssistantFeedback','startSavedWorkflow','resumeWorkflowRun','amendWorkflowRunSettings','cancelBackgroundWork','sendText','sendGoalCommand','reorderQueueItem','setAutoDrain','setFollowupMode','switchCollaborationMode','pauseGoal','resumeGoal',...INTERACTION_COMMANDS]);
         if(operation!=='submit'||!allowed.has(kind))throw fault('parity-command-denied');
         const snapshot=agent.conversation.state.snapshot;
         if(payload.baseLogEpoch!==snapshot.logEpoch||payload.baseRevision!==snapshot.revision)throw fault('parity-projection-stale');
+        validateHookReview(agent.conversation,{type:kind,payload:params,baseRevision:payload.baseRevision,baseLogEpoch:payload.baseLogEpoch});
         const input=['sendText','sendGoalCommand'].includes(kind);
         let heldQueue;
         if(input&&(snapshot.inputRouting.mode==='choice'||params.heldQueueDisposition!==undefined||payload.heldQueue!==undefined)){

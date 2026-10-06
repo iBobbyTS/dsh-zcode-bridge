@@ -4,6 +4,7 @@ import {DriverInbox} from './inbox.mjs';
 import {commandFault,inputCommandId,ROUTED_COMMANDS,rejectOperation,validateMessage,promptPayload,requestedDelivery} from './commands.mjs';
 import {queueSteerTransfer,requireAcceptedCommand} from './queue-steer.mjs';
 import {captureControlReceipt} from './control-receipts.mjs';
+import {validateHookReview,driverHookOperation} from './hook-review.mjs';
 import {ConversationEventTranslator} from './events.mjs';
 
 export class DriverAgent {
@@ -28,6 +29,7 @@ export class DriverAgent {
     });
   }
   assertAvailable(){if(this.disposed)throw commandFault('agent-disposed');if(!this.conversation)throw commandFault('driver-command-unavailable')}
+  hookOperation(payload,signal){return this.track(driverHookOperation(this,payload,signal))}
   track(task){
     this.tasks.add(task);
     void task.catch(error=>this.reportError(error)).finally(()=>{this.tasks.delete(task);this.notifyIdle()});
@@ -45,6 +47,7 @@ export class DriverAgent {
     this.track(this.translator.enqueue(snapshot));
     for(const [id,controller] of this.approvals)if(!snapshot.pendingInteractions.some(item=>item.interactionId===id))controller.abort();
     for(const interaction of snapshot.pendingInteractions){
+      if(interaction.kind==='workspaceHookReview')continue;
       if(this.approvals.has(interaction.interactionId))continue;
       if(interaction.kind!=='permission'){this.reportError(commandFault('interaction-mapping-unavailable'));continue}
       const controller=new AbortController();this.approvals.set(interaction.interactionId,controller);
@@ -151,9 +154,10 @@ export class DriverAgent {
     this.assertAvailable();if(!ROUTED_COMMANDS.has(command.type))rejectOperation(command.type);
     return captureControlReceipt(this,command.type,this.track((async()=>{
       await this.ready();const snapshot=this.conversation.state.snapshot;
+      validateHookReview(this.conversation,command);
       if(command.baseRevision!==undefined&&command.baseRevision!==snapshot.revision)throw commandFault('proto.staleRevision');
       if(command.type==='resolveInteraction'&&snapshot.pendingInteractions.find(item=>item.interactionId===command.payload?.interactionId)?.kind!=='permission')rejectOperation('userInput');
-      const result=await this.conversation.submit(command);
+      const result=await this.conversation.submit(command,{signal:command.signal});
       // V4 returns negative receipts as values. Preserve that ledger, but fail
       // the control boundary so track reports them even while transport is live.
       if(['rejected','stale','failed','not-sent','outcome-unknown'].includes(result.state)||['rejected','stale','failed'].includes(result.ack?.status))requireAcceptedCommand(result);

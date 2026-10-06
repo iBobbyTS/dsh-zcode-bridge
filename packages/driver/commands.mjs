@@ -20,7 +20,7 @@ export const COMMAND_REJECTIONS=Object.freeze({
   splice:'official-inbox-splice-unavailable',
   prepend:'official-inbox-prepend-unavailable',
 });
-export const ROUTED_COMMANDS=new Set([...INPUT_COMMANDS].filter(type=>type!=='deleteQueueItem').concat('renameSession','resolveInteraction'));
+export const ROUTED_COMMANDS=new Set([...INPUT_COMMANDS].filter(type=>type!=='deleteQueueItem').concat('renameSession','resolveInteraction','snoozeInteractionAutoResolution','respondWorkspaceHookReview','toggleWorkspaceHookReviewItem','revokeWorkspaceHookTrust','requestWorkspaceHookReview'));
 export function rejectOperation(operation){throw commandFault(COMMAND_REJECTIONS[operation]??'official-operation-unavailable')}
 
 // startNow is a preemption request when busy. Ordinary followups must queue then.

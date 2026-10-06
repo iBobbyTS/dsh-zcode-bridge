@@ -12,6 +12,7 @@ import { ProtocolPeer } from './protocol.mjs';
 import { remoteState } from './remote.mjs';
 import { FailSafeState, commandAllowed, SAFE_OPERATIONS } from './fail-safe.mjs';
 import { compatibilityProjection } from './compatibility.mjs';
+import {INTERACTION_COMMANDS,validateHookReview} from '../driver/hook-review.mjs';
 export const initialStatus=()=>({state:'unavailable',reason:'not-connected',auth:'unconfirmed',connected:false});
 /** Owns only children it launches; there is no attach or shared-process killer. */
 export class BridgeHost {
@@ -131,8 +132,9 @@ export class BridgeHost {
     if(operation==='attachmentRead')return conversation.attachmentRead({ref,target,attachmentIndex,offset,limit,signal});
     if(operation==='conversationAttachmentStat')return conversation.conversationAttachmentStat({ref,target,attachmentIndex,signal});
     if(operation==='conversationAttachmentRead')return conversation.conversationAttachmentRead({ref,target,attachmentIndex,offset,limit,signal});
-    if(operation!=='command'||!command||!(MANAGEMENT_COMMANDS.has(command.type)||INPUT_COMMANDS.has(command.type)||HISTORY_COMMANDS.has(command.type)||WORK_COMMANDS.has(command.type)||WORKFLOW_COMMANDS.has(command.type)))throw new BridgeError('management-command-unavailable');
+    if(operation!=='command'||!command||!(MANAGEMENT_COMMANDS.has(command.type)||INPUT_COMMANDS.has(command.type)||HISTORY_COMMANDS.has(command.type)||WORK_COMMANDS.has(command.type)||WORKFLOW_COMMANDS.has(command.type)||INTERACTION_COMMANDS.has(command.type)))throw new BridgeError('management-command-unavailable');
     if(HISTORY_COMMANDS.has(command.type)&&command.payload?.target&&(command.baseRevision===undefined||command.baseLogEpoch===undefined))throw new BridgeError('history-target-unconfirmed');
+    validateHookReview(conversation,command);
     const result=await conversation.submit(command,{signal});
     await this.#acceptLifecycle(conversation,result);return result;
   }

@@ -5,7 +5,7 @@ import { fault } from './config.mjs';
 
 export const EXECUTION_CALLS = Object.freeze(['helloConversationV4','initializeConversationV4','subscribeConversationV4','resyncConversationV4','unsubscribeConversationV4','sendConversationCommandV4','queryConversationCommandsV4'].map(name=>'zcode-agent.'+name).concat(PARITY_CALLS));
 export const EXECUTION_EVENTS = new Set(['zcode-agent.onDynamicConversationFrame','zcode-agent.onDynamicPluginOperationProgress']);
-export const EXECUTION_COMMANDS = new Set(['createSession','sendText','stop','resolveInteraction','switchModelConfig','renameSession','editQueueItem','sendQueuedNow','reorderQueueItem','setAutoDrain','setFollowupMode','switchCollaborationMode','pauseGoal','resumeGoal','sendGoalCommand','setAssistantFeedback','startSavedWorkflow','resumeWorkflowRun','amendWorkflowRunSettings','cancelBackgroundWork']);
+export const EXECUTION_COMMANDS = new Set(['createSession','sendText','stop','resolveInteraction','snoozeInteractionAutoResolution','respondWorkspaceHookReview','toggleWorkspaceHookReviewItem','revokeWorkspaceHookTrust','requestWorkspaceHookReview','switchModelConfig','renameSession','editQueueItem','sendQueuedNow','reorderQueueItem','setAutoDrain','setFollowupMode','switchCollaborationMode','pauseGoal','resumeGoal','sendGoalCommand','setAssistantFeedback','startSavedWorkflow','resumeWorkflowRun','amendWorkflowRunSettings','cancelBackgroundWork']);
 const methods = {
   'v4/conversation/subscribe':'subscribeConversationV4',
   'v4/conversation/resync':'resyncConversationV4',

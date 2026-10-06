@@ -1,4 +1,5 @@
 import { fault } from './config.mjs';
+import {trustGrantParamsSchema,translateTrustGrant} from '../../driver/hook-review.mjs';
 
 // Public official Host facades only. This table extends the nonce-bound launcher channel;
 // it never exposes a generic service/method call to the browser or reads credentials.
@@ -28,6 +29,7 @@ export const PARITY_METHODS = Object.freeze({
   'v4/conversation/fileRewindPreview':'conversationFileRewindPreviewV4',
   'provider/testModelConnectivity':'testModelConnectivity',
   'workspace/readPresentation':'readWorkspacePresentation',
+  'workspace/hooks/trustGrant':'grantWorkspaceHookTrust',
   'workspace/generateText':'generateWorkspaceText',
   'v4/attachment/begin':'attachmentBeginV4', 'v4/attachment/chunk':'attachmentChunkV4',
   'v4/attachment/commit':'attachmentCommitV4', 'v4/attachment/abort':'attachmentAbortV4',
@@ -50,6 +52,17 @@ export async function requestParity(channel,method,params,target,emit=()=>{}) {
   if(Object.keys(params).some(key=>['workspacePath','workspaceIdentity','__zcodeTrustedV4Connection','deliveryProfile','subscriberScope'].includes(key)))throw fault('parity-identity-denied');
   const {workspace:_workspace,connectionId:_connection,...body}=params;
   const call=(service,name,args=[])=>channel.call(service,name,args,{timeoutMs:25000});
+  if(method==='workspace/hooks/trustGrant'){
+    const workspace={workspacePath:target.workspacePath,workspaceKey:target.workspacePath};
+    const deny=code=>Object.assign(fault(code),{sent:false});
+    const parsed=trustGrantParamsSchema.safeParse({workspace:params.workspace,...body});
+    if(!parsed.success)throw deny('hook-trust-params-invalid');
+    // Validate the original DTO before translating to the nonce-bound Host target.
+    // This local bridge has no authoritative remote-workspace binding.
+    if(parsed.data.workspace.workspacePath!==workspace.workspacePath||parsed.data.workspace.workspaceKey!==workspace.workspaceKey||parsed.data.workspace.remoteSessionId!==undefined||parsed.data.workspace.workspaceIdentity!==undefined&&parsed.data.workspace.workspaceIdentity!==(target.workspaceIdentity??target.workspacePath))throw deny('execution-workspace-denied');
+    const raw=await call('zcode-agent','grantWorkspaceHookTrust',[{bundleDigest:parsed.data.bundleDigest,hookDeclarationDigest:parsed.data.hookDeclarationDigest,...target}]);
+    const {outcome:_outcome,...wire}=translateTrustGrant(raw);return wire;
+  }
   if(Object.hasOwn(PARITY_METHODS,method)) {
     const off=body.operationId&&method!=='plugins/cancelOperation'?channel.listen('zcode-agent','onDynamicPluginOperationProgress',params=>emit({method:'plugins/operationProgress',params}),body.operationId):null;
     try{const raw=await call('zcode-agent',PARITY_METHODS[method],[{...body,...target}]);return method==='v4/attachment/abort'?{}:raw}finally{off?.()}
