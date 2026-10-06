@@ -179,14 +179,14 @@ test('S02-Q1 badge switches whale/Z by selection provider and the global store d
  assert.equal(renderToStaticMarkup(createElement(ProviderBadge,{store:null})),'');
 });
 
-test('S02-Q1 locked-runtime display shows DSH for native and the locked hint for zcode',()=>{
+test('S02-Q1 locked-runtime display shows DSH for native and the creation-locked runtime for zcode without a standing shared-GUI claim',()=>{
  const controls=sessionId=>runtime=>({subscribe:()=>()=>{},getSnapshot:()=>({}),infos:new Map([[sessionId,runtime]]),info:async()=>runtime});
- const zcode=renderToStaticMarkup(createElement(RuntimeLockedLabel,{controls:controls('z')({runtime:'zcode',hint:'官方 GUI 可能正在运行本会话'}),sessionId:'z'}));
- assert.match(zcode,/data-zcode-runtime-locked="zcode"/);assert.match(zcode,/官方 GUI 可能正在运行本会话/);
+ const zcode=renderToStaticMarkup(createElement(RuntimeLockedLabel,{controls:controls('z')({runtime:'zcode'}),sessionId:'z'}));
+ assert.match(zcode,/data-zcode-runtime-locked="zcode"/);assert.match(zcode,/ZCode · locked/);assert.match(zcode,/已锁定为 ZCode（创建时选择/);assert.equal(zcode.includes('官方 GUI'),false);
  const native=renderToStaticMarkup(createElement(RuntimeLockedLabel,{controls:controls('n')({runtime:'native',locked:true}),sessionId:'n'}));
  assert.match(native,/data-zcode-runtime-locked="native"/);assert.match(native,/>DSH</);assert.equal(native.includes('官方 GUI'),false);
- const bound=renderToStaticMarkup(createElement(RuntimeLockedLabel,{controls:controls('b')({runtime:'zcode',hint:'官方 GUI 可能正在运行本会话',bindingHint:'Session created in the ZCode execution workspace; the picked workspace applies to native sessions only.'}),sessionId:'b'}));
- assert.match(bound,/data-zcode-binding-hint/);assert.match(bound,/ZCode execution workspace/);
+ const bound=renderToStaticMarkup(createElement(RuntimeLockedLabel,{controls:controls('b')({runtime:'zcode',bindingHint:'Session created in the ZCode execution workspace; the picked workspace applies to native sessions only.'}),sessionId:'b'}));
+ assert.match(bound,/data-zcode-binding-hint/);assert.match(bound,/ZCode execution workspace/);assert.equal(bound.includes('官方 GUI'),false);
 });
 
 test('S02-Q1 wave5: two sessions receive independent per-session live frames',async()=>{

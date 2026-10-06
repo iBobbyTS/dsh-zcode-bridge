@@ -12,7 +12,7 @@ import { installMirrorGuards } from './mirror-guards.mjs';
 import { installZCodeLlm } from './zcode-llm.mjs';
 import { officialSelection, resolveDiscovered, selectionFailure } from './model-selection.mjs';
 import { LauncherPeer } from './launcher/execution.mjs';
-import { ZCodeAgent, SHARED_GUI_HINT } from './zcode-agent.mjs';
+import { ZCodeAgent } from './zcode-agent.mjs';
 import { negotiatedClientHello } from './conversation.mjs';
 import { commandAckSchema } from './vendor/zcode/v4.mjs';
 const fault=code=>Object.assign(new Error(code),{code});
@@ -256,7 +256,7 @@ export class ZCodeRuntime {
     this.store.records.set(id,pending);await this.store.save();const agent=await this.register(pending);if(resolved)agent.confirmSelection(resolved);await this.publishDirectory?.();
     return {sessionId:id,runtime:'zcode',workspaceId:pending.workspaceId,workspacePath:pending.cwd,hint:pending.bindingHint};
   }
-  info(id){const record=this.store.records.get(id);return record?{runtime:'zcode',locked:true,historyGeneration:record.historyGeneration??0,selection:record.selection??null,mode:record.mode,error:record.error??this.persistError,hint:SHARED_GUI_HINT,bindingHint:record.bindingHint??null,officialAddress:{runtime:'zcode',authority:this.host.status?.sessionAuthority??record.authority,workspace:record.workspace,sessionId:record.officialId},lifecycle:mirrorLifecycle(this.agents.get(id),record),approval:record.approval??null,lastCommand:record.lastCommand??null}: this.absent.has(id)?{runtime:'zcode',locked:true,error:'session/not-found'}:{runtime:'native',locked:true}}
+  info(id){const record=this.store.records.get(id);return record?{runtime:'zcode',locked:true,historyGeneration:record.historyGeneration??0,selection:record.selection??null,mode:record.mode,error:record.error??this.persistError,bindingHint:record.bindingHint??null,officialAddress:{runtime:'zcode',authority:this.host.status?.sessionAuthority??record.authority,workspace:record.workspace,sessionId:record.officialId},lifecycle:mirrorLifecycle(this.agents.get(id),record),approval:record.approval??null,lastCommand:record.lastCommand??null}: this.absent.has(id)?{runtime:'zcode',locked:true,error:'session/not-found'}:{runtime:'native',locked:true}}
   async handle(payload){
     if(!payload||typeof payload!=='object'||Array.isArray(payload))throw fault('invalid-payload');
     const keys={create:['operation','sessionId','workspaceId','cwd','selection','mode'],info:['operation','sessionId'],select:['operation','sessionId','selection'],cancel:['operation','sessionId'],usage:['operation','sessionId'],open:['operation','sessionId'],observe:['operation','sessionId'],heldInput:['operation','sessionId','commandId','disposition'],queue:['operation','sessionId','queueItemId','action','newText']};

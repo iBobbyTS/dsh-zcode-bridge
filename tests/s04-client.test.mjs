@@ -14,6 +14,15 @@ test('S04 receipt-class presentation has distinct accessible states and no delet
  for(const text of ['官方已受理','官方已排队','官方未受理','结果未知（不自动重发）','official-busy'])assert.ok(html.includes(text));
  assert.equal(/delete|remove|删除|移除/.test(html),false);assert.ok(html.includes('role="alert"'));
 });
+test('S04 idle presentation never fabricates queue state and scopes the D4 shared-GUI caution to in-flight sends',()=>{
+ const dock=state=>renderToStaticMarkup(createElement(RuntimeLifecycleDock,{controls:{subscribe:()=>()=>{},getSnapshot:()=>state,infos:new Map([['mirror',{runtime:'zcode',lifecycle:state}]]),watch:()=>()=>{}},sessionId:'mirror'}));
+ const unknown=dock({status:'idle',confirmed:false,reason:null,control:{phase:'idle',canStop:false,activeWorks:[],stopState:'idle'},queue:{items:[],autoDrain:null},receipts:[]});
+ assert.ok(unknown.includes('官方队列：0 · 状态未知（未连接）'));assert.equal(unknown.includes('已暂停'),false);assert.equal(unknown.includes('官方 GUI'),false);
+ const sending=dock({status:'live',confirmed:true,reason:null,control:{phase:'running',canStop:false,activeWorks:[],stopState:'idle'},queue:{items:[],autoDrain:true},receipts:[{commandId:'send-1',type:'sendText',receiptClass:'pending',reason:null}]});
+ assert.ok(sending.includes('data-zcode-receipt="pending"'));assert.ok(sending.includes('data-zcode-shared-gui-caution'));assert.ok(sending.includes('已允许发送：官方 GUI 可能正在运行本会话，结果以官方回执为准'));
+ const settled=dock({status:'live',confirmed:true,reason:null,control:{phase:'running',canStop:false,activeWorks:[],stopState:'idle'},queue:{items:[],autoDrain:true},receipts:[{commandId:'send-1',type:'sendText',receiptClass:'accepted',reason:null}]});
+ assert.equal(settled.includes('官方 GUI'),false);
+});
 
 test('S04 headless composer: real control path edits/promotes official queue and stops current work; disconnect disables controls without losing queue',async()=>{
  const {JSDOM}=require('jsdom'),{createRoot}=require('react-dom/client'),{Simulate}=require('react-dom/test-utils');

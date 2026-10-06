@@ -46,6 +46,31 @@ test('B03 resume requires actual matching epoch state; snapshot ACK cannot autho
  }finally{f.dispose()}
  for(const invalid of ['resume','empty-id','empty-epoch']){const g=fixture();try{const p=g.conversation.connect();const ack=clone(fixtures.success.ack);if(invalid==='resume')ack.ack.mode='resume';if(invalid==='empty-id')ack.ack.subscriptionId='';if(invalid==='empty-epoch')ack.ack.logEpoch='';g.response(g.sent[0],ack);await assert.rejects(p);assert.equal(g.peer.closed,true)}finally{g.dispose()}}
 });
+test('subscribe ACK resume under a forced snapshot stays live and converges via one snapshot resync',async()=>{
+ const f=fixture();try{
+  const p=f.conversation.connect({forceSnapshot:true});
+  const ack=clone(fixtures.success.ack);ack.ack.mode='resume';
+  f.response(f.sent[0],ack);await p;
+  // The subscription survives and immediately enters snapshot recovery — never fails the ACK.
+  assert.equal(f.conversation.state.status,'resyncing');assert.equal(f.conversation.state.subscriptionId,ack.ack.subscriptionId);
+  const req=f.sent.at(-1);assert.equal(req.method,'v4/conversation/resync');assert.equal(req.params.forceSnapshot,true);assert.equal(req.params.subscriptionId,ack.ack.subscriptionId);
+  const rack=clone(fixtures.success.ack);rack.ack.mode='snapshot';
+  const recovery=clone(fixtures.success.initial);recovery.deliveryKind='recovery';
+  f.input.write(JSON.stringify({id:req.id,result:rack})+'\n'+JSON.stringify({method:'v4/conversation/frame',params:recovery})+'\n');
+  await tick();await tick();
+  assert.equal(f.conversation.state.status,'live');assert.equal(f.conversation.state.snapshot.logEpoch,fixtures.success.ack.ack.logEpoch);
+ }finally{f.dispose()}
+});
+test('subscribe ACK consumer rejection releases the official subscription instead of stranding it',async()=>{
+ const f=fixture({peerTimeout:25});try{
+  const p=f.conversation.connect();
+  const ack=clone(fixtures.success.ack);ack.ack.mode='resume';ack.ack.subscriptionId='stranded-sub';
+  f.response(f.sent[0],ack);
+  await assert.rejects(p,/subscription-base-invalid/);await tick();
+  const release=f.sent.find(call=>call.method==='v4/conversation/unsubscribe');
+  assert.ok(release);assert.equal(release.params.subscriptionId,'stranded-sub');
+ }finally{f.dispose()}
+});
 test('B03 held baseline survives reconnect; old subscription cannot write and epoch replacement is atomic',async()=>{
  const f=fixture();try{
   await f.open(fixtures.gap.initial);const old=f.conversation.state.snapshot;

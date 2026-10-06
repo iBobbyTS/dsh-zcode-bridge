@@ -163,12 +163,28 @@ test('S04 reservation observer rejection and peer close release all held frames'
  const pending=b.peer.request('v4/conversation/subscribe',{topic:'conversation/one'});const closed=assert.rejects(pending,{code:'execution-disconnected'});b.emit('conversation/one','one');b.peer.close();b.flights[1].resolve({ack:{subscriptionId:'one'}});await closed;assert.equal(b.peer.bufferedBytes,0);assert.equal(b.peer.reservations.size,0);assert.equal(seen.length,0);
 });
 
-test('S04 idle cleanup releases per-workspace frame listeners; duplicate topic opens cannot leak subscriptions',async()=>{
- let listeners=0,seq=0;const relay=createExecutionRelay({workspacePath:'/execution',resolveWorkspace:async path=>({workspaceIdentity:path}),emit(){},channel:{listen(){listeners++;return ()=>listeners--},call:async(_service,name)=>({ack:{subscriptionId:name.startsWith('subscribe')?'sub-'+seq++:'unused'}})}});
+test('S04 idle cleanup releases per-workspace frame listeners; in-flight duplicates are rejected, abandoned registrations are replaced',async()=>{
+ let listeners=0,seq=0;const calls=[];
+ const relay=createExecutionRelay({workspacePath:'/execution',resolveWorkspace:async path=>({workspaceIdentity:path}),emit(){},channel:{listen(){listeners++;return ()=>listeners--},call:async(_service,name,args)=>{calls.push([name,args?.[0]]);return {ack:{subscriptionId:name.startsWith('subscribe')?'sub-'+seq++:'unused'}}}}});
  try{for(let i=0;i<70;i++){
   const params={topic:'conversation/'+i,workspace:{workspacePath:'/workspace-'+i,workspaceKey:'/workspace-'+i}};
-  const result=await relay.request('v4/conversation/subscribe',params);assert.equal(listeners,1);await assert.rejects(relay.request('v4/conversation/subscribe',params),{code:'execution-subscription-active',sent:false});await relay.request('v4/conversation/unsubscribe',{...params,subscriptionId:result.ack.subscriptionId});assert.equal(listeners,0);
+  const result=await relay.request('v4/conversation/subscribe',params);assert.equal(listeners,1);
+  // Concurrent duplicate: the reservation is still in flight, so the guard rejects without touching it.
+  const first=relay.request('v4/conversation/subscribe',params);
+  await assert.rejects(relay.request('v4/conversation/subscribe',params),{code:'execution-subscription-active',sent:false});
+  await first;
+  // A completed registration the consumer abandoned must be replaced, not wedge resubscribes forever.
+  const replaced=await relay.request('v4/conversation/subscribe',params);
+  assert.notEqual(replaced.ack.subscriptionId,result.ack.subscriptionId);
+  assert.ok(calls.some(([name,payload])=>name==='unsubscribeConversationV4'&&payload?.subscriptionId===result.ack.subscriptionId));
+  assert.equal(listeners,1);
+  await relay.request('v4/conversation/unsubscribe',{...params,subscriptionId:replaced.ack.subscriptionId});assert.equal(listeners,0);
  }}finally{relay.dispose()}
+});
+
+test('S04 lifecycle without a live snapshot reports an unknown queue drain state instead of paused',()=>{
+ const view=mirrorLifecycle(null,{});
+ assert.equal(view.status,'draft');assert.equal(view.queue.autoDrain,null);assert.deepEqual(view.queue.items,[]);
 });
 
 test('S04 failed initialization retries instead of retaining a rejected handshake; reclaimed idle sessions stay lazy across disconnect',async()=>{

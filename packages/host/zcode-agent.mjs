@@ -6,7 +6,6 @@ const fault=code=>Object.assign(new Error(code),{code});
 const clean=value=>JSON.parse(JSON.stringify(value));
 // Persistent entities can own multiple rows. Rendering identity belongs to the epoch + rowId.
 export const projectionRowKey=(logEpoch,rowId)=>'row:'+JSON.stringify([logEpoch,rowId]);
-export const SHARED_GUI_HINT='官方 GUI 可能正在运行本会话';
 
 export function approvalAnswer(interaction,outcome){
   if(!['permission','userInput'].includes(interaction.kind))throw fault('interaction-mapping-unavailable');

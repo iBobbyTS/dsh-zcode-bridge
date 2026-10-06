@@ -49,7 +49,18 @@ export function createExecutionRelay({channel,workspacePath,workspaceIdentity,em
           payload.clientMode='desktop-continuous';onCommand({commandId:params.commandId,type:params.type,sessionId:params.sessionId});
         } else if(method==='v4/conversation/subscribe') {
           if(typeof params.topic!=='string'||!params.topic.startsWith('conversation/'))throw fault('execution-topic-denied');
-          if(subscriptions.has(params.topic))throw fault('execution-subscription-active');
+          const stale=subscriptions.get(params.topic);
+          if(stale!==undefined&&typeof stale==='object')throw fault('execution-subscription-active');
+          // A completed registration the consumer no longer owns (ACK rejected after the official
+          // subscription existed, or a transport loss that skipped unsubscribe) must not wedge
+          // every later resubscribe behind the duplicate guard: replace it. Release the old
+          // official subscription through the normal unsubscribe path first, tolerating failure.
+          if(stale!==undefined){
+            await this.request('v4/conversation/unsubscribe',{...params,subscriptionId:stale}).catch(()=>{});
+            const current=subscriptions.get(params.topic);
+            if(current!==undefined&&typeof current==='object')throw fault('execution-subscription-active');
+            const path=subscriptionWorkspaces.get(params.topic);subscriptions.delete(params.topic);subscriptionWorkspaces.delete(params.topic);releaseWorkspace(path);
+          }
           if(subscriptions.size>=maxSubscriptions)throw fault('execution-subscription-limit');
           payload={...payload,sessionId:params.topic.slice(13),clientMode:'desktop-continuous',visibility:'foreground',...(params.base?{base:params.base}:{})};
           // Subscribe to the frame event before the initial request: the official ACK and initial

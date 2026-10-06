@@ -145,16 +145,30 @@ export class V4Conversation {
     const request=this.peer.request('v4/conversation/subscribe',params,{onResult:raw=>{
       const result=v4ConversationSubscribeResultSchema.parse(raw),ack=result.ack;
       if(!nonempty(ack.subscriptionId)||!nonempty(ack.logEpoch))throw new BridgeError('subscription-ack-invalid');
-      if(this.#closed||generation!==this.#generation){this.#orphans.push(this.#unsubscribe(ack.subscriptionId));return result}
-      if(this.#state.status==='error'||this.#flight!==flight){this.#orphans.push(this.#unsubscribe(ack.subscriptionId));return result;}
-      const held=this.#state.snapshot;
-      if(ack.mode==='resume'&&(!base||base.logEpoch!==ack.logEpoch||!this.#appliedBase||held?.logEpoch!==base.logEpoch||held?.seq!==base.seq))throw new BridgeError('subscription-base-invalid');
-      this.#appliedBase=ack.mode==='resume';
-      if(this.#appliedBase){
-        // Equal-watermark resume has no initial frame. Keep the held base and consume either replay or online deltas.
-        clearTimeout(this.#frameTimer);this.#flight=null;
-        this.#publish({subscriptionId:ack.subscriptionId,logEpoch:ack.logEpoch,status:'live'});
-      }else{this.#publish({subscriptionId:ack.subscriptionId,logEpoch:ack.logEpoch});this.#deadline(flight)}
+      let orphan=false;
+      try{
+        if(this.#closed||generation!==this.#generation)orphan=true;
+        else if(this.#state.status==='error'||this.#flight!==flight)orphan=true;
+        else{
+          const held=this.#state.snapshot;
+          if(ack.mode==='resume'&&!forceSnapshot&&(!base||base.logEpoch!==ack.logEpoch||!this.#appliedBase||held?.logEpoch!==base.logEpoch||held?.seq!==base.seq))throw new BridgeError('subscription-base-invalid');
+          this.#appliedBase=ack.mode==='resume';
+          if(this.#appliedBase){
+            // Equal-watermark resume has no initial frame. Keep the held base and consume either replay or online deltas.
+            clearTimeout(this.#frameTimer);this.#flight=null;
+            this.#publish({subscriptionId:ack.subscriptionId,logEpoch:ack.logEpoch,status:'live'});
+            // A forced snapshot answered as resume may leave us without any held snapshot:
+            // keep the live subscription and converge with one snapshot resync instead of
+            // failing the ACK — failing after registration would strand the official subscription.
+            if(forceSnapshot&&(!held||held.logEpoch!==ack.logEpoch))void this.resync({forceSnapshot:true}).catch(()=>{});
+          }else{this.#publish({subscriptionId:ack.subscriptionId,logEpoch:ack.logEpoch});this.#deadline(flight)}
+        }
+      }catch(error){
+        // Release before rethrow: the peer closes on consumer rejection, so this must run
+        // inside onResult while the transport can still carry the unsubscribe.
+        this.#orphans.push(this.#unsubscribe(ack.subscriptionId));throw error;
+      }
+      if(orphan)this.#orphans.push(this.#unsubscribe(ack.subscriptionId));
       return result;
     }}).catch(e=>{if(!this.#closed&&generation===this.#generation)this.#fail(e.code??'subscription-invalid');throw e}).finally(()=>{this.#connect=null});
     request.then(operation.resolve,operation.reject);return operation.promise;

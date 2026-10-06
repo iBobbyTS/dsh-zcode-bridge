@@ -19,7 +19,8 @@ export function receiptClass(operation,queue=[]){
 export function mirrorLifecycle(agent,record){
   const state=agent?.conversation?.state,snapshot=state?.snapshot??record.snapshot;
   const confirmed=state?.admission.allowed===true;
-  const queue=snapshot?.queue??{items:[],autoDrain:false};
+  // No live snapshot means the official queue state is unknown, not paused — never fabricate autoDrain.
+  const queue=snapshot?.queue??{items:[],autoDrain:null};
   const operations=new Map(Object.entries(record.operations??{}));
   // Retain original native request/message identity while updating official command evidence.
   for(const command of state?.commands??[]){const held=operations.get(command.commandId);operations.set(command.commandId,{...held,...command,...(held?.state==='projected'?{state:'projected'}:{})})}

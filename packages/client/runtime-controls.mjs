@@ -16,16 +16,16 @@ export function ProviderBadge({store}){
   return providerBadgeKind(state.current?.provider)==='zcode'?h(ZBadge):h(WhaleBadge);
 }
 /** Read-only per-session runtime display for the composer tool row. Native sessions show DSH;
- * mirrored ZCode sessions show the locked runtime and the D4 shared-GUI hint. */
+ * mirrored ZCode sessions show the creation-locked runtime. The D4 shared-GUI caution is a
+ * send-time notice in the lifecycle dock, never a standing claim about the official GUI. */
 export function RuntimeLockedLabel({controls,sessionId}){
   useSyncExternalStore(controls.subscribe,controls.getSnapshot,controls.getSnapshot);
   useEffect(()=>{void controls.info(sessionId).catch(()=>{})},[controls,sessionId]);
   const info=controls.infos.get(sessionId);
   if(!info)return null;
   if(info.runtime==='native')return h('span',{ 'data-zcode-runtime-locked':'native',title:'DSH native runtime'},'DSH');
-  return h('span',{'data-zcode-runtime-locked':'zcode',role:'group','aria-label':'ZCode runtime',style:{display:'inline-flex',gap:6,alignItems:'center'}},[
+  return h('span',{'data-zcode-runtime-locked':'zcode',role:'group','aria-label':'ZCode runtime',title:'本会话运行时已锁定为 ZCode（创建时选择，不可切换）'},[
     h('span',{key:'label'},'ZCode · locked'),
-    h('span',{key:'hint',role:'note',style:{color:'var(--dsw-alias-label-secondary)'}},info.hint??'官方 GUI 可能正在运行本会话'),
     info.bindingHint?h('span',{key:'binding',role:'note','data-zcode-binding-hint':'',style:{color:'var(--dsw-alias-label-warning, var(--dsw-alias-label-secondary))'}},info.bindingHint):null,
   ]);
 }
@@ -47,7 +47,7 @@ export function RuntimeLifecycleDock({controls,sessionId}){
     h('div',{key:'state',role:'status','data-zcode-connection':state.status},state.reason?`ZCode 不可用：${state.reason}；自动恢复后刷新官方状态`:`ZCode：${state.control?.phase??state.status} · ${state.control?.activeWorks?.length??0} 个活动任务`),
     h('button',{key:'stop',type:'button','aria-label':'Stop ZCode',disabled:!ready||!state.control?.canStop,onClick:()=>void act('cancel')},state.control?.stopState==='stopping'?'正在停止':'停止 ZCode'),
     h('div',{key:'queue','data-zcode-queue':'',role:'group','aria-label':'Official ZCode queue'},[
-      h('span',{key:'label'},`官方队列：${state.queue.items.length} · ${state.queue.autoDrain?'自动执行':`已暂停${state.queue.pauseReason?'：'+state.queue.pauseReason:''}`}`),
+      h('span',{key:'label'},`官方队列：${state.queue.items.length} · ${state.queue.autoDrain==null?'状态未知（未连接）':state.queue.autoDrain?'自动执行':`已暂停${state.queue.pauseReason?'：'+state.queue.pauseReason:''}`}`),
       ...state.queue.items.map(item=>h('div',{key:item.queueItemId,'data-zcode-queue-item':item.queueItemId},[
         h('span',{key:'text'},item.text),
         h('span',{key:'status',role:'status'},` · ${item.dispatch.state} · ${item.steer.state}`),
@@ -65,7 +65,9 @@ export function RuntimeLifecycleDock({controls,sessionId}){
       h('button',{key:'clear',type:'button',disabled:!ready,onClick:()=>void act('heldInput',{commandId:input.commandId,disposition:'clearQueueAndSend'})},'清空已确认队列并发送'),
       h('button',{key:'cancel',type:'button',disabled:busy,onClick:()=>void act('heldInput',{commandId:input.commandId,disposition:'cancel'})},'取消确认'),
     ])),
-    ...receipts.map(receipt=>h('div',{key:receipt.commandId,role:receipt.receiptClass==='rejected'?'alert':'status','data-zcode-receipt':receipt.receiptClass,'data-zcode-command':receipt.commandId},`${RECEIPTS[receipt.receiptClass]??receipt.receiptClass}${receipt.reason?'：'+receipt.reason:''}`)),
+    ...(receipts.length?receipts.map(receipt=>h('div',{key:receipt.commandId,role:receipt.receiptClass==='rejected'?'alert':'status','data-zcode-receipt':receipt.receiptClass,'data-zcode-command':receipt.commandId},`${RECEIPTS[receipt.receiptClass]??receipt.receiptClass}${receipt.reason?'：'+receipt.reason:''}`)):[]),
+    // D4-a send-time caution: scoped to an in-flight send, never a standing claim about the official GUI.
+    receipts.some(receipt=>receipt.type==='sendText'&&receipt.receiptClass==='pending')?h('div',{key:'shared-gui-caution',role:'note','data-zcode-shared-gui-caution':''},'已允许发送：官方 GUI 可能正在运行本会话，结果以官方回执为准。'):null,
     error?h('div',{key:'error',role:'alert'},error):null,
   ]);
 }
