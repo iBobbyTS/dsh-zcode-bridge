@@ -1,8 +1,8 @@
-export const ROUTE_B_READ_CALLS=Object.freeze(['oauth.restoreCachedSessionState','oauth.getActiveProvider','oauth.getProviders','provider-settings.getView','setting.get','zcode-task.listTasks','zcode-task.listPinnedTasks','zcode-task.getTaskMeta','zcode-agent.listSessions','zcode-agent.getAppUsageStats','zcode-agent.getTaskTokenUsage']);
-// S04 unlocks exactly one write dispatch (a new bridge-owned session plus one minimal prompt). These
+export const LIVE_HTTP_READ_CALLS=Object.freeze(['oauth.restoreCachedSessionState','oauth.getActiveProvider','oauth.getProviders','provider-settings.getView','setting.get','zcode-task.listTasks','zcode-task.listPinnedTasks','zcode-task.getTaskMeta','zcode-agent.listSessions','zcode-agent.getAppUsageStats','zcode-agent.getTaskTokenUsage']);
+// Minimal turn unlocks exactly one write dispatch (a new bridge-owned session plus one minimal prompt). These
 // calls are tracked in their own ledger and are never part of the read-only observation comparison.
-export const ROUTE_B_SEND_CALLS=Object.freeze(['zcode-task.createTask','zcode-task.sendPrompt']);
-export const ROUTE_B_ALLOWED_CALLS=Object.freeze([...ROUTE_B_READ_CALLS,...ROUTE_B_SEND_CALLS]);
+export const LIVE_HTTP_SEND_CALLS=Object.freeze(['zcode-task.createTask','zcode-task.sendPrompt']);
+export const LIVE_HTTP_ALLOWED_CALLS=Object.freeze([...LIVE_HTTP_READ_CALLS,...LIVE_HTTP_SEND_CALLS]);
 export function usageProjection(value){
   if(value?.source!=='agent-db'||!Array.isArray(value.models))throw Error('usage-observation-invalid');
   const keys=['totalTokens','inputTokens','outputTokens','totalSessions','totalTurns','toolCallCount'];
@@ -18,7 +18,7 @@ export function compareObservation(before,after){
   const key=t=>JSON.stringify([t.workspaceIdentity??t.workspacePath,t.taskId]);
   const known=new Map(before.tasks.map(t=>[key(t),t]));
   const newRuns=after.tasks.filter(t=>!known.has(key(t))||(t.status==='running'&&(known.get(key(t)).status!=='running'||t.traceId!==known.get(key(t)).traceId)));
-  const whitelistUnchanged=before.rpc.every(c=>ROUTE_B_READ_CALLS.includes(c))&&after.rpc.every(c=>ROUTE_B_READ_CALLS.includes(c));
+  const whitelistUnchanged=before.rpc.every(c=>LIVE_HTTP_READ_CALLS.includes(c))&&after.rpc.every(c=>LIVE_HTTP_READ_CALLS.includes(c));
   return {pass:usageUnchanged&&newRuns.length===0&&whitelistUnchanged,usageUnchanged,newRunCount:newRuns.length,whitelistUnchanged,reason:!usageUnchanged?'shared-usage-changed-attribution-unknown':newRuns.length?'shared-task-new-run-observed':!whitelistUnchanged?'rpc-whitelist-violated':null};
 }
 export function authProjection(cached,active,view){

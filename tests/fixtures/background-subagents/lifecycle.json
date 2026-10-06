@@ -1,0 +1,419 @@
+{
+  "provenance": {
+    "kind": "official-envelope-with-injected-work-keys",
+    "envelopeSource": "tests/fixtures/transport-v4/success.json (real official snapshot/ACK)",
+    "injection": "backgroundWorks and subagents state keys are injected; no real background task or subagent was started (0 model calls)",
+    "officialVersion": "3.14.4",
+    "officialSha256": "fad4c35c4c36ec210d8a06d3fa0e77de23c8545e2eb6ff90aea1eb38d1e6275f"
+  },
+  "ack": {
+    "ack": {
+      "subscriptionId": "fixture-subscription",
+      "mode": "snapshot",
+      "logEpoch": "musegv3e-mrqoweve",
+      "openTiming": {
+        "version": 1,
+        "initialFrameEncodeMs": 0,
+        "sessionRuntimeState": "warm",
+        "snapshotRowCount": 0
+      }
+    }
+  },
+  "initial": {
+    "wireVersion": 3,
+    "kind": "complete",
+    "deliveryKind": "initial",
+    "logicalFrameId": "subagents-initial",
+    "logicalFrameOrdinal": 1,
+    "topic": "conversation/fixture-session",
+    "subscriptionId": "fixture-subscription",
+    "frame": {
+      "topic": "conversation/fixture-session",
+      "subscriptionId": "fixture-subscription",
+      "sentAt": 1791032434539,
+      "fromSeq": 0,
+      "toSeq": 0,
+      "payload": {
+        "kind": "snapshot",
+        "snapshot": {
+          "protocolVersion": 1,
+          "sessionId": "fixture-session",
+          "logEpoch": "musegv3e-mrqoweve",
+          "seq": 0,
+          "revision": 0,
+          "control": {
+            "phase": "draft",
+            "sessionEnded": false,
+            "canStop": false,
+            "stopState": "idle",
+            "stopTargetKind": "unknown",
+            "activeWorks": [],
+            "lastError": null,
+            "apiRetry": null
+          },
+          "availability": {
+            "fork": {
+              "allowed": false,
+              "reasonCode": "forkTargetNotStable"
+            },
+            "compact": {
+              "allowed": false,
+              "reasonCode": "idleCannotCompact"
+            },
+            "switchModelConfig": {
+              "allowed": true
+            },
+            "setFollowupMode": {
+              "allowed": true
+            },
+            "queueEdit": {
+              "allowed": true
+            },
+            "sendQueuedNow": {
+              "allowed": false,
+              "reasonCode": "sendQueuedNowRequiresRunning"
+            },
+            "pauseGoal": {
+              "allowed": false,
+              "reasonCode": "noGoalToPause"
+            },
+            "resumeGoal": {
+              "allowed": false,
+              "reasonCode": "noGoalToResume"
+            }
+          },
+          "inputRouting": {
+            "mode": "startNow"
+          },
+          "meta": {
+            "title": "",
+            "titleSource": "default"
+          },
+          "config": {
+            "provider": "deepseek",
+            "model": "deepseek-flash",
+            "thought": "max",
+            "thoughtLevels": [
+              "disabled",
+              "low",
+              "high",
+              "max"
+            ],
+            "followupMode": "queue",
+            "mode": "build",
+            "modelSelection": {
+              "providerId": "deepseek",
+              "modelId": "deepseek-flash",
+              "options": {
+                "reasoningLevel": "max"
+              }
+            },
+            "planEnabled": false
+          },
+          "modelTransition": null,
+          "usage": {
+            "contextWindow": null,
+            "cumulative": {
+              "inputTokens": 0,
+              "outputTokens": 0,
+              "cacheReadTokens": 0,
+              "cacheWriteTokens": 0
+            }
+          },
+          "queue": {
+            "items": [],
+            "autoDrain": true
+          },
+          "pendingInteractions": [],
+          "pendingCommands": [],
+          "backgroundWorks": [
+            {
+              "workId": "subagents-work-bash",
+              "kind": "bash",
+              "title": "background bash",
+              "status": "running",
+              "startedAt": 1735689600000,
+              "cancellable": true,
+              "blocked": false,
+              "anchorRowId": null
+            },
+            {
+              "workId": "subagents-work-subagent",
+              "kind": "subagent",
+              "title": "background subagent",
+              "status": "running",
+              "startedAt": 1735689600000,
+              "cancellable": true,
+              "blocked": false,
+              "anchorRowId": null,
+              "childSessionId": "subagents-child-session"
+            }
+          ],
+          "subagents": {
+            "revision": 0,
+            "childSessionIds": [
+              "subagents-child-session"
+            ],
+            "running": [
+              {
+                "childSessionId": "subagents-child-session",
+                "agentId": "subagents-agent",
+                "toolCallId": "subagents-tool-call",
+                "subagentType": "general",
+                "title": "background subagent",
+                "status": "running",
+                "startedAt": 1735689600000
+              }
+            ],
+            "endedTotal": 0
+          },
+          "goal": null,
+          "plan": null,
+          "workspaceHookAdmission": null,
+          "rows": {
+            "window": [],
+            "totalCount": 0,
+            "firstRowId": null
+          }
+        }
+      }
+    }
+  },
+  "cancelled": {
+    "wireVersion": 3,
+    "kind": "complete",
+    "deliveryKind": "online",
+    "logicalFrameId": "subagents-bash-cancelled",
+    "logicalFrameOrdinal": 2,
+    "topic": "conversation/fixture-session",
+    "subscriptionId": "fixture-subscription",
+    "frame": {
+      "topic": "conversation/fixture-session",
+      "subscriptionId": "fixture-subscription",
+      "sentAt": 1791032434691,
+      "fromSeq": 0,
+      "toSeq": 1,
+      "payload": {
+        "kind": "deltas",
+        "deltas": [
+          {
+            "op": "state.updated",
+            "patch": {
+              "backgroundWorks": [
+                {
+                  "workId": "subagents-work-bash",
+                  "kind": "bash",
+                  "title": "background bash",
+                  "status": "cancelled",
+                  "startedAt": 1735689600000,
+                  "cancellable": false,
+                  "blocked": false,
+                  "anchorRowId": null,
+                  "endedAt": 1735689601000
+                },
+                {
+                  "workId": "subagents-work-subagent",
+                  "kind": "subagent",
+                  "title": "background subagent",
+                  "status": "running",
+                  "startedAt": 1735689600000,
+                  "cancellable": true,
+                  "blocked": false,
+                  "anchorRowId": null,
+                  "childSessionId": "subagents-child-session"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  },
+  "subagentSettled": {
+    "wireVersion": 3,
+    "kind": "complete",
+    "deliveryKind": "online",
+    "logicalFrameId": "subagents-settled",
+    "logicalFrameOrdinal": 3,
+    "topic": "conversation/fixture-session",
+    "subscriptionId": "fixture-subscription",
+    "frame": {
+      "topic": "conversation/fixture-session",
+      "subscriptionId": "fixture-subscription",
+      "sentAt": 1791032434691,
+      "fromSeq": 1,
+      "toSeq": 2,
+      "payload": {
+        "kind": "deltas",
+        "deltas": [
+          {
+            "op": "state.updated",
+            "patch": {
+              "backgroundWorks": [
+                {
+                  "workId": "subagents-work-bash",
+                  "kind": "bash",
+                  "title": "background bash",
+                  "status": "cancelled",
+                  "startedAt": 1735689600000,
+                  "cancellable": false,
+                  "blocked": false,
+                  "anchorRowId": null,
+                  "endedAt": 1735689601000
+                },
+                {
+                  "workId": "subagents-work-subagent",
+                  "kind": "subagent",
+                  "title": "background subagent",
+                  "status": "resultPending",
+                  "startedAt": 1735689600000,
+                  "cancellable": false,
+                  "blocked": false,
+                  "anchorRowId": null,
+                  "childSessionId": "subagents-child-session",
+                  "endedAt": 1735689602000
+                }
+              ],
+              "subagents": {
+                "revision": 1,
+                "childSessionIds": [
+                  "subagents-child-session"
+                ],
+                "running": [],
+                "endedTotal": 1
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "laterWorkStarted": {
+    "wireVersion": 3,
+    "kind": "complete",
+    "deliveryKind": "online",
+    "logicalFrameId": "subagents-later-work",
+    "logicalFrameOrdinal": 4,
+    "topic": "conversation/fixture-session",
+    "subscriptionId": "fixture-subscription",
+    "frame": {
+      "topic": "conversation/fixture-session",
+      "subscriptionId": "fixture-subscription",
+      "sentAt": 1791032434691,
+      "fromSeq": 2,
+      "toSeq": 3,
+      "payload": {
+        "kind": "deltas",
+        "deltas": [
+          {
+            "op": "state.updated",
+            "patch": {
+              "backgroundWorks": [
+                {
+                  "workId": "subagents-work-bash",
+                  "kind": "bash",
+                  "title": "background bash",
+                  "status": "cancelled",
+                  "startedAt": 1735689600000,
+                  "cancellable": false,
+                  "blocked": false,
+                  "anchorRowId": null,
+                  "endedAt": 1735689601000
+                },
+                {
+                  "workId": "subagents-work-subagent",
+                  "kind": "subagent",
+                  "title": "background subagent",
+                  "status": "resultPending",
+                  "startedAt": 1735689600000,
+                  "cancellable": false,
+                  "blocked": false,
+                  "anchorRowId": null,
+                  "childSessionId": "subagents-child-session",
+                  "endedAt": 1735689602000
+                },
+                {
+                  "workId": "subagents-work-new",
+                  "kind": "bash",
+                  "title": "later unrelated work",
+                  "status": "running",
+                  "startedAt": 1735689603000,
+                  "cancellable": true,
+                  "blocked": false,
+                  "anchorRowId": null
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  },
+  "works": {
+    "bashWork": {
+      "workId": "subagents-work-bash",
+      "kind": "bash",
+      "title": "background bash",
+      "status": "running",
+      "startedAt": 1735689600000,
+      "cancellable": true,
+      "blocked": false,
+      "anchorRowId": null
+    },
+    "subagentWork": {
+      "workId": "subagents-work-subagent",
+      "kind": "subagent",
+      "title": "background subagent",
+      "status": "running",
+      "startedAt": 1735689600000,
+      "cancellable": true,
+      "blocked": false,
+      "anchorRowId": null,
+      "childSessionId": "subagents-child-session"
+    },
+    "bashCancelled": {
+      "workId": "subagents-work-bash",
+      "kind": "bash",
+      "title": "background bash",
+      "status": "cancelled",
+      "startedAt": 1735689600000,
+      "cancellable": false,
+      "blocked": false,
+      "anchorRowId": null,
+      "endedAt": 1735689601000
+    },
+    "subagentResultPending": {
+      "workId": "subagents-work-subagent",
+      "kind": "subagent",
+      "title": "background subagent",
+      "status": "resultPending",
+      "startedAt": 1735689600000,
+      "cancellable": false,
+      "blocked": false,
+      "anchorRowId": null,
+      "childSessionId": "subagents-child-session",
+      "endedAt": 1735689602000
+    },
+    "newWork": {
+      "workId": "subagents-work-new",
+      "kind": "bash",
+      "title": "later unrelated work",
+      "status": "running",
+      "startedAt": 1735689603000,
+      "cancellable": true,
+      "blocked": false,
+      "anchorRowId": null
+    }
+  },
+  "subagents": {
+    "running": {
+      "childSessionId": "subagents-child-session",
+      "agentId": "subagents-agent",
+      "toolCallId": "subagents-tool-call",
+      "subagentType": "general",
+      "title": "background subagent",
+      "status": "running",
+      "startedAt": 1735689600000
+    }
+  }
+}

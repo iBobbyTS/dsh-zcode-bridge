@@ -1,4 +1,4 @@
-// S02 migration: native DSH retains transcript subscriptions. Runtime controls invalidate only
+// Session migration: native DSH retains transcript subscriptions. Runtime controls invalidate only
 // their own advisory receipts at a connection generation boundary and reject late projections.
 import {test} from 'node:test';import assert from 'node:assert/strict';
 import {RuntimeControls} from '../packages/client/runtime.mjs';

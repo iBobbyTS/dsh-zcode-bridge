@@ -10,12 +10,12 @@
  * fixtures without a running official runtime.
  */
 
-/** Bridge bundle version. Kept in sync with package.json / bridge-bundle.json by the S16 checks. */
+/** Bridge bundle version. Kept in sync with package.json / bridge-bundle.json by the bundle checks. */
 export const BRIDGE_VERSION = '0.1.0';
 export const BRIDGE_PLUGIN_VERSIONS = Object.freeze({ host: '0.1.0', client: '0.1.0' });
 
 /**
- * Actually verified official ZCode tuples. The first entry is the S01 measured baseline:
+ * Actually verified official ZCode tuples. The first entry is the official runtime install measured baseline:
  * App 3.14.4 / build 3.14.4.7912, cjs SHA-256 fad4c35c…6275f, launched through the App's own
  * Helper in restricted headless mode (auth source unavailable). Scope is recorded honestly;
  * this is not a claim of full runtime parity.
@@ -27,7 +27,7 @@ export const VERIFIED_VERSIONS = Object.freeze([
     build: '3.14.4.7912',
     bundleSha256: 'fad4c35c4c36ec210d8a06d3fa0e77de23c8545e2eb6ff90aea1eb38d1e6275f',
     verifiedAt: '2026-10-02',
-    evidence: 'S01 official headless capture: PlistBundler version/build + cjs SHA-256 + Helper launch',
+    evidence: 'Official headless capture: PlistBundler version/build + cjs SHA-256 + Helper launch',
     scope: 'restricted: official session/list read only; official auth source unavailable',
   }),
 ]);

@@ -1,0 +1,25 @@
+{
+  "provenance": {
+    "kind": "injected-from-official-schema",
+    "injected": [
+      "progress notifications"
+    ],
+    "note": "plugins/operationProgress official schema is {operationId,state:\"refreshing\"}"
+  },
+  "refreshing": {
+    "operationId": "catalog-op-1",
+    "state": "refreshing"
+  },
+  "late": {
+    "operationId": "catalog-op-1",
+    "state": "refreshing"
+  },
+  "unknownOperation": {
+    "operationId": "catalog-never-created",
+    "state": "refreshing"
+  },
+  "invalid": {
+    "operationId": "catalog-op-1",
+    "state": "downloading"
+  }
+}

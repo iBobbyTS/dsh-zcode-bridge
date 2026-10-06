@@ -15,7 +15,7 @@ export function historyAllowed(state, row, type) {
   return action ? row.actions?.[action] === true : false;
 }
 /**
- * Official editUserQuery admits "text or retained attachment" (same rule as the S07 input submission):
+ * Official editUserQuery admits "text or retained attachment" (same rule as the attachments input submission):
  * omitting `attachments` keeps the canonical input's attachments, so an empty edited text is a valid
  * attachment-only edit. Guards (admission, canEdit, CAS) stay outside this helper.
  */

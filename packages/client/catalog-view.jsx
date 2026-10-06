@@ -11,7 +11,7 @@ export const catalogLocales={en:{
   enable:'启用',disable:'禁用',install:'安装',uninstall:'卸载',update:'更新',configure:'配置',resetConfig:'重置配置',addMarketplace:'添加市场',updateMarketplace:'刷新',removeMarketplace:'移除',validate:'校验',describe:'详情',restoreBuiltin:'恢复内置插件',cancel:'取消',pending:'等待官方结果',completed:'官方结果',failed:'官方操作失败',cancelled:'已取消',verifyAndInstall:'校验并安装',pluginName:'插件名',marketplace:'市场',scope:'作用域',source:'市场来源',options:'配置项（JSON）',dryRun:'试运行',unknownKind:'未识别的官方条目',noOperations:'尚无管理操作。',components:'组件',compatibility:'兼容性',ok:'有效',invalid:'无效'
 }};
 const fallback=key=>catalogLocales.en[key];
-const newOpId=()=>globalThis.crypto?.randomUUID?.()??`s09-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+const newOpId=()=>globalThis.crypto?.randomUUID?.()??`catalog-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 const rowText=(code,message)=>message?`${code}: ${message}`:code;
 const statusLine=status=>`${status.status}${status.failureKind?` · ${status.failureKind}`:''}${status.authorization?` · oauth:${status.authorization.type}`:''}${status.toolCount!==undefined?` · ${status.toolCount} tools`:''}`;
 

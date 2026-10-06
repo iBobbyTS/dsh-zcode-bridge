@@ -1,4 +1,4 @@
-// S04: the single bridge-owned model turn. This is a one-shot, explicitly bounded dispatch:
+// The single bridge-owned model turn. This is a one-shot, explicitly bounded dispatch:
 // it creates exactly one new official session inside the bridge's own scratch workspace and sends
 // exactly one minimal prompt. It never targets a caller-supplied session, never resumes or closes a
 // session, and never retries. The claim is recorded before the first side effect so a crash or a

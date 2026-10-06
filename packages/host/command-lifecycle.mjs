@@ -6,7 +6,7 @@ const unresolved=new Set(['prepared','dispatching','sent-unconfirmed','outcome-u
 export class CommandLifecycle {
   constructor(record){
     this.record=record;record.operations??={};
-    // Migrate the first S02 candidate's single pending carrier without losing its identity.
+    // Migrate the first session-create candidate's single pending carrier without losing its identity.
     if(record.pending?.commandId&&!record.operations[record.pending.commandId])record.operations[record.pending.commandId]={...record.pending,state:'outcome-unknown'};
     delete record.pending;
   }

@@ -1,0 +1,158 @@
+{
+  "provenance": {
+    "kind": "real-capture-derived",
+    "source": "official.json",
+    "injected": [
+      "failure-result-marked-as-official-diagnostics"
+    ]
+  },
+  "cancelUnknown": {
+    "operationId": "catalog-management-never-created",
+    "cancelled": false
+  },
+  "installFailure": {
+    "installedPlugins": [],
+    "dependencyClosure": [],
+    "diagnostics": [
+      {
+        "code": "plugin_dependency_missing",
+        "message": "Dependency not found: catalog-management-missing-plugin@catalog-management-local required by catalog-management-missing-plugin@catalog-management-local",
+        "severity": "error",
+        "pluginId": "catalog-management-missing-plugin@catalog-management-local"
+      }
+    ]
+  },
+  "install": {
+    "installedPlugins": [
+      {
+        "id": "catalog-demo@catalog-management-local",
+        "name": "catalog-demo",
+        "marketplace": "catalog-management-local",
+        "version": "1.0.0",
+        "enabled": true,
+        "scope": "user",
+        "installPath": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/catalog-management-local/catalog-demo/1.0.0",
+        "installedAt": "2026-10-04T00:53:09.477Z"
+      }
+    ],
+    "dependencyClosure": [
+      "catalog-demo@catalog-management-local"
+    ],
+    "diagnostics": []
+  },
+  "setDisabled": {
+    "plugin": {
+      "id": "catalog-demo@catalog-management-local",
+      "name": "catalog-demo",
+      "description": "Catalog synthetic capture plugin",
+      "version": "1.0.0",
+      "enabled": false,
+      "source": "cache",
+      "marketplace": "catalog-management-local",
+      "author": "bridge-catalog",
+      "skillCount": 1,
+      "skillRootCount": 1,
+      "commandRootCount": 0,
+      "components": [
+        {
+          "kind": "skill",
+          "items": [
+            {
+              "name": "catalog-demo-skill"
+            }
+          ]
+        }
+      ],
+      "declaredMcpServerNames": [],
+      "mcpServerNames": [],
+      "hookDetails": [],
+      "rootPath": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/catalog-management-local/catalog-demo/1.0.0",
+      "enabledSource": "workspace"
+    },
+    "enabled": false
+  },
+  "configure": {
+    "pluginId": "catalog-demo@catalog-management-local",
+    "diagnostics": []
+  },
+  "uninstall": {
+    "removedPlugin": {
+      "id": "catalog-demo@catalog-management-local",
+      "name": "catalog-demo",
+      "marketplace": "catalog-management-local",
+      "version": "1.0.0",
+      "enabled": false,
+      "scope": "user",
+      "installPath": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/catalog-management-local/catalog-demo/1.0.0",
+      "installedAt": "2026-10-04T00:53:09.477Z"
+    },
+    "diagnostics": []
+  },
+  "marketplaceAdd": {
+    "marketplace": {
+      "id": "catalog-management-local",
+      "name": "catalog-management-local",
+      "source": {
+        "source": "directory",
+        "path": "/fixture/catalog-management-workspace/local-marketplace"
+      },
+      "description": "Catalog synthetic local marketplace",
+      "lastUpdated": "2026-10-04T00:53:09.335Z",
+      "pluginCount": 1,
+      "isOfficial": false
+    },
+    "diagnostics": []
+  },
+  "restoreBuiltin": {
+    "pluginId": "browser-use@zcode-plugins-official",
+    "diagnostics": []
+  },
+  "describe": {
+    "components": [
+      {
+        "kind": "skill",
+        "items": [
+          {
+            "name": "catalog-demo-skill"
+          }
+        ]
+      }
+    ],
+    "metadata": {
+      "author": "bridge-catalog",
+      "version": "1.0.0"
+    }
+  },
+  "operations": [
+    {
+      "operation": "marketplaceAdd",
+      "operationId": "catalog-op-add",
+      "state": "completed",
+      "progress": []
+    },
+    {
+      "operation": "install",
+      "operationId": "catalog-op-install",
+      "state": "completed",
+      "progress": []
+    },
+    {
+      "operation": "setEnabled",
+      "operationId": "catalog-op-disable",
+      "state": "completed",
+      "progress": []
+    },
+    {
+      "operation": "setEnabled",
+      "operationId": "catalog-op-enable",
+      "state": "completed",
+      "progress": []
+    },
+    {
+      "operation": "install",
+      "operationId": "catalog-op-install-fail",
+      "state": "completed",
+      "progress": []
+    }
+  ]
+}

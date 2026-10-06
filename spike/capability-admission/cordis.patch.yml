@@ -1,0 +1,4 @@
+# Capability admission spike bundle. Inserted into a throwaway web profile only.
+- insert:
+    - id: capability-admission-spike
+      name: '@dsh-zcode/capability-admission'

@@ -1,5 +1,5 @@
 // Real-acceptance DSH web instance: OFFICIAL build copy (never reference/), real bridge plugin
-// via the real plugin manager, Route-B launcher against the installed ZCode app (3.14.4).
+// via the real plugin manager, live-http launcher against the installed ZCode app (3.14.4).
 // Only the official Host touches the real HOME; the 103-byte socket rule keeps the short root.
 import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import { resolve, join } from 'node:path';
@@ -21,7 +21,7 @@ const must = p => { if (!existsSync(p)) throw Error('missing prerequisite: ' + p
 const base = join(parent, '.agent-work/tmp/host-reuse-probe');
 const scratchRoot = process.env.DSH_TMP_SCRATCH ?? '/private/tmp/dshw/ls';
 const launcher = {
-  mode: 'route-b', scratchRoot, runId: 'web-' + Date.now().toString(36),
+  mode: 'live-http', scratchRoot, runId: 'web-' + Date.now().toString(36),
   artifactRoot: must(join(base, 'official-extracted')),
   electronPath: must(join(base, 'node_modules/electron/dist/Electron.app/Contents/MacOS/Electron')),
   builtinConfig: must('/Applications/ZCode.app/Contents/Resources/config/provider/zcode-builtin.json'),
@@ -39,7 +39,7 @@ writeFileSync(join(profile, 'cordis.patch.yml'), JSON.stringify([
   { id: 'zcode-bridge-host', config: { authorityMode: 'host-backed', launcher } },
 ], null, 2));
 
-console.log(JSON.stringify({ tmpRoot, profile, baseURL: 'http://127.0.0.1:' + port, note: 'official Route-B runtime; isolated DSH profile; startup issues no prompts' }));
+console.log(JSON.stringify({ tmpRoot, profile, baseURL: 'http://127.0.0.1:' + port, note: 'official live-http runtime; isolated DSH profile; startup issues no prompts' }));
 const child = spawn(process.execPath, [cli, 'web', '--no-open', '--port', port], { cwd: workspace, env: { ...process.env, DSH_HOME: dshHome }, stdio: 'inherit' });
 writeFileSync(join(tmpRoot, 'server-pid.json'), JSON.stringify({ supervisorPid: process.pid, cliPid: child.pid, baseURL: 'http://127.0.0.1:' + port, launcherScratch: scratchRoot, launcherRunId: launcher.runId }, null, 2));
 for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => child.kill(signal));

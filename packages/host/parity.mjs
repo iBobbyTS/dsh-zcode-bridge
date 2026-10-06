@@ -5,7 +5,7 @@ import { zcodeWorkspacePresentationSchema } from './vendor/zcode/v4.mjs';
 import { requestWorkflow } from './workflow.mjs';
 const fault=code=>Object.assign(new Error(code),{code,sent:false});
 const deletion=new Set(['delete','uninstall','marketplaceRemove']);
-/** S06 routing owner. Rebuild clients after each transport generation, retaining no unknown
+/** Routing owner. Rebuild clients after each transport generation, retaining no unknown
  * capability denial. Workspace/session addresses are resolved from registered mirror records. */
 export class ParityService {
   clients=new Map();
@@ -68,7 +68,7 @@ export class ParityService {
       return {presentations};
     }
     if(domain==='preferences'&&['read','update'].includes(operation))return peer.request('bridge/preferences/'+operation,{...params,workspace},{signal});
-    // Conversation resources/control stay with S04's projection, target admission and command ledger.
+    // Conversation resources/control stay with the projection, target admission and command ledger.
     if(['command','attachment','snapshot','history'].includes(domain)){
       const agent=this.runtime.agents.get(sessionId);if(!agent||!record?.officialId)throw fault('official-session-required');
       agent.touch();await agent.connect();if(!await agent.whenProjectionReady())throw fault('projection-unconfirmed');if(signal?.aborted)throw fault('cancelled');
@@ -94,7 +94,7 @@ export class ParityService {
              !params.expectedHeldQueueItemIds.every((id,index)=>id===heldQueue.items[index].queueItemId))throw fault('held-queue-confirmation-stale');
         }
         const result=await agent.submitControl({type:kind,payload:params,baseRevision:payload.baseRevision,baseLogEpoch:payload.baseLogEpoch,heldQueue,signal});
-        // submitControl uses the durable S04 receipt owner; ACK is never projected as execution.
+        // submitControl uses the durable receipt owner; ACK is never projected as execution.
         return result;
       }
       const methods={start:'attachmentStart',chunk:'attachmentChunk',commit:'attachmentCommit',abort:'attachmentAbort',read:'attachmentRead',stat:'conversationAttachmentStat',conversationRead:'conversationAttachmentRead',preview:'attachmentPreviewSource'};

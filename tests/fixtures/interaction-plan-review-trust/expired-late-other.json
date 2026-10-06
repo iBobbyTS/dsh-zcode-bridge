@@ -1,0 +1,28 @@
+{
+  "provenance": {
+    "source": "tests/fixtures/transport-v4/official.json",
+    "runtimeSha256": "fad4c35c4c36ec210d8a06d3fa0e77de23c8545e2eb6ff90aea1eb38d1e6275f",
+    "paidModelCalls": 0,
+    "kind": "official-response-codes",
+    "changes": [
+      "Official reason codes for alreadyResolved, workspace_hooks_require_trust_capable_host, and workspace_hooks_snapshot_mismatch"
+    ]
+  },
+  "responses": {
+    "alreadyResolved": {
+      "status": "noop",
+      "reasonCode": "proto.alreadyResolved",
+      "revisionAtDecision": 1
+    },
+    "hookHostUnsupported": {
+      "status": "rejected",
+      "reasonCode": "workspace_hooks_require_trust_capable_host",
+      "revisionAtDecision": 1
+    },
+    "hookMismatch": {
+      "status": "rejected",
+      "reasonCode": "workspace_hooks_snapshot_mismatch",
+      "revisionAtDecision": 1
+    }
+  }
+}

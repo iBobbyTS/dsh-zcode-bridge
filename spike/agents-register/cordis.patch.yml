@@ -1,0 +1,4 @@
+# Agents-register probe bundle. Inserted into a throwaway web profile only.
+- insert:
+    - id: agents-register
+      name: '@dsh-zcode/agents-register'

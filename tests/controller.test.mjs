@@ -34,7 +34,7 @@ test('auto-connect runs one attempt per connection generation and never loops af
 });
 test('auto-connect is suppressed while the official runtime is already connected',async()=>{
  const calls=[];
- const c=new StatusController({call:async(_channel,endpoint)=>{calls.push(endpoint);return {ok:true,value:{state:'authenticated',reason:'route-b-authenticated-read-only',connected:true}}}},{subscribe:()=>()=>{}});
+ const c=new StatusController({call:async(_channel,endpoint)=>{calls.push(endpoint);return {ok:true,value:{state:'authenticated',reason:'live-http-authenticated-read-only',connected:true}}}},{subscribe:()=>()=>{}});
  try{
   c.start();await settle();
   assert.deepEqual(calls,['status']);

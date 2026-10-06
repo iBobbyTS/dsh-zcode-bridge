@@ -1,0 +1,25 @@
+{
+  "provenance": {
+    "source": "tests/fixtures/transport-v4/official.json",
+    "runtimeSha256": "fad4c35c4c36ec210d8a06d3fa0e77de23c8545e2eb6ff90aea1eb38d1e6275f",
+    "paidModelCalls": 0,
+    "kind": "fail-safe-unknown-kind",
+    "changes": [
+      "Unrecognized interaction kind unrecognizedAutonomousTelemetryGate to verify non-crashing fail-safe behavior"
+    ]
+  },
+  "interaction": {
+    "interactionId": "unk-system-gate-99",
+    "kind": "unrecognizedAutonomousTelemetryGate",
+    "anchorRowId": null,
+    "createdAt": 1700000030000,
+    "payload": {
+      "kind": "unrecognizedAutonomousTelemetryGate",
+      "channel": "telemetry-experimental",
+      "parameters": {
+        "sampleRate": 0.25,
+        "encryptedPayload": "hex7f3e8b"
+      }
+    }
+  }
+}

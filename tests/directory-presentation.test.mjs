@@ -8,7 +8,7 @@ test('task catalog keeps pinned membership, removes deleted rows and merges over
   const rows=projectTaskCatalog([task,{...task,taskId:'deleted',deleted:true}],[task,{...task,workspacePath:'/two'}]);
   assert.equal(rows.length,2);assert.ok(rows.every(row=>row.pinned&&row.titleOverridden));
   assert.deepEqual(rows.map(row=>row.workspacePath),['/one','/two']);
-  assert.throws(()=>projectTaskCatalog({},[]),/route-b-tasks-invalid/);
+  assert.throws(()=>projectTaskCatalog({},[]),/live-http-tasks-invalid/);
 });
 
 test('318 unsorted tasks page after pinned-first updated DESC sorting and workspace partitioning',()=>{

@@ -1,4 +1,4 @@
-// Verified against reference 29628c9 and official 3.14.4.7912 (S15).
+// Verified against reference 29628c9 and official 3.14.4.7912 (remote workspace).
 // These are outer-host carriers, NOT methods to forward to the NDJSON app-server.
 const desktop = [
   ['connect', 'zcode:connect-remote'],

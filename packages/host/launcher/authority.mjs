@@ -12,7 +12,7 @@ export class HostAuthority {
     const adapter=new EventEmitter();adapter.postMessage=m=>child.postMessage(m);let database=null;
     const onMessage=m=>{
       if(m?.type==='database-startup-state'){database=projectDatabase(m.state);this.onDatabase?.(hostId,database);return}
-      // Session routing can initiate work; it remains explicitly disabled until S03.
+      // Session routing can initiate work; it remains explicitly disabled.
       if(['task-run-lease-acquire','task-run-lease-release','task-owner-command-request','task-owner-command-result','task-realtime-publish','task-stream-op-publish'].includes(m?.type))adapter.emit('message',m);
     };
     const onExit=()=>this.unregister(hostId);
@@ -32,13 +32,13 @@ export class HostAuthority {
     this.#bus.unregisterHost(hostId);h.child.off('message',h.onMessage);h.child.off('exit',h.onExit);this.#hosts.delete(hostId);
   }
   owns(hostId,task){return !!task&&[...this.#bus.leases.values()].some(l=>l.ownerHostId===hostId&&l.taskId===task.taskId&&l.workspacePath===task.workspacePath&&(l.workspaceIdentity??l.workspacePath)===(task.workspaceIdentity??task.workspacePath));}
-  login(){throw fault('login-disabled-s03')}
+  login(){throw fault('login-host-managed')}
   registerOAuthState(){return this.login()}
   handleOAuthDeepLink(){return this.login()}
   openOAuthBrowser(){return this.login()}
-  controlDatabaseStartup(){throw fault('database-control-disabled-s02')}
+  controlDatabaseStartup(){throw fault('database-control-host-managed')}
   database(hostId){return this.#hosts.get(hostId)?.database()??null}
-  get diagnostics(){return {...this.#bus.collectMemoryDiagnostics(),hosts:this.#hosts.size,pendingOwnerCommands:this.#bus.pendingOwnerCommands.size,seenEventIds:this.#bus.seenEventIds.size,sharedOfficialMain:'NO-GO',login:'disabled-s03',sessionRouting:'disabled-s03'}}
+  get diagnostics(){return {...this.#bus.collectMemoryDiagnostics(),hosts:this.#hosts.size,pendingOwnerCommands:this.#bus.pendingOwnerCommands.size,seenEventIds:this.#bus.seenEventIds.size,sharedOfficialMain:'NO-GO',login:'disabled-host-managed',sessionRouting:'disabled-host-managed'}}
   dispose(){if(this.#closed)return;this.#closed=true;for(const id of this.#hosts.keys())this.unregister(id);
     // Reference bus is app-lifetime and keeps replay buffers after unregister. Our launcher
     // has a shorter lifetime: cancel each owned flush timer and release these retained buffers.
@@ -50,7 +50,7 @@ function projectDatabase(s){if(!s||typeof s!=='object')return null;const out={};
 
 /** Dispatch seam for a future provider transport. Never counts prompts or usage. There is no
  * public interceptor in the unmodified packaged Host; live installation is deliberately false.
- * S04 must NOT_RUN(cannot-enforce) until an actual per-request transport can be installed. */
+ * Minimal turn must NOT_RUN(cannot-enforce) until an actual per-request transport can be installed. */
 export class ProviderRequestGate {
   #limit;#sent=0;#blocked=0;
   constructor({limit=0}={}){if(!Number.isSafeInteger(limit)||limit<0)throw fault('request-limit-invalid');this.#limit=limit}

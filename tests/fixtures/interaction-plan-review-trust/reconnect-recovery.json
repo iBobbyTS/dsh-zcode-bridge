@@ -1,0 +1,453 @@
+{
+  "provenance": {
+    "source": "tests/fixtures/transport-v4/official.json",
+    "runtimeSha256": "fad4c35c4c36ec210d8a06d3fa0e77de23c8545e2eb6ff90aea1eb38d1e6275f",
+    "paidModelCalls": 0,
+    "kind": "reconnect-recovery-sequence",
+    "changes": [
+      "Pre-disconnect snapshot with pending interaction, post-reconnect snapshot recovering pending items with updated epoch/seq"
+    ]
+  },
+  "preDisconnect": {
+    "wireVersion": 3,
+    "kind": "complete",
+    "deliveryKind": "initial",
+    "logicalFrameId": "fixture-subscription-lf-1",
+    "logicalFrameOrdinal": 1,
+    "topic": "conversation/fixture-session",
+    "subscriptionId": "fixture-subscription",
+    "frame": {
+      "topic": "conversation/fixture-session",
+      "subscriptionId": "fixture-subscription",
+      "sentAt": 1791032434539,
+      "fromSeq": 0,
+      "toSeq": 0,
+      "payload": {
+        "kind": "snapshot",
+        "snapshot": {
+          "protocolVersion": 1,
+          "sessionId": "fixture-session",
+          "logEpoch": "musegv3e-mrqoweve",
+          "seq": 0,
+          "revision": 0,
+          "control": {
+            "phase": "draft",
+            "sessionEnded": false,
+            "canStop": false,
+            "stopState": "idle",
+            "stopTargetKind": "unknown",
+            "activeWorks": [],
+            "lastError": null,
+            "apiRetry": null
+          },
+          "availability": {
+            "fork": {
+              "allowed": false,
+              "reasonCode": "forkTargetNotStable"
+            },
+            "compact": {
+              "allowed": false,
+              "reasonCode": "idleCannotCompact"
+            },
+            "switchModelConfig": {
+              "allowed": true
+            },
+            "setFollowupMode": {
+              "allowed": true
+            },
+            "queueEdit": {
+              "allowed": true
+            },
+            "sendQueuedNow": {
+              "allowed": false,
+              "reasonCode": "sendQueuedNowRequiresRunning"
+            },
+            "pauseGoal": {
+              "allowed": false,
+              "reasonCode": "noGoalToPause"
+            },
+            "resumeGoal": {
+              "allowed": false,
+              "reasonCode": "noGoalToResume"
+            }
+          },
+          "inputRouting": {
+            "mode": "startNow"
+          },
+          "meta": {
+            "title": "",
+            "titleSource": "default"
+          },
+          "config": {
+            "provider": "deepseek",
+            "model": "deepseek-flash",
+            "thought": "max",
+            "thoughtLevels": [
+              "disabled",
+              "low",
+              "high",
+              "max"
+            ],
+            "followupMode": "queue",
+            "mode": "build",
+            "modelSelection": {
+              "providerId": "deepseek",
+              "modelId": "deepseek-flash",
+              "options": {
+                "reasoningLevel": "max"
+              }
+            },
+            "planEnabled": false
+          },
+          "modelTransition": null,
+          "usage": {
+            "contextWindow": null,
+            "cumulative": {
+              "inputTokens": 0,
+              "outputTokens": 0,
+              "cacheReadTokens": 0,
+              "cacheWriteTokens": 0
+            }
+          },
+          "queue": {
+            "items": [],
+            "autoDrain": true
+          },
+          "pendingInteractions": [
+            {
+              "interactionId": "q-multi-1",
+              "kind": "userInput",
+              "anchorRowId": null,
+              "createdAt": 1700000000000,
+              "autoResolution": {
+                "state": "visibleCountdown",
+                "startedAt": 1700000000000,
+                "visibleAt": 1700000000000,
+                "deadlineAt": 1700000060000
+              },
+              "payload": {
+                "kind": "userInput",
+                "prompt": "Production Deployment Configuration Questionnaire",
+                "freeText": true,
+                "questions": [
+                  {
+                    "question": "Select the deployment target environment:",
+                    "header": "Target Environment",
+                    "options": [
+                      {
+                        "value": "staging",
+                        "label": "Staging Cluster",
+                        "description": "Internal validation environment"
+                      },
+                      {
+                        "value": "production",
+                        "label": "Production Primary",
+                        "description": "User-facing production cluster"
+                      }
+                    ],
+                    "multiSelect": false
+                  },
+                  {
+                    "question": "Configure database migration strategy:",
+                    "header": "Migration Strategy",
+                    "options": [
+                      {
+                        "value": "dry-run",
+                        "label": "Dry Run Only",
+                        "description": "Validate schema syntax without mutation"
+                      },
+                      {
+                        "value": "backup-first",
+                        "label": "Automated Snapshot",
+                        "description": "Take point-in-time snapshot before migration"
+                      },
+                      {
+                        "value": "run-seed",
+                        "label": "Seed Baseline Data",
+                        "description": "Populate essential lookup tables"
+                      }
+                    ],
+                    "multiSelect": true
+                  },
+                  {
+                    "question": "Provide operator sign-off notes or execution tags:",
+                    "header": "Operator Notes",
+                    "options": [
+                      {
+                        "value": "standard-release",
+                        "label": "Standard Release",
+                        "description": "Regular scheduled deployment"
+                      },
+                      {
+                        "value": "hotfix",
+                        "label": "Emergency Hotfix",
+                        "description": "Urgent patch deployment"
+                      }
+                    ],
+                    "multiSelect": false
+                  }
+                ],
+                "currentQuestionIndex": 0,
+                "answerDrafts": {
+                  "answer_0": [
+                    "staging"
+                  ]
+                }
+              }
+            }
+          ],
+          "pendingCommands": [],
+          "backgroundWorks": [],
+          "subagents": {
+            "revision": 0,
+            "childSessionIds": [],
+            "running": [],
+            "endedTotal": 0
+          },
+          "goal": null,
+          "plan": null,
+          "workspaceHookAdmission": null,
+          "rows": {
+            "window": [],
+            "totalCount": 0,
+            "firstRowId": null
+          }
+        }
+      }
+    }
+  },
+  "preDisconnectAck": {
+    "ack": {
+      "subscriptionId": "fixture-subscription",
+      "mode": "snapshot",
+      "logEpoch": "musegv3e-mrqoweve",
+      "openTiming": {
+        "version": 1,
+        "initialFrameEncodeMs": 0,
+        "sessionRuntimeState": "warm",
+        "snapshotRowCount": 0
+      }
+    }
+  },
+  "postReconnect": {
+    "wireVersion": 3,
+    "kind": "complete",
+    "deliveryKind": "initial",
+    "logicalFrameId": "fixture-subscription-rec-lf-1",
+    "logicalFrameOrdinal": 1,
+    "topic": "conversation/fixture-session",
+    "subscriptionId": "fixture-subscription-rec",
+    "frame": {
+      "topic": "conversation/fixture-session",
+      "subscriptionId": "fixture-subscription-rec",
+      "sentAt": 1791032434539,
+      "fromSeq": 0,
+      "toSeq": 10,
+      "payload": {
+        "kind": "snapshot",
+        "snapshot": {
+          "protocolVersion": 1,
+          "sessionId": "fixture-session",
+          "logEpoch": "epoch-reconnect-recovered",
+          "seq": 10,
+          "revision": 0,
+          "control": {
+            "phase": "draft",
+            "sessionEnded": false,
+            "canStop": false,
+            "stopState": "idle",
+            "stopTargetKind": "unknown",
+            "activeWorks": [],
+            "lastError": null,
+            "apiRetry": null
+          },
+          "availability": {
+            "fork": {
+              "allowed": false,
+              "reasonCode": "forkTargetNotStable"
+            },
+            "compact": {
+              "allowed": false,
+              "reasonCode": "idleCannotCompact"
+            },
+            "switchModelConfig": {
+              "allowed": true
+            },
+            "setFollowupMode": {
+              "allowed": true
+            },
+            "queueEdit": {
+              "allowed": true
+            },
+            "sendQueuedNow": {
+              "allowed": false,
+              "reasonCode": "sendQueuedNowRequiresRunning"
+            },
+            "pauseGoal": {
+              "allowed": false,
+              "reasonCode": "noGoalToPause"
+            },
+            "resumeGoal": {
+              "allowed": false,
+              "reasonCode": "noGoalToResume"
+            }
+          },
+          "inputRouting": {
+            "mode": "startNow"
+          },
+          "meta": {
+            "title": "",
+            "titleSource": "default"
+          },
+          "config": {
+            "provider": "deepseek",
+            "model": "deepseek-flash",
+            "thought": "max",
+            "thoughtLevels": [
+              "disabled",
+              "low",
+              "high",
+              "max"
+            ],
+            "followupMode": "queue",
+            "mode": "build",
+            "modelSelection": {
+              "providerId": "deepseek",
+              "modelId": "deepseek-flash",
+              "options": {
+                "reasoningLevel": "max"
+              }
+            },
+            "planEnabled": false
+          },
+          "modelTransition": null,
+          "usage": {
+            "contextWindow": null,
+            "cumulative": {
+              "inputTokens": 0,
+              "outputTokens": 0,
+              "cacheReadTokens": 0,
+              "cacheWriteTokens": 0
+            }
+          },
+          "queue": {
+            "items": [],
+            "autoDrain": true
+          },
+          "pendingInteractions": [
+            {
+              "interactionId": "q-multi-1",
+              "kind": "userInput",
+              "anchorRowId": null,
+              "createdAt": 1700000000000,
+              "autoResolution": {
+                "state": "visibleCountdown",
+                "startedAt": 1700000000000,
+                "visibleAt": 1700000000000,
+                "deadlineAt": 1700000060000
+              },
+              "payload": {
+                "kind": "userInput",
+                "prompt": "Production Deployment Configuration Questionnaire",
+                "freeText": true,
+                "questions": [
+                  {
+                    "question": "Select the deployment target environment:",
+                    "header": "Target Environment",
+                    "options": [
+                      {
+                        "value": "staging",
+                        "label": "Staging Cluster",
+                        "description": "Internal validation environment"
+                      },
+                      {
+                        "value": "production",
+                        "label": "Production Primary",
+                        "description": "User-facing production cluster"
+                      }
+                    ],
+                    "multiSelect": false
+                  },
+                  {
+                    "question": "Configure database migration strategy:",
+                    "header": "Migration Strategy",
+                    "options": [
+                      {
+                        "value": "dry-run",
+                        "label": "Dry Run Only",
+                        "description": "Validate schema syntax without mutation"
+                      },
+                      {
+                        "value": "backup-first",
+                        "label": "Automated Snapshot",
+                        "description": "Take point-in-time snapshot before migration"
+                      },
+                      {
+                        "value": "run-seed",
+                        "label": "Seed Baseline Data",
+                        "description": "Populate essential lookup tables"
+                      }
+                    ],
+                    "multiSelect": true
+                  },
+                  {
+                    "question": "Provide operator sign-off notes or execution tags:",
+                    "header": "Operator Notes",
+                    "options": [
+                      {
+                        "value": "standard-release",
+                        "label": "Standard Release",
+                        "description": "Regular scheduled deployment"
+                      },
+                      {
+                        "value": "hotfix",
+                        "label": "Emergency Hotfix",
+                        "description": "Urgent patch deployment"
+                      }
+                    ],
+                    "multiSelect": false
+                  }
+                ],
+                "currentQuestionIndex": 0,
+                "answerDrafts": {
+                  "answer_0": [
+                    "staging"
+                  ]
+                }
+              }
+            }
+          ],
+          "pendingCommands": [],
+          "backgroundWorks": [],
+          "subagents": {
+            "revision": 0,
+            "childSessionIds": [],
+            "running": [],
+            "endedTotal": 0
+          },
+          "goal": null,
+          "plan": null,
+          "workspaceHookAdmission": null,
+          "rows": {
+            "window": [],
+            "totalCount": 0,
+            "firstRowId": null
+          }
+        }
+      }
+    }
+  },
+  "postReconnectAck": {
+    "ack": {
+      "subscriptionId": "fixture-subscription-rec",
+      "mode": "snapshot",
+      "logEpoch": "epoch-reconnect-recovered",
+      "openTiming": {
+        "version": 1,
+        "initialFrameEncodeMs": 0,
+        "sessionRuntimeState": "warm",
+        "snapshotRowCount": 0
+      }
+    }
+  }
+}

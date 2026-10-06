@@ -1,4 +1,4 @@
-// S02 Q1-final rebind of CB4: the composer badge and locked-runtime display are additive
+// Model selection rebind of CB4: the composer badge and locked-runtime display are additive
 // entries over official session state. Switching sessions must fence identity and clear subscriptions.
 import {test} from 'node:test';import assert from 'node:assert/strict';import {createRequire} from 'node:module';
 const require=createRequire(import.meta.url);

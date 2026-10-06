@@ -1,0 +1,118 @@
+{
+  "provenance": {
+    "kind": "injected-semantic-fixture",
+    "note": "Injected automation/off-peak lifecycle frames validated by the vendored official schemas. No live carrier exists: automation/* and offPeak/* are Host-consumed reverse methods (real probe: -32601). Never a run or task created by this bridge.",
+    "injectedFields": [
+      "automationList",
+      "automationCreate",
+      "automationUpdate",
+      "automationDelete",
+      "automationCheckTaskBinding",
+      "offPeakList",
+      "offPeakCreate",
+      "offPeakCreateFailure"
+    ]
+  },
+  "frames": {
+    "automationList": {
+      "automations": [
+        {
+          "automationId": "automation-fixture-task",
+          "title": "Fixture scheduled task",
+          "cronExpr": "0 9 * * *",
+          "prompt": "automation fixture prompt",
+          "enabled": true,
+          "lifecycleStatus": "active",
+          "nextRunAt": 1900000000000,
+          "lastRunAt": 1800000000000,
+          "runCount": 3,
+          "recurring": true,
+          "scheduleRule": {
+            "unit": "daily",
+            "interval": 1,
+            "hour": 9,
+            "minute": 0,
+            "anchorAt": 0
+          }
+        }
+      ]
+    },
+    "automationCreate": {
+      "automation": {
+        "automationId": "automation-fixture-task",
+        "title": "Fixture scheduled task",
+        "cronExpr": "0 9 * * *",
+        "prompt": "automation fixture prompt",
+        "enabled": true,
+        "lifecycleStatus": "active",
+        "nextRunAt": 1900000000000,
+        "lastRunAt": 1800000000000,
+        "runCount": 3,
+        "recurring": true,
+        "scheduleRule": {
+          "unit": "daily",
+          "interval": 1,
+          "hour": 9,
+          "minute": 0,
+          "anchorAt": 0
+        }
+      }
+    },
+    "automationUpdate": {
+      "automation": {
+        "automationId": "automation-fixture-task",
+        "title": "Fixture scheduled task (updated)",
+        "cronExpr": "0 9 * * *",
+        "prompt": "automation fixture prompt",
+        "enabled": true,
+        "lifecycleStatus": "active",
+        "nextRunAt": 1900000000000,
+        "lastRunAt": 1800000000000,
+        "runCount": 4,
+        "recurring": true,
+        "scheduleRule": {
+          "unit": "daily",
+          "interval": 1,
+          "hour": 9,
+          "minute": 0,
+          "anchorAt": 0
+        }
+      }
+    },
+    "automationDelete": {
+      "deleted": true
+    },
+    "automationCheckTaskBinding": {
+      "bound": true
+    },
+    "offPeakList": {
+      "tasks": [
+        {
+          "offPeakTaskId": "offpeak-fixture-task",
+          "title": "Fixture off-peak task",
+          "status": "queued",
+          "queuePosition": 2,
+          "sessionId": "offpeak-fixture-session",
+          "createdAt": 1800000000000
+        }
+      ]
+    },
+    "offPeakCreate": {
+      "ok": true,
+      "task": {
+        "offPeakTaskId": "offpeak-fixture-task",
+        "title": "Fixture off-peak task",
+        "status": "queued",
+        "queuePosition": 2,
+        "sessionId": "offpeak-fixture-session",
+        "createdAt": 1800000000000
+      }
+    },
+    "offPeakCreateFailure": {
+      "ok": false,
+      "failureStage": "ticket_request",
+      "errorCategory": "eligibility_3101",
+      "errorCode": "offpeak_eligibility_3101"
+    }
+  }
+}

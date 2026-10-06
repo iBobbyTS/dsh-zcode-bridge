@@ -63,21 +63,21 @@ export class BridgeHost {
     const {tasks,observedAt}=await this.launcher.read('catalog',{signal});
     const visible=tasks.filter(t=>t.deleted!==true&&(!address||(t.taskId===address.sessionId&&t.workspacePath===address.workspace)));
     const sessions=visible.map(t=>({address:{runtime:'zcode',authority:state.sessionAuthority,workspace:t.workspacePath,sessionId:t.taskId},title:t.title,cwd:t.workspacePath,running:undefined,sharedTask:{status:t.status,lastActivityAt:t.updatedAt,pinned:t.pinned===true,archived:t.archived===true,titleSource:t.titleOverridden===true?'custom':['custom','default','generated','first_input'].includes(t.titleSource)?t.titleSource:'unknown',cronAutomationId:t.cronAutomationId,offPeakTaskId:t.offPeakTaskId,observedAt}}));
-    return {sessions,catalog:{complete:true,truncated:false,limit:tasks.length,deleted:[],sharedGui:'shared-task-store',authorityKind:'official-host-channel',lifetime:'official',readOnly:true,multiWorkspace:true},management:{rename:false,delete:false,archive:false,pin:false,reason:'read-only-s03'},scope:{authority:state.sessionAuthority,workspace:'official-task-catalog'},availability:{state:'restricted',reason:'route-b-read-only-zero-model-requests',capabilities:{create:false,open:false,nativeAgent:false}}};
+    return {sessions,catalog:{complete:true,truncated:false,limit:tasks.length,deleted:[],sharedGui:'shared-task-store',authorityKind:'official-host-channel',lifetime:'official',readOnly:true,multiWorkspace:true},management:{rename:false,delete:false,archive:false,pin:false,reason:'read-only-official-host'},scope:{authority:state.sessionAuthority,workspace:'official-task-catalog'},availability:{state:'restricted',reason:'live-http-read-only-zero-model-requests',capabilities:{create:false,open:false,nativeAgent:false}}};
   }
   async sharedWritePreflight(address,{signal}={}){
     if(this.authorityMode!=='host-backed'||!this.status.connected)throw new BridgeError('source-unavailable');
     await this.#hostCatalog(address,signal);
     return this.launcher.read('preflight',{address,signal});
   }
-  /** Per-session official usage readback for the S04 accounting; read-only and address-checked. */
+  /** Per-session official usage readback for the minimal turn accounting; read-only and address-checked. */
   async taskUsage(address,{signal}={}){
     if(this.authorityMode!=='host-backed')throw new BridgeError('source-unavailable');
     const state=this.status;
     if(!state.connected||!address||address.runtime!=='zcode'||address.authority!==state.sessionAuthority||typeof address.workspace!=='string'||!address.workspace||typeof address.sessionId!=='string'||!address.sessionId)throw new BridgeError('source-address-mismatch');
     return this.launcher.read('taskUsage',{address,signal});
   }
-  /** S04: one bridge-owned model turn. Main owns the single-shot claim and the prompt; the caller
+  /** Minimal turn: one bridge-owned model turn. Main owns the single-shot claim and the prompt; the caller
    *  supplies no address, prompt, model or session id, so no foreign session can be targeted. */
   async runMinimalTurn({signal}={}){
     if(this.authorityMode!=='host-backed'||!this.status.connected)throw new BridgeError('source-unavailable');
@@ -85,7 +85,7 @@ export class BridgeHost {
     const state=this.status;
     return {...result,address:{runtime:'zcode',authority:state.sessionAuthority,workspace:result.workspacePath,sessionId:result.taskId}};
   }
-  /** Scoped API for S03.B. Read projection is permitted; restricted runtime never admits actions. */
+  /** Scoped API for live session. Read projection is permitted; restricted runtime never admits actions. */
   createConversation(address,{onChange=()=>{}}={}){
     const status=this.status;
     if(this.#disposed||!status.connected||!this.#peer||this.#peer.closed)throw new BridgeError('source-unavailable');
@@ -221,7 +221,7 @@ export class BridgeHost {
   async #connect(){
     if(this.authorityMode==='host-backed'){
       if(!this.launcher){this.#publish({state:'unavailable',reason:'launcher-unconfigured',connected:false});return this.status}
-      const project=state=>{if(!this.#disposed)this.#publish({state:state.phase==='ready'?(state.auth==='authenticated'?'authenticated':'restricted'):'unavailable',reason:state.phase==='ready'?(state.auth==='authenticated'?'route-b-authenticated-read-only':'host-execution-disabled-s03'):state.reason??'launcher-'+state.phase,connected:state.phase==='ready'&&state.auth==='authenticated',sessionAuthority:'official-host:'+state.mainPid,workspacePath:'official-task-catalog',auth:state.auth??'unconfirmed',authority:'official-host-channel',launcher:state,authorityMode:'host-backed'})};
+      const project=state=>{if(!this.#disposed)this.#publish({state:state.phase==='ready'?(state.auth==='authenticated'?'authenticated':'restricted'):'unavailable',reason:state.phase==='ready'?(state.auth==='authenticated'?'live-http-authenticated-read-only':'host-execution-disabled-official-host'):state.reason??'launcher-'+state.phase,connected:state.phase==='ready'&&state.auth==='authenticated',sessionAuthority:'official-host:'+state.mainPid,workspacePath:'official-task-catalog',auth:state.auth??'unconfirmed',authority:'official-host-channel',launcher:state,authorityMode:'host-backed'})};
       this.launcherUnsubscribe??=this.launcher.subscribe(project);project(await this.launcher.start());return this.status;
     }
     let peer,stop,terminalReason;

@@ -5,7 +5,7 @@ import { PassThrough } from 'node:stream';
 import { ProtocolPeer } from '../packages/host/protocol.mjs';
 import { V4Conversation, negotiatedClientHello } from '../packages/host/conversation.mjs';
 import { encodeTopicWireFrames, measureTopicNotificationEnvelopeBytes, parseCommandEnvelope } from '../packages/host/vendor/zcode/v4.mjs';
-const fixtures={};for(const name of ['success','failure','gap','lateframe'])fixtures[name]=JSON.parse(await readFile(new URL('./fixtures/s03a/'+name+'.json',import.meta.url)));
+const fixtures={};for(const name of ['success','failure','gap','lateframe'])fixtures[name]=JSON.parse(await readFile(new URL('./fixtures/transport-v4/'+name+'.json',import.meta.url)));
 const clone=structuredClone,tick=()=>new Promise(r=>setImmediate(r));
 function fixture({runnable=true,clientMode='web-remote-replayable',peerTimeout=30,...options}={}){
  const input=new PassThrough(),output=new PassThrough(),sent=[];

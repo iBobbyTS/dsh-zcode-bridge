@@ -2,7 +2,7 @@ import { realpathSync, lstatSync, mkdirSync, readFileSync, writeFileSync, symlin
 import { resolve, join, relative, isAbsolute, dirname } from 'node:path';
 import { homedir } from 'node:os';
 import { createHash, randomUUID } from 'node:crypto';
-import { validateRouteBOptions } from './route-b.mjs';
+import { validateLiveHttpOptions } from './live-http.mjs';
 import { DEFAULT_ACTIVITY_WINDOW_MS, MIN_ACTIVITY_WINDOW_MS, MAX_ACTIVITY_WINDOW_MS } from './write-gate.mjs';
 
 export const ELECTRON_VERSION='41.0.3';
@@ -31,7 +31,7 @@ export function assertLandings(config){
   // A scratch root may be explicitly placed under the home; it must never contain real home/data.
   const realHome=config.realHome??homedir();
   if(scratchRoot===realHome||inside(scratchRoot,realHome)||scratchRoot===join(realHome,'.zcode')||inside(join(realHome,'.zcode'),scratchRoot)||inside(join(realHome,'Library'),scratchRoot))throw fault('real-data-root-denied');
-  if(config.mode==='route-b')return assertRouteBLandings(config);
+  if(config.mode==='live-http')return assertLiveHttpLandings(config);
   const shared=sharedDatabases(config);
   for(const [name,p] of Object.entries(paths)){if(typeof p!=='string'||!isAbsolute(p)||!(inside(runRoot,p)||(name==='sessionDb'&&p===shared?.sessionDb)))throw fault('landing-outside-scratch:'+name);noLinks(p);}
   if(shared&&paths.sessionDb!==shared.sessionDb)throw fault('shared-session-mismatch');
@@ -49,8 +49,8 @@ export function assertLandings(config){
 export function createLauncherConfig({scratchRoot,runId=randomUUID(),artifactRoot,electronPath,builtinConfig,sharedDatabaseRoot,mode='scratch',desktopHome=process.env.ZCODE_DESKTOP_HOME_DIR,activityWindowMs=DEFAULT_ACTIVITY_WINDOW_MS}={}){
   if(!Number.isSafeInteger(activityWindowMs)||activityWindowMs<MIN_ACTIVITY_WINDOW_MS||activityWindowMs>MAX_ACTIVITY_WINDOW_MS)throw fault('activity-window-invalid');
   if([scratchRoot,artifactRoot,electronPath,builtinConfig].some(p=>typeof p!=='string'||!p.trim())||typeof runId!=='string'||!/^[a-zA-Z0-9_-]{1,100}$/.test(runId))throw fault('launcher-config-required');
-  if(!['scratch','route-b'].includes(mode))throw fault('launcher-mode-invalid');
-  const routeB=mode==='route-b'?validateRouteBOptions({sharedDatabaseRoot,desktopHome}):null;
+  if(!['scratch','live-http'].includes(mode))throw fault('launcher-mode-invalid');
+  const liveHttp=mode==='live-http'?validateLiveHttpOptions({sharedDatabaseRoot,desktopHome}):null;
   scratchRoot=resolve(scratchRoot);const runRoot=join(scratchRoot,'runs',runId),realHome=homedir();
   const paths={home:join(runRoot,'home'),dataBase:join(runRoot,'data-base'),runtimeHome:join(runRoot,'runtime-home'),sessionDb:join(runRoot,'session-db/db.sqlite'),userData:join(runRoot,'userData'),sessionData:join(runRoot,'sessionData'),logs:join(runRoot,'logs'),temp:join(runRoot,'tmp'),workspace:join(runRoot,'workspace')};
   for(const key of ['appData','crashDumps','desktop','documents','downloads','music','pictures','videos'])paths[key]=join(runRoot,'electron-'+key);
@@ -58,8 +58,8 @@ export function createLauncherConfig({scratchRoot,runId=randomUUID(),artifactRoo
   const env={PATH:'/usr/bin:/bin:/usr/sbin:/sbin',SHELL:'/bin/sh',LANG:'en_US.UTF-8',HOME:paths.home,USERPROFILE:paths.home,ZCODE_DESKTOP_HOME_DIR:paths.home,ZCODE_DATA_BASE_DIR:paths.dataBase,ZCODE_SESSION_DB_PATH:paths.sessionDb,SESSION_DB:paths.sessionDb,ZCODE_HOME:paths.runtimeHome,TMPDIR:paths.temp,ZCODE_BUILTIN_PROVIDER_CONFIG_FILE:resolve(builtinConfig),ZCODE_NATIVE_SEARCH_ENHANCEMENTS_ENABLED:'0',ZCODE_MEMORY_ENABLED:'0',ZCODE_PROCESS_LABEL:'dsh-host-'+runId};
   const config={scratchRoot,runRoot,runId,executionNonce:randomUUID(),activityWindowMs,hostId:'dsh-host-'+randomUUID(),deliveryKind:'desktop_window',artifactRoot:resolve(artifactRoot),electronPath:resolve(electronPath),builtinConfig:resolve(builtinConfig),realHome,paths,env,runtimeProcessEnvPatch:{...env},cwd:paths.workspace,agentSpawnFallbackCwd:paths.workspace};
   if(sharedDatabaseRoot!==undefined)config.sharedDatabaseRoot=resolve(sharedDatabaseRoot);
-  if(mode==='route-b'){
-    config.routeB=routeB;config.mode='route-b';
+  if(mode==='live-http'){
+    config.liveHttp=liveHttp;config.mode='live-http';
     paths.home=realHome;paths.dataBase=realHome;paths.runtimeHome=join(realHome,'.zcode/cli');paths.sessionDb=join(realHome,'.zcode/cli/db/db.sqlite');
     Object.assign(env,{HOME:realHome,USERPROFILE:realHome,ZCODE_DATA_BASE_DIR:realHome,ZCODE_SESSION_DB_PATH:paths.sessionDb,SESSION_DB:paths.sessionDb,ZCODE_HOME:paths.runtimeHome});
     if(desktopHome==null)delete env.ZCODE_DESKTOP_HOME_DIR;else env.ZCODE_DESKTOP_HOME_DIR=desktopHome;
@@ -79,11 +79,11 @@ export function prepareLauncher(config){
   const identity=JSON.parse(readFileSync(new URL('./official-host-identity.json',import.meta.url),'utf8'));
   for(const entry of identity.files){const p=join(config.artifactRoot,entry.path);noLinks(p);let bytes;try{bytes=readFileSync(p)}catch{throw fault('official-host-missing')}if(createHash('sha256').update(bytes).digest('hex')!==entry.sha256)throw fault('official-host-subtree-mismatch');}
   for(const [p,digest] of [[hostEntry,HOST_DIGEST],[cli,CLI_DIGEST]])if(createHash('sha256').update(readFileSync(p)).digest('hex')!==digest)throw fault('official-artifact-mismatch');
-  for(const [key,p] of Object.entries(config.paths)){if(config.mode==='route-b'&&['home','dataBase','runtimeHome','sessionDb'].includes(key))continue;mkdirSync(p===config.paths.sessionDb?dirname(p):p,{recursive:true,mode:0o700});}
+  for(const [key,p] of Object.entries(config.paths)){if(config.mode==='live-http'&&['home','dataBase','runtimeHome','sessionDb'].includes(key))continue;mkdirSync(p===config.paths.sessionDb?dirname(p):p,{recursive:true,mode:0o700});}
   const shared=sharedDatabases(config);
   if(shared){const link=join(config.paths.dataBase,'.zcode/v2/tasks-index.sqlite');mkdirSync(dirname(link),{recursive:true,mode:0o700});symlinkSync(shared.tasks,link,'file');}
   // The official resolver searches cwd/bundled-resources. Keep cwd isolated while exposing
-  // the official CLI as a read-only resource, exactly as the S01 scratch topology did.
+  // the official CLI as a read-only resource, exactly as the official runtime install scratch topology did.
   const resources=join(config.paths.workspace,'bundled-resources');mkdirSync(resources,{recursive:true});
   const glm=join(resources,'glm');if(!existsSync(glm))symlinkSync(dirname(cli),glm,'dir');
   if(realpathSync(glm)!==dirname(cli))throw fault('runtime-resource-mismatch');
@@ -93,42 +93,50 @@ export function prepareLauncher(config){
   return {...config,landing,hostEntry};
 }
 // Enforcement inherited by Main, utilityProcess, workers and future descendants. Network and
-// OS Keychain are always denied in S02; HOME is not a Keychain isolation mechanism.
+// OS Keychain are always denied; HOME is not a Keychain isolation mechanism.
 export function sandboxProfile(config,codeRoot,dependencyRoot,dependencyLinks=[]){
   const quote=p=>JSON.stringify(p);
   // macOS Seatbelt checks the symlink spelling as well as its resolved target. pnpm's
   // sibling node_modules/zod link needs this exact read-only grant; never grant its parent.
   assertLandings(config);
   const shared=sharedDatabases(config);
-  if(config.mode==='route-b')return routeBSandbox(config,codeRoot,dependencyRoot,dependencyLinks);
+  if(config.mode==='live-http')return liveHttpSandbox(config,codeRoot,dependencyRoot,dependencyLinks);
   const readRoots=[config.runRoot,...(shared?[shared.root]:[]),realpathSync(config.artifactRoot),dirname(dirname(dirname(config.electronPath))),realpathSync(codeRoot),realpathSync(dependencyRoot),...dependencyLinks];
   const sharedWrites=shared?[shared.root,...[shared.tasks,shared.sessionDb].flatMap(p=>[p,p+'-wal',p+'-shm',p+'-journal'])]:[];
   const ancestors=new Set();for(const p of readRoots)for(let q=dirname(p);q!==dirname(q);q=dirname(q))ancestors.add(q);
   return `(version 1)\n(allow default)\n(deny file-read* (require-all (subpath ${quote(config.realHome)}) (require-not (subpath ${readRoots.map(quote).join(' ')})) (require-not (literal ${[...ancestors].map(quote).join(' ')}))))\n(deny file-write* (require-all (require-not (subpath ${quote(config.runRoot)})) ${sharedWrites.length?'(require-not (literal '+sharedWrites.map(quote).join(' ')+')) ':''}(require-not (subpath "/dev"))))\n(deny network*)\n(deny mach-lookup (global-name "com.apple.securityd" "com.apple.securityd.xpc" "com.apple.trustd"))\n`;
 }
 
-function assertRouteBLandings(config){
+function assertLiveHttpLandings(config){
   const {paths,env,runtimeProcessEnvPatch:inner,realHome}=config;
-  const configuration=validateRouteBOptions({sharedDatabaseRoot:config.sharedDatabaseRoot,desktopHome:config.routeB?.desktopHome});
+  const configuration=validateLiveHttpOptions({sharedDatabaseRoot:config.sharedDatabaseRoot,desktopHome:config.liveHttp?.desktopHome});
   // macOS sockaddr_un is 104 bytes including NUL. Official read-only CLI creates
   // znr-UUID.sock at startup even when no model task is executed.
-  if(Buffer.byteLength(join(paths.temp,'znr-00000000-0000-0000-0000-000000000000.sock'))>103)throw fault('route-b-temp-socket-path-too-long');
-  if(realHome!==homedir()||!config.routeB?.allowed||config.sharedDatabaseRoot)throw fault('route-b-home-mismatch');
+  if(Buffer.byteLength(join(paths.temp,'znr-00000000-0000-0000-0000-000000000000.sock'))>103)throw fault('live-http-temp-socket-path-too-long');
+  if(realHome!==homedir()||!config.liveHttp?.allowed||config.sharedDatabaseRoot)throw fault('live-http-home-mismatch');
   const defaults={home:realHome,dataBase:realHome,runtimeHome:join(realHome,'.zcode/cli'),sessionDb:join(realHome,'.zcode/cli/db/db.sqlite')};
-  for(const [k,p] of Object.entries(paths)){if(defaults[k]?p!==defaults[k]:!inside(config.runRoot,p))throw fault('route-b-landing-mismatch:'+k);noLinks(p);}
-  const desktop=config.routeB.desktopHome;
-  if(desktop!==null&&(!isAbsolute(desktop)||!desktop.trim()))throw fault('route-b-desktop-home-invalid');
+  for(const [k,p] of Object.entries(paths)){if(defaults[k]?p!==defaults[k]:!inside(config.runRoot,p))throw fault('live-http-landing-mismatch:'+k);noLinks(p);}
+  const desktop=config.liveHttp.desktopHome;
+  if(desktop!==null&&(!isAbsolute(desktop)||!desktop.trim()))throw fault('live-http-desktop-home-invalid');
   const settingsHome=desktop??realHome;noLinks(join(settingsHome,'.zcode/v2'));
   const expected={PATH:'/usr/bin:/bin:/usr/sbin:/sbin',SHELL:'/bin/sh',LANG:'en_US.UTF-8',HOME:realHome,USERPROFILE:realHome,ZCODE_DATA_BASE_DIR:realHome,ZCODE_SESSION_DB_PATH:paths.sessionDb,SESSION_DB:paths.sessionDb,ZCODE_HOME:paths.runtimeHome,TMPDIR:paths.temp,ZCODE_BUILTIN_PROVIDER_CONFIG_FILE:config.builtinConfig,ZCODE_NATIVE_SEARCH_ENHANCEMENTS_ENABLED:'0',ZCODE_MEMORY_ENABLED:'0',ZCODE_PROCESS_LABEL:'dsh-host-'+config.runId,...(desktop===null?{}:{ZCODE_DESKTOP_HOME_DIR:desktop})};
-  for(const source of [env,inner])if(JSON.stringify(Object.entries(source).sort())!==JSON.stringify(Object.entries(expected).sort()))throw fault('route-b-env-mismatch');
+  for(const source of [env,inner])if(JSON.stringify(Object.entries(source).sort())!==JSON.stringify(Object.entries(expected).sort()))throw fault('live-http-env-mismatch');
   if(config.cwd!==paths.workspace||config.agentSpawnFallbackCwd!==paths.workspace)throw fault('landing-cwd-mismatch');
-  return {passed:true,mode:'route-b',settings:join(settingsHome,'.zcode/v2/setting.json'),tasks:join(realHome,'.zcode/v2/tasks-index.sqlite'),sessionDb:paths.sessionDb,keychain:'OS-access-denied',network:'enabled',sharedAuthority:'official-receipts-CAS-unverified',configuration};
+  return {passed:true,mode:'live-http',settings:join(settingsHome,'.zcode/v2/setting.json'),tasks:join(realHome,'.zcode/v2/tasks-index.sqlite'),sessionDb:paths.sessionDb,keychain:'OS-access-denied',network:'enabled',sharedAuthority:'official-receipts-CAS-unverified',configuration};
 }
-function routeBSandbox(config,codeRoot,dependencyRoot,links){
+function liveHttpSandbox(config,codeRoot,dependencyRoot,links){
   const q=p=>JSON.stringify(p);
-  const officialRoots=[join(config.realHome,'.zcode/v2'),join(config.realHome,'.zcode/cli'),join(config.routeB.desktopHome??config.realHome,'.zcode/v2')];
+  const officialRoots=[join(config.realHome,'.zcode/v2'),join(config.realHome,'.zcode/cli'),join(config.liveHttp.desktopHome??config.realHome,'.zcode/v2')];
   // The official agent runtime reads user-scope data roots when it starts a session. Evidence from
-  // route-B attempts 1/2 (pre-fix) showed createTask failing before any model request with
+  // live-HTTP attempts 1/2 (pre-fix) showed createTask failing before any model request with
+  // "EPERM: operation not permitted, stat '~/.zcode/agents'"; the whole ~/.zcode root is therefore
+  // granted read-only, because the Host's own credential/agents files plus subagent profiles, skills,
+  // commands and hooks all live under it. ~/.agents and ~/.claude are deliberately NOT granted: there
+  // is no EPERM evidence for either, and ~/.claude can hold plaintext credentials on some machines.
+  // If a future official runtime reports EPERM for one of these roots, capture that diagnostic first
+  // and admit only that single root with the evidence. These are read-only grants: writes stay scoped
+  // to the run root and the official settings/DB roots, and the Keychain and securityd denials are
+  // unchanged.
   // "EPERM: operation not permitted, stat '~/.zcode/agents'"; the whole ~/.zcode root is therefore
   // granted read-only, because the Host's own credential/agents files plus subagent profiles, skills,
   // commands and hooks all live under it. ~/.agents and ~/.claude are deliberately NOT granted: there

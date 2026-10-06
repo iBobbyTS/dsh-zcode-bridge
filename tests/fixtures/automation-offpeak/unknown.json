@@ -1,0 +1,51 @@
+{
+  "provenance": {
+    "kind": "injected-semantic-fixture",
+    "note": "Deliberately unknown/future shapes so fail-safe handling is covered: an unknown value must never be turned into a created/succeeded claim.",
+    "injectedFields": [
+      "automation",
+      "offPeakTask",
+      "offPeakFailure",
+      "unknownEntry"
+    ]
+  },
+  "automation": {
+    "automationId": "automation-fixture-task",
+    "title": "Fixture scheduled task",
+    "cronExpr": "0 9 * * *",
+    "prompt": "automation fixture prompt",
+    "enabled": true,
+    "lifecycleStatus": "future_status",
+    "nextRunAt": "not-a-timestamp",
+    "lastRunAt": 1800000000000,
+    "runCount": 3,
+    "recurring": true,
+    "scheduleRule": {
+      "unit": "daily",
+      "interval": 1,
+      "hour": 9,
+      "minute": 0,
+      "anchorAt": 0
+    }
+  },
+  "offPeakTask": {
+    "offPeakTaskId": "offpeak-fixture-task",
+    "title": "Fixture off-peak task",
+    "status": "future_status",
+    "queuePosition": 2,
+    "sessionId": "offpeak-fixture-session",
+    "createdAt": 1800000000000
+  },
+  "offPeakFailure": {
+    "ok": false,
+    "failureStage": "future_stage",
+    "errorCategory": "future_category",
+    "errorCode": "future_code"
+  },
+  "unknownEntry": {
+    "kind": "future-automation-entry",
+    "detail": {
+      "unexpected": true
+    }
+  }
+}

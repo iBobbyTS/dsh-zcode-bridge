@@ -1,0 +1,69 @@
+{
+  "provenance": {
+    "source": "official.json",
+    "runtimeSha256": "fad4c35c4c36ec210d8a06d3fa0e77de23c8545e2eb6ff90aea1eb38d1e6275f",
+    "paidModelCalls": 0,
+    "kind": "captured",
+    "changes": []
+  },
+  "commands": [
+    {
+      "method": "v4/command",
+      "params": {
+        "commandId": "transport-v4-invalid",
+        "clientId": "transport-v4-capture",
+        "sessionId": null,
+        "type": "sendText",
+        "payload": {},
+        "issuedAt": 0
+      },
+      "result": {
+        "commandId": "transport-v4-invalid",
+        "status": "rejected",
+        "reasonCode": "proto.invalidPayload",
+        "message": "[\n  {\n    \"expected\": \"string\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"text\"\n    ],\n    \"message\": \"Invalid input: expected string, received undefined\"\n  }\n]",
+        "revisionAtDecision": 0
+      }
+    },
+    {
+      "method": "v4/command",
+      "params": {
+        "commandId": "39699314-f845-4f6a-8a57-ae27630dd6e5",
+        "clientId": "transport-v4-capture",
+        "sessionId": "fixture-session",
+        "type": "renameSession",
+        "payload": {
+          "title": "Transport v4 fixture draft"
+        },
+        "issuedAt": 1791032434540
+      },
+      "result": {
+        "commandId": "39699314-f845-4f6a-8a57-ae27630dd6e5",
+        "status": "failed",
+        "revisionAtDecision": 0,
+        "reasonCode": "fault.command.executionFailed",
+        "message": "Session not found: fixture-session"
+      }
+    },
+    {
+      "method": "v4/command",
+      "params": {
+        "commandId": "0f1385cf-246b-44bb-a03c-4b9b62d9afac",
+        "clientId": "transport-v4-capture",
+        "sessionId": "fixture-session",
+        "type": "setFollowupMode",
+        "baseRevision": 999999,
+        "payload": {
+          "mode": "queue"
+        },
+        "issuedAt": 1791032434582
+      },
+      "result": {
+        "commandId": "0f1385cf-246b-44bb-a03c-4b9b62d9afac",
+        "status": "stale",
+        "reasonCode": "proto.staleRevision",
+        "revisionAtDecision": 0
+      }
+    }
+  ]
+}

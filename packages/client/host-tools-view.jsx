@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 
-/** Observation surface in the S03.B session area. Registration never grants execution;
+/** Observation surface in the live session area. Registration never grants execution;
  * reverse replies are owned by Host, not by a browser-side 'success' button. */
 export function ZCodeHostToolsPanel({state,controller}){
   const [registration,setRegistration]=useState(null),[error,setError]=useState(null),[busy,setBusy]=useState(false);

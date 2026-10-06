@@ -1,0 +1,904 @@
+{
+  "provenance": {
+    "kind": "real-capture-derived",
+    "source": "official.json",
+    "capturedAt": "2026-10-04T03:53:04.335Z",
+    "paidModelCalls": 0,
+    "real": [
+      "usageStats30d",
+      "sessionUsage",
+      "childProcesses (empty)",
+      "cancelGenerateTextUnknown"
+    ],
+    "injected": [
+      "nonEmptyUsage",
+      "nonEmptySessionUsage",
+      "childProcessesNonEmpty",
+      "resourceSample"
+    ],
+    "note": "injected cases are official-schema validated; the isolated 0-model capture only observes an empty store"
+  },
+  "emptyUsage": {
+    "range": "30d",
+    "generatedAt": 1791085985978,
+    "timeZone": "UTC",
+    "source": "agent-db",
+    "summary": {
+      "totalTokens": 0,
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "reasoningTokens": 0,
+      "cacheCreationTokens": 0,
+      "cacheReadTokens": 0,
+      "cacheHitRate": 0,
+      "totalSessions": 0,
+      "totalTurns": 0,
+      "toolCallCount": 0,
+      "toolErrorRate": 0,
+      "modelErrorRate": 0,
+      "avgTimeToFirstTokenMs": null,
+      "avgTurnDurationMs": null,
+      "activeDays": 0,
+      "currentStreakDays": 0,
+      "longestSessionMs": 0,
+      "longestStreakDays": 0,
+      "peakDayTokens": 0,
+      "favoriteModel": null
+    },
+    "heatmap": {
+      "startDate": "2026-09-04",
+      "endDate": "2026-10-04",
+      "maxTokens": 0,
+      "weeks": [
+        {
+          "weekIndex": 0,
+          "days": [
+            {
+              "date": "2026-09-04",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            },
+            {
+              "date": "2026-09-05",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            },
+            {
+              "date": "2026-09-06",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            },
+            {
+              "date": "2026-09-07",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            },
+            {
+              "date": "2026-09-08",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            },
+            {
+              "date": "2026-09-09",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            },
+            {
+              "date": "2026-09-10",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            }
+          ]
+        },
+        {
+          "weekIndex": 1,
+          "days": [
+            {
+              "date": "2026-09-11",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            },
+            {
+              "date": "2026-09-12",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            },
+            {
+              "date": "2026-09-13",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            },
+            {
+              "date": "2026-09-14",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            },
+            {
+              "date": "2026-09-15",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            },
+            {
+              "date": "2026-09-16",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            },
+            {
+              "date": "2026-09-17",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            }
+          ]
+        },
+        {
+          "weekIndex": 2,
+          "days": [
+            {
+              "date": "2026-09-18",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            },
+            {
+              "date": "2026-09-19",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            },
+            {
+              "date": "2026-09-20",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            },
+            {
+              "date": "2026-09-21",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            },
+            {
+              "date": "2026-09-22",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            },
+            {
+              "date": "2026-09-23",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            },
+            {
+              "date": "2026-09-24",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            }
+          ]
+        },
+        {
+          "weekIndex": 3,
+          "days": [
+            {
+              "date": "2026-09-25",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            },
+            {
+              "date": "2026-09-26",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            },
+            {
+              "date": "2026-09-27",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            },
+            {
+              "date": "2026-09-28",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            },
+            {
+              "date": "2026-09-29",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            },
+            {
+              "date": "2026-09-30",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            },
+            {
+              "date": "2026-10-01",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            }
+          ]
+        },
+        {
+          "weekIndex": 4,
+          "days": [
+            {
+              "date": "2026-10-02",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            },
+            {
+              "date": "2026-10-03",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            },
+            {
+              "date": "2026-10-04",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            },
+            null,
+            null,
+            null,
+            null
+          ]
+        }
+      ]
+    },
+    "dailyModelUsage": [
+      {
+        "date": "2026-09-04",
+        "models": []
+      },
+      {
+        "date": "2026-09-05",
+        "models": []
+      },
+      {
+        "date": "2026-09-06",
+        "models": []
+      },
+      {
+        "date": "2026-09-07",
+        "models": []
+      },
+      {
+        "date": "2026-09-08",
+        "models": []
+      },
+      {
+        "date": "2026-09-09",
+        "models": []
+      },
+      {
+        "date": "2026-09-10",
+        "models": []
+      },
+      {
+        "date": "2026-09-11",
+        "models": []
+      },
+      {
+        "date": "2026-09-12",
+        "models": []
+      },
+      {
+        "date": "2026-09-13",
+        "models": []
+      },
+      {
+        "date": "2026-09-14",
+        "models": []
+      },
+      {
+        "date": "2026-09-15",
+        "models": []
+      },
+      {
+        "date": "2026-09-16",
+        "models": []
+      },
+      {
+        "date": "2026-09-17",
+        "models": []
+      },
+      {
+        "date": "2026-09-18",
+        "models": []
+      },
+      {
+        "date": "2026-09-19",
+        "models": []
+      },
+      {
+        "date": "2026-09-20",
+        "models": []
+      },
+      {
+        "date": "2026-09-21",
+        "models": []
+      },
+      {
+        "date": "2026-09-22",
+        "models": []
+      },
+      {
+        "date": "2026-09-23",
+        "models": []
+      },
+      {
+        "date": "2026-09-24",
+        "models": []
+      },
+      {
+        "date": "2026-09-25",
+        "models": []
+      },
+      {
+        "date": "2026-09-26",
+        "models": []
+      },
+      {
+        "date": "2026-09-27",
+        "models": []
+      },
+      {
+        "date": "2026-09-28",
+        "models": []
+      },
+      {
+        "date": "2026-09-29",
+        "models": []
+      },
+      {
+        "date": "2026-09-30",
+        "models": []
+      },
+      {
+        "date": "2026-10-01",
+        "models": []
+      },
+      {
+        "date": "2026-10-02",
+        "models": []
+      },
+      {
+        "date": "2026-10-03",
+        "models": []
+      },
+      {
+        "date": "2026-10-04",
+        "models": []
+      }
+    ],
+    "models": [],
+    "tools": []
+  },
+  "nonEmptyUsage": {
+    "range": "30d",
+    "generatedAt": 1791085985978,
+    "timeZone": "UTC",
+    "source": "agent-db",
+    "summary": {
+      "totalTokens": 123456,
+      "inputTokens": 100000,
+      "outputTokens": 23456,
+      "reasoningTokens": 4096,
+      "cacheCreationTokens": 8000,
+      "cacheReadTokens": 30000,
+      "cacheHitRate": 0.3,
+      "totalSessions": 7,
+      "totalTurns": 42,
+      "toolCallCount": 88,
+      "toolErrorRate": 0.01,
+      "modelErrorRate": 0.02,
+      "avgTimeToFirstTokenMs": null,
+      "avgTurnDurationMs": null,
+      "activeDays": 3,
+      "currentStreakDays": 2,
+      "longestSessionMs": 0,
+      "longestStreakDays": 0,
+      "peakDayTokens": 70000,
+      "favoriteModel": {
+        "modelId": "glm-4.6",
+        "totalTokens": 90000,
+        "share": 0.73
+      }
+    },
+    "heatmap": {
+      "startDate": "2026-09-04",
+      "endDate": "2026-10-04",
+      "maxTokens": 0,
+      "weeks": [
+        {
+          "weekIndex": 0,
+          "days": [
+            {
+              "date": "2026-09-04",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            },
+            {
+              "date": "2026-09-05",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            },
+            {
+              "date": "2026-09-06",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            },
+            {
+              "date": "2026-09-07",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            },
+            {
+              "date": "2026-09-08",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            },
+            {
+              "date": "2026-09-09",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            },
+            {
+              "date": "2026-09-10",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            }
+          ]
+        },
+        {
+          "weekIndex": 1,
+          "days": [
+            {
+              "date": "2026-09-11",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            },
+            {
+              "date": "2026-09-12",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            },
+            {
+              "date": "2026-09-13",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            },
+            {
+              "date": "2026-09-14",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            },
+            {
+              "date": "2026-09-15",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            },
+            {
+              "date": "2026-09-16",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            },
+            {
+              "date": "2026-09-17",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            }
+          ]
+        },
+        {
+          "weekIndex": 2,
+          "days": [
+            {
+              "date": "2026-09-18",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            },
+            {
+              "date": "2026-09-19",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            },
+            {
+              "date": "2026-09-20",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            },
+            {
+              "date": "2026-09-21",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            },
+            {
+              "date": "2026-09-22",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            },
+            {
+              "date": "2026-09-23",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            },
+            {
+              "date": "2026-09-24",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            }
+          ]
+        },
+        {
+          "weekIndex": 3,
+          "days": [
+            {
+              "date": "2026-09-25",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            },
+            {
+              "date": "2026-09-26",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            },
+            {
+              "date": "2026-09-27",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            },
+            {
+              "date": "2026-09-28",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            },
+            {
+              "date": "2026-09-29",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            },
+            {
+              "date": "2026-09-30",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            },
+            {
+              "date": "2026-10-01",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            }
+          ]
+        },
+        {
+          "weekIndex": 4,
+          "days": [
+            {
+              "date": "2026-10-02",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            },
+            {
+              "date": "2026-10-03",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            },
+            {
+              "date": "2026-10-04",
+              "level": 0,
+              "totalTokens": 0,
+              "turnCount": 0,
+              "toolCallCount": 0
+            },
+            null,
+            null,
+            null,
+            null
+          ]
+        }
+      ]
+    },
+    "dailyModelUsage": [
+      {
+        "date": "2026-09-04",
+        "models": []
+      },
+      {
+        "date": "2026-09-05",
+        "models": []
+      },
+      {
+        "date": "2026-09-06",
+        "models": []
+      },
+      {
+        "date": "2026-09-07",
+        "models": []
+      },
+      {
+        "date": "2026-09-08",
+        "models": []
+      },
+      {
+        "date": "2026-09-09",
+        "models": []
+      },
+      {
+        "date": "2026-09-10",
+        "models": []
+      },
+      {
+        "date": "2026-09-11",
+        "models": []
+      },
+      {
+        "date": "2026-09-12",
+        "models": []
+      },
+      {
+        "date": "2026-09-13",
+        "models": []
+      },
+      {
+        "date": "2026-09-14",
+        "models": []
+      },
+      {
+        "date": "2026-09-15",
+        "models": []
+      },
+      {
+        "date": "2026-09-16",
+        "models": []
+      },
+      {
+        "date": "2026-09-17",
+        "models": []
+      },
+      {
+        "date": "2026-09-18",
+        "models": []
+      },
+      {
+        "date": "2026-09-19",
+        "models": []
+      },
+      {
+        "date": "2026-09-20",
+        "models": []
+      },
+      {
+        "date": "2026-09-21",
+        "models": []
+      },
+      {
+        "date": "2026-09-22",
+        "models": []
+      },
+      {
+        "date": "2026-09-23",
+        "models": []
+      },
+      {
+        "date": "2026-09-24",
+        "models": []
+      },
+      {
+        "date": "2026-09-25",
+        "models": []
+      },
+      {
+        "date": "2026-09-26",
+        "models": []
+      },
+      {
+        "date": "2026-09-27",
+        "models": []
+      },
+      {
+        "date": "2026-09-28",
+        "models": []
+      },
+      {
+        "date": "2026-09-29",
+        "models": []
+      },
+      {
+        "date": "2026-09-30",
+        "models": []
+      },
+      {
+        "date": "2026-10-01",
+        "models": []
+      },
+      {
+        "date": "2026-10-02",
+        "models": []
+      },
+      {
+        "date": "2026-10-03",
+        "models": []
+      },
+      {
+        "date": "2026-10-04",
+        "models": []
+      }
+    ],
+    "models": [],
+    "tools": []
+  },
+  "emptySessionUsage": {
+    "sessionId": "/fixture/account-usage-diagnostics-session",
+    "totalTokens": 0,
+    "inputTokens": 0,
+    "outputTokens": 0,
+    "reasoningTokens": 0,
+    "cacheCreationTokens": 0,
+    "cacheReadTokens": 0,
+    "modelRequestCount": 0,
+    "modelErrorCount": 0,
+    "inputBaselineBySource": {}
+  },
+  "nonEmptySessionUsage": {
+    "sessionId": "/fixture/account-usage-diagnostics-session",
+    "totalTokens": 4200,
+    "inputTokens": 3600,
+    "outputTokens": 600,
+    "reasoningTokens": 120,
+    "cacheCreationTokens": 0,
+    "cacheReadTokens": 0,
+    "modelRequestCount": 3,
+    "modelErrorCount": 0,
+    "inputBaselineBySource": {
+      "main": 3600
+    }
+  },
+  "childProcesses": {
+    "processes": []
+  },
+  "childProcessesNonEmpty": {
+    "processes": [
+      {
+        "pid": 4242,
+        "serverName": "diagnostics-demo",
+        "mcpSource": "plugin",
+        "pluginName": "browser-use"
+      },
+      {
+        "pid": 4243,
+        "serverName": "diagnostics-custom",
+        "mcpSource": "custom"
+      }
+    ]
+  },
+  "resourceSample": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "logicalCpuCount": 8,
+    "intervalMs": 60000,
+    "cpuCores": 0.5,
+    "cpuPercent": 6.25,
+    "rssKb": 123456,
+    "heapUsedKb": 40000,
+    "uptimeMinutes": 12,
+    "totalMemoryGb": 16,
+    "instanceToken": "diagnostics-fixture-token-01"
+  },
+  "cancelGenerateTextUnknown": {
+    "operationId": "account-usage-diagnostics-never-created",
+    "cancelled": false
+  }
+}

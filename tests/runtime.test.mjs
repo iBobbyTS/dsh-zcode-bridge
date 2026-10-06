@@ -21,7 +21,7 @@ test('dispose during installation prevents child launch',async()=>{
  const h=new BridgeHost({workspacePath:tmpdir(),inspect:()=>probe,spawnProcess:()=>{spawned=true}});const connecting=h.connect();const closing=h.dispose();resolve(installation);await connecting;await closing;assert.equal(spawned,false);assert.equal(h.status.reason,'disposed');
 });
 test('failed spawn releases pending and has deterministic unavailable state',async()=>{
- const h=new BridgeHost({workspacePath:tmpdir(),inspect:async()=>installation,spawnProcess:()=>spawn('/nonexistent-s01-helper',[],{stdio:['pipe','pipe','pipe']})});
+ const h=new BridgeHost({workspacePath:tmpdir(),inspect:async()=>installation,spawnProcess:()=>spawn('/nonexistent-install-helper',[],{stdio:['pipe','pipe','pipe']})});
  assert.equal((await h.connect()).state,'unavailable');await h.dispose();
 });
 test('owned process EOF cleanup preserves an unrelated process',async()=>{
@@ -31,7 +31,7 @@ test('owned process EOF cleanup preserves an unrelated process',async()=>{
 });
 
 test('metadata validates helper absence on a real filesystem fixture',async()=>{
- const root=await mkdtemp(join(tmpdir(),'s01-missing-helper-'));const app=join(root,'ZCode.app');
+ const root=await mkdtemp(join(tmpdir(),'runtime-missing-helper-'));const app=join(root,'ZCode.app');
  try{await mkdir(join(app,'Contents'),{recursive:true});await writeFile(join(app,'Contents/Info.plist'),'<?xml version="1.0"?><plist version="1.0"><dict><key>CFBundleIdentifier</key><string>dev.zcode.app</string><key>CFBundleShortVersionString</key><string>3.14.4</string><key>CFBundleVersion</key><string>3.14.4.7912</string></dict></plist>');await assert.rejects(inspectInstallation(app),{code:'helper-missing'})}finally{await rm(root,{recursive:true,force:true})}
 });
 
@@ -57,7 +57,7 @@ test('CB-1: same-batch valid response and bad frame preserve terminal state and 
   }finally{fixture.finishClose();await connecting;await host.dispose()}
  }
 });
-test('S03.A Host conversation scope stays restricted and owned disposal closes projection API',async()=>{
+test('Transport V4 Host conversation scope stays restricted and owned disposal closes projection API',async()=>{
  const fixture=batchFaultChild('never'),host=new BridgeHost({workspacePath:tmpdir(),inspect:async()=>batchFaultInstallation,spawnProcess:()=>fixture.child});
  try{
   const status=await host.connect();assert.equal(status.connected,true);
@@ -69,7 +69,7 @@ test('S03.A Host conversation scope stays restricted and owned disposal closes p
  }finally{fixture.finishClose();await host.dispose()}
 });
 test('CA3-2 same-session Host instances occupy distinct server slots and reconnect replaces only their own slot',async()=>{
- const source=JSON.parse(await readFile(new URL('./fixtures/s03a/success.json',import.meta.url)));
+ const source=JSON.parse(await readFile(new URL('./fixtures/transport-v4/success.json',import.meta.url)));
  const child=new EventEmitter();child.stdin=new PassThrough();child.stdout=new PassThrough();child.stderr=new PassThrough();
  const slots=new Map(),requests=[];let serial=0,seq=0;
  const route=p=>JSON.stringify([p.connectionId,p.topic]);

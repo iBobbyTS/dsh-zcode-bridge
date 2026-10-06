@@ -1,0 +1,824 @@
+{
+  "provenance": {
+    "kind": "injected-semantic-fixture",
+    "source": "transport-v4/success.json + official shared schemas",
+    "paidModelCalls": 0,
+    "injectedFields": [
+      "workflowRuns",
+      "graph",
+      "definitions",
+      "artifacts",
+      "workspace",
+      "events",
+      "readResults",
+      "lifecycle states"
+    ],
+    "note": "No run, saved definition, engine result or published artifact in this fixture was actually produced."
+  },
+  "ack": {
+    "ack": {
+      "subscriptionId": "fixture-subscription",
+      "mode": "snapshot",
+      "logEpoch": "musegv3e-mrqoweve",
+      "openTiming": {
+        "version": 1,
+        "initialFrameEncodeMs": 0,
+        "sessionRuntimeState": "warm",
+        "snapshotRowCount": 0
+      }
+    }
+  },
+  "initial": {
+    "wireVersion": 3,
+    "kind": "complete",
+    "deliveryKind": "initial",
+    "logicalFrameId": "fixture-subscription-lf-1",
+    "logicalFrameOrdinal": 1,
+    "topic": "conversation/fixture-session",
+    "subscriptionId": "fixture-subscription",
+    "frame": {
+      "topic": "conversation/fixture-session",
+      "subscriptionId": "fixture-subscription",
+      "sentAt": 1791032434539,
+      "fromSeq": 0,
+      "toSeq": 0,
+      "payload": {
+        "kind": "snapshot",
+        "snapshot": {
+          "protocolVersion": 1,
+          "sessionId": "fixture-session",
+          "logEpoch": "musegv3e-mrqoweve",
+          "seq": 0,
+          "revision": 0,
+          "control": {
+            "phase": "draft",
+            "sessionEnded": false,
+            "canStop": false,
+            "stopState": "idle",
+            "stopTargetKind": "unknown",
+            "activeWorks": [],
+            "lastError": null,
+            "apiRetry": null
+          },
+          "availability": {
+            "fork": {
+              "allowed": false,
+              "reasonCode": "forkTargetNotStable"
+            },
+            "compact": {
+              "allowed": false,
+              "reasonCode": "idleCannotCompact"
+            },
+            "switchModelConfig": {
+              "allowed": true
+            },
+            "setFollowupMode": {
+              "allowed": true
+            },
+            "queueEdit": {
+              "allowed": true
+            },
+            "sendQueuedNow": {
+              "allowed": false,
+              "reasonCode": "sendQueuedNowRequiresRunning"
+            },
+            "pauseGoal": {
+              "allowed": false,
+              "reasonCode": "noGoalToPause"
+            },
+            "resumeGoal": {
+              "allowed": false,
+              "reasonCode": "noGoalToResume"
+            }
+          },
+          "inputRouting": {
+            "mode": "startNow"
+          },
+          "meta": {
+            "title": "",
+            "titleSource": "default"
+          },
+          "config": {
+            "provider": "deepseek",
+            "model": "deepseek-flash",
+            "thought": "max",
+            "thoughtLevels": [
+              "disabled",
+              "low",
+              "high",
+              "max"
+            ],
+            "followupMode": "queue",
+            "mode": "build",
+            "modelSelection": {
+              "providerId": "deepseek",
+              "modelId": "deepseek-flash",
+              "options": {
+                "reasoningLevel": "max"
+              }
+            },
+            "planEnabled": false
+          },
+          "modelTransition": null,
+          "usage": {
+            "contextWindow": null,
+            "cumulative": {
+              "inputTokens": 0,
+              "outputTokens": 0,
+              "cacheReadTokens": 0,
+              "cacheWriteTokens": 0
+            }
+          },
+          "queue": {
+            "items": [],
+            "autoDrain": true
+          },
+          "pendingInteractions": [],
+          "pendingCommands": [],
+          "backgroundWorks": [],
+          "subagents": {
+            "revision": 0,
+            "childSessionIds": [],
+            "running": [],
+            "endedTotal": 0
+          },
+          "goal": null,
+          "plan": null,
+          "workspaceHookAdmission": null,
+          "rows": {
+            "window": [],
+            "totalCount": 0,
+            "firstRowId": null
+          },
+          "workflowRuns": {
+            "revision": 1,
+            "runs": [
+              {
+                "runId": "fixture-run",
+                "toolCallId": "fixture-workflow-tool",
+                "status": "running",
+                "usage": {
+                  "spentTokens": 12,
+                  "nodesUsed": 2
+                },
+                "actors": [
+                  {
+                    "siteId": "actor#1",
+                    "ordinal": 0,
+                    "name": "Researcher",
+                    "sessionId": "fixture-child-1",
+                    "status": "running",
+                    "phaseName": "Research"
+                  },
+                  {
+                    "siteId": "actor#2",
+                    "ordinal": 0,
+                    "name": "Reviewer",
+                    "sessionId": "fixture-child-2",
+                    "status": "waiting",
+                    "phaseName": "Review"
+                  }
+                ],
+                "nodes": [
+                  {
+                    "siteId": "ask#1",
+                    "ordinal": 0,
+                    "kind": "ask",
+                    "phase": "executing",
+                    "actorSiteId": "actor#1",
+                    "actorOrdinal": 0,
+                    "phaseName": "Research"
+                  }
+                ],
+                "currentPhase": "Review",
+                "phaseNames": [
+                  "Research",
+                  "Review"
+                ],
+                "phaseAlongside": [
+                  [],
+                  [
+                    0
+                  ]
+                ],
+                "truncated": true,
+                "lastEventSequence": 5
+              },
+              {
+                "runId": "fixture-errored",
+                "toolCallId": "fixture-workflow-tool",
+                "status": "errored",
+                "usage": {
+                  "spentTokens": 12,
+                  "nodesUsed": 2
+                },
+                "actors": [
+                  {
+                    "siteId": "actor#1",
+                    "ordinal": 0,
+                    "name": "Researcher",
+                    "sessionId": "fixture-child-1",
+                    "status": "completed",
+                    "phaseName": "Research"
+                  },
+                  {
+                    "siteId": "actor#2",
+                    "ordinal": 0,
+                    "name": "Reviewer",
+                    "sessionId": "fixture-child-2",
+                    "status": "completed",
+                    "phaseName": "Review"
+                  }
+                ],
+                "nodes": [
+                  {
+                    "siteId": "ask#1",
+                    "ordinal": 0,
+                    "kind": "ask",
+                    "phase": "settled",
+                    "actorSiteId": "actor#1",
+                    "actorOrdinal": 0,
+                    "phaseName": "Research",
+                    "outcome": "failed"
+                  }
+                ],
+                "currentPhase": "Review",
+                "phaseNames": [
+                  "Research",
+                  "Review"
+                ],
+                "phaseAlongside": [
+                  [],
+                  [
+                    0
+                  ]
+                ],
+                "truncated": true,
+                "lastEventSequence": 5,
+                "error": "Script failed"
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  "display": {
+    "kind": "create_workflow",
+    "ok": true,
+    "errorCount": 0,
+    "diagnostics": [],
+    "causalityGraph": {
+      "steps": [
+        {
+          "id": "ask#1",
+          "kind": "ask",
+          "label": "Research",
+          "lane": "actor#1",
+          "phase": "phase-1"
+        },
+        {
+          "id": "ask#2",
+          "kind": "ask",
+          "label": "Review",
+          "lane": "actor#2",
+          "phase": "phase-2"
+        }
+      ],
+      "lanes": [
+        {
+          "id": "actor#1",
+          "name": "Researcher"
+        },
+        {
+          "id": "actor#2",
+          "name": "Reviewer"
+        }
+      ],
+      "participants": [
+        {
+          "id": "a1",
+          "phase": "phase-1",
+          "lane": "actor#1",
+          "steps": [
+            "ask#1"
+          ]
+        },
+        {
+          "id": "a2",
+          "phase": "phase-2",
+          "lane": "actor#2",
+          "steps": [
+            "ask#2"
+          ]
+        }
+      ],
+      "handoffs": [
+        {
+          "from": "a1",
+          "to": "a2",
+          "types": [
+            "markdown"
+          ]
+        }
+      ],
+      "phases": [
+        {
+          "id": "phase-1",
+          "name": "Research"
+        },
+        {
+          "id": "phase-2",
+          "name": "Review",
+          "alongside": [
+            "phase-1"
+          ]
+        },
+        {
+          "id": "phase-3",
+          "name": "Inspect",
+          "alongside": [
+            "phase-2"
+          ]
+        },
+        {
+          "id": "phase-4",
+          "name": "Join"
+        }
+      ],
+      "phaseEdges": [
+        {
+          "from": "phase-1",
+          "to": "phase-2"
+        },
+        {
+          "from": "phase-1",
+          "to": "phase-3"
+        },
+        {
+          "from": "phase-2",
+          "to": "phase-4"
+        },
+        {
+          "from": "phase-3",
+          "to": "phase-4"
+        }
+      ],
+      "exits": [
+        "phase-4"
+      ],
+      "truncated": true
+    }
+  },
+  "artifactKinds": {
+    "file": {
+      "id": "file",
+      "kind": "file",
+      "version": 1,
+      "itemCount": 0,
+      "versions": [
+        {
+          "version": 1,
+          "publishedAt": 1
+        }
+      ],
+      "sourcePath": "output/report.bin"
+    },
+    "markdown": {
+      "id": "markdown",
+      "kind": "markdown",
+      "version": 1,
+      "itemCount": 0,
+      "versions": [
+        {
+          "version": 1,
+          "publishedAt": 1
+        }
+      ]
+    },
+    "chart": {
+      "id": "chart",
+      "kind": "chart",
+      "version": 1,
+      "itemCount": 1,
+      "versions": [
+        {
+          "version": 1,
+          "publishedAt": 1
+        }
+      ]
+    },
+    "table": {
+      "id": "table",
+      "kind": "table",
+      "version": 1,
+      "itemCount": 1,
+      "versions": [
+        {
+          "version": 1,
+          "publishedAt": 1
+        }
+      ]
+    },
+    "metrics": {
+      "id": "metrics",
+      "kind": "metrics",
+      "version": 1,
+      "itemCount": 1,
+      "versions": [
+        {
+          "version": 1,
+          "publishedAt": 1
+        }
+      ]
+    },
+    "board": {
+      "id": "board",
+      "kind": "board",
+      "version": 1,
+      "itemCount": 1,
+      "versions": [
+        {
+          "version": 1,
+          "publishedAt": 1
+        }
+      ]
+    }
+  },
+  "running": {
+    "runId": "fixture-run",
+    "toolCallId": "fixture-workflow-tool",
+    "status": "running",
+    "usage": {
+      "spentTokens": 12,
+      "nodesUsed": 2
+    },
+    "actors": [
+      {
+        "siteId": "actor#1",
+        "ordinal": 0,
+        "name": "Researcher",
+        "sessionId": "fixture-child-1",
+        "status": "running",
+        "phaseName": "Research"
+      },
+      {
+        "siteId": "actor#2",
+        "ordinal": 0,
+        "name": "Reviewer",
+        "sessionId": "fixture-child-2",
+        "status": "waiting",
+        "phaseName": "Review"
+      }
+    ],
+    "nodes": [
+      {
+        "siteId": "ask#1",
+        "ordinal": 0,
+        "kind": "ask",
+        "phase": "executing",
+        "actorSiteId": "actor#1",
+        "actorOrdinal": 0,
+        "phaseName": "Research"
+      }
+    ],
+    "currentPhase": "Review",
+    "phaseNames": [
+      "Research",
+      "Review"
+    ],
+    "phaseAlongside": [
+      [],
+      [
+        0
+      ]
+    ],
+    "truncated": true,
+    "lastEventSequence": 5
+  },
+  "stopped": {
+    "runId": "fixture-run",
+    "toolCallId": "fixture-workflow-tool",
+    "status": "stopped",
+    "usage": {
+      "spentTokens": 12,
+      "nodesUsed": 2
+    },
+    "actors": [
+      {
+        "siteId": "actor#1",
+        "ordinal": 0,
+        "name": "Researcher",
+        "sessionId": "fixture-child-1",
+        "status": "completed",
+        "phaseName": "Research"
+      },
+      {
+        "siteId": "actor#2",
+        "ordinal": 0,
+        "name": "Reviewer",
+        "sessionId": "fixture-child-2",
+        "status": "completed",
+        "phaseName": "Review"
+      }
+    ],
+    "nodes": [
+      {
+        "siteId": "ask#1",
+        "ordinal": 0,
+        "kind": "ask",
+        "phase": "settled",
+        "actorSiteId": "actor#1",
+        "actorOrdinal": 0,
+        "phaseName": "Research",
+        "outcome": "cancelled"
+      }
+    ],
+    "currentPhase": "Review",
+    "phaseNames": [
+      "Research",
+      "Review"
+    ],
+    "phaseAlongside": [
+      [],
+      [
+        0
+      ]
+    ],
+    "truncated": true,
+    "lastEventSequence": 5,
+    "stopReason": "interrupted",
+    "resumable": true,
+    "error": "Interrupted"
+  },
+  "errored": {
+    "runId": "fixture-errored",
+    "toolCallId": "fixture-workflow-tool",
+    "status": "errored",
+    "usage": {
+      "spentTokens": 12,
+      "nodesUsed": 2
+    },
+    "actors": [
+      {
+        "siteId": "actor#1",
+        "ordinal": 0,
+        "name": "Researcher",
+        "sessionId": "fixture-child-1",
+        "status": "completed",
+        "phaseName": "Research"
+      },
+      {
+        "siteId": "actor#2",
+        "ordinal": 0,
+        "name": "Reviewer",
+        "sessionId": "fixture-child-2",
+        "status": "completed",
+        "phaseName": "Review"
+      }
+    ],
+    "nodes": [
+      {
+        "siteId": "ask#1",
+        "ordinal": 0,
+        "kind": "ask",
+        "phase": "settled",
+        "actorSiteId": "actor#1",
+        "actorOrdinal": 0,
+        "phaseName": "Research",
+        "outcome": "failed"
+      }
+    ],
+    "currentPhase": "Review",
+    "phaseNames": [
+      "Research",
+      "Review"
+    ],
+    "phaseAlongside": [
+      [],
+      [
+        0
+      ]
+    ],
+    "truncated": true,
+    "lastEventSequence": 5,
+    "error": "Script failed"
+  },
+  "completed": {
+    "runId": "fixture-run",
+    "toolCallId": "fixture-workflow-tool",
+    "status": "completed",
+    "usage": {
+      "spentTokens": 12,
+      "nodesUsed": 2
+    },
+    "actors": [
+      {
+        "siteId": "actor#1",
+        "ordinal": 0,
+        "name": "Researcher",
+        "sessionId": "fixture-child-1",
+        "status": "completed",
+        "phaseName": "Research"
+      },
+      {
+        "siteId": "actor#2",
+        "ordinal": 0,
+        "name": "Reviewer",
+        "sessionId": "fixture-child-2",
+        "status": "completed",
+        "phaseName": "Review"
+      }
+    ],
+    "nodes": [
+      {
+        "siteId": "ask#1",
+        "ordinal": 0,
+        "kind": "ask",
+        "phase": "settled",
+        "actorSiteId": "actor#1",
+        "actorOrdinal": 0,
+        "phaseName": "Research",
+        "outcome": "ok"
+      }
+    ],
+    "currentPhase": "Review",
+    "phaseNames": [
+      "Research",
+      "Review"
+    ],
+    "phaseAlongside": [
+      [],
+      [
+        0
+      ]
+    ],
+    "truncated": true,
+    "lastEventSequence": 5,
+    "resultPreview": "engine return only",
+    "artifacts": [
+      {
+        "id": "report",
+        "kind": "markdown",
+        "version": 1,
+        "title": "Research report",
+        "itemCount": 0
+      }
+    ]
+  },
+  "successor": {
+    "runId": "fixture-successor",
+    "toolCallId": "fixture-workflow-tool",
+    "status": "running",
+    "usage": {
+      "spentTokens": 12,
+      "nodesUsed": 2
+    },
+    "actors": [
+      {
+        "siteId": "actor#1",
+        "ordinal": 0,
+        "name": "Researcher",
+        "sessionId": "fixture-child-1",
+        "status": "running",
+        "phaseName": "Research"
+      },
+      {
+        "siteId": "actor#2",
+        "ordinal": 0,
+        "name": "Reviewer",
+        "sessionId": "fixture-child-2",
+        "status": "waiting",
+        "phaseName": "Review"
+      }
+    ],
+    "nodes": [
+      {
+        "siteId": "ask#1",
+        "ordinal": 0,
+        "kind": "ask",
+        "phase": "executing",
+        "actorSiteId": "actor#1",
+        "actorOrdinal": 0,
+        "phaseName": "Research"
+      }
+    ],
+    "currentPhase": "Review",
+    "phaseNames": [
+      "Research",
+      "Review"
+    ],
+    "phaseAlongside": [
+      [],
+      [
+        0
+      ]
+    ],
+    "truncated": true,
+    "lastEventSequence": 5,
+    "resumedFrom": "fixture-run"
+  },
+  "directory": {
+    "workflows": [
+      {
+        "name": "review",
+        "scope": "project",
+        "description": "Two actor review",
+        "path": "/fixture/workspace/.zcode/workflows/review.ts"
+      },
+      {
+        "name": "review",
+        "scope": "global",
+        "description": "Global review",
+        "path": "/fixture/home/.zcode/workflows/review.ts"
+      }
+    ],
+    "invalid": [],
+    "dir": "/fixture/workspace/.zcode/workflows"
+  },
+  "definition": {
+    "ok": true,
+    "name": "review",
+    "scope": "project",
+    "path": "/fixture/workspace/.zcode/workflows/review.ts",
+    "meta": {
+      "description": "Two actor review"
+    },
+    "script": "// synthetic fixture script; never executed"
+  },
+  "artifacts": {
+    "artifacts": [
+      {
+        "id": "report",
+        "kind": "markdown",
+        "title": "Research report",
+        "version": 1,
+        "itemCount": 0,
+        "versions": [
+          {
+            "version": 1,
+            "publishedAt": 1,
+            "bytes": 12,
+            "contentType": "text/markdown"
+          }
+        ]
+      }
+    ]
+  },
+  "content": {
+    "dataBase64": "aGVsbG8gcmVwb3J0",
+    "mediaType": "text/markdown",
+    "totalBytes": 12,
+    "nextOffset": null
+  },
+  "data": {
+    "items": [
+      {
+        "sequence": 2,
+        "siteId": "report#1",
+        "ordinal": 0,
+        "item": {
+          "score": 4
+        }
+      }
+    ],
+    "hasMore": true
+  },
+  "workspace": {
+    "nodes": [
+      {
+        "siteId": "read#1",
+        "ordinal": 0,
+        "kind": "world-read",
+        "op": "read",
+        "status": "completed",
+        "createdAt": 1,
+        "updatedAt": 2
+      }
+    ],
+    "truncated": true
+  },
+  "nodeResult": {
+    "status": "completed",
+    "result": "official-shaped fixture result",
+    "truncated": true,
+    "totalBytes": 100000
+  },
+  "events": {
+    "events": [
+      {
+        "sequence": 1,
+        "type": "run-started",
+        "payload": {
+          "runId": "fixture-run"
+        }
+      },
+      {
+        "sequence": 2,
+        "type": "future-event",
+        "payload": {}
+      }
+    ],
+    "hasMore": true
+  }
+}

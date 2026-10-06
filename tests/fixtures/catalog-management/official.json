@@ -1,0 +1,3639 @@
+{
+  "provenance": {
+    "kind": "official-runtime-capture",
+    "capturedAt": "2026-10-04T00:53:07.683Z",
+    "paidModelCalls": 0,
+    "isolation": "dedicated tmp HOME + workspace; real user storage untouched",
+    "sanitization": "tmp paths aliased; stderr counted only",
+    "version": "3.14.4",
+    "build": "3.14.4.7912",
+    "sha256": "fad4c35c4c36ec210d8a06d3fa0e77de23c8545e2eb6ff90aea1eb38d1e6275f",
+    "stderrBytes": 0
+  },
+  "read": {
+    "capabilities": {
+      "result": {
+        "independentPlanState": true
+      }
+    },
+    "mcpListStatus": {
+      "result": {
+        "statuses": {}
+      }
+    },
+    "mcpListConnect": {
+      "result": {
+        "statuses": {}
+      }
+    },
+    "pluginsList": {
+      "result": {
+        "plugins": [
+          {
+            "id": "node-repl-host@zcode-plugins-official",
+            "name": "node-repl-host",
+            "description": "Shared node_repl runtime host for ZCode official capabilities. Not user-facing: it carries no skill and appears in no marketplace listing; Browser Use and Computer Use enable it and contribute their own skills, docs and runtime assets.",
+            "version": "0.6.0",
+            "enabled": true,
+            "source": "official",
+            "marketplace": "zcode-plugins-official",
+            "author": "Z.ai",
+            "skillCount": 0,
+            "skillRootCount": 0,
+            "commandRootCount": 0,
+            "components": [],
+            "declaredMcpServerNames": [],
+            "mcpServerNames": [],
+            "hookDetails": [],
+            "rootPath": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/node-repl-host/0.6.0"
+          },
+          {
+            "id": "android-emulator@zcode-plugins-official",
+            "name": "android-emulator",
+            "description": "Provides Android development workflows and emulator automation for ZCode.",
+            "version": "0.1.0",
+            "enabled": false,
+            "source": "official",
+            "marketplace": "zcode-plugins-official",
+            "author": "Z.ai",
+            "skillCount": 0,
+            "skillRootCount": 0,
+            "commandRootCount": 0,
+            "components": [
+              {
+                "kind": "command",
+                "items": [
+                  {
+                    "name": "android-dev",
+                    "description": "Start the Android emulator development loop."
+                  }
+                ]
+              },
+              {
+                "kind": "skill",
+                "items": [
+                  {
+                    "name": "android-dev",
+                    "description": "Build, run, inspect, and lightly automate Android apps with the android-emulator MCP tools."
+                  }
+                ]
+              },
+              {
+                "kind": "mcp",
+                "items": [
+                  {
+                    "name": "android-emulator"
+                  }
+                ]
+              }
+            ],
+            "declaredMcpServerNames": [
+              "android-emulator"
+            ],
+            "mcpServerNames": [],
+            "hookDetails": [],
+            "rootPath": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/android-emulator/0.1.0",
+            "userConfig": {
+              "sdk_path": {
+                "default": "",
+                "description": "Optional Android SDK root directory. When empty, falls back to ANDROID_HOME, ANDROID_SDK_ROOT, or common system paths.",
+                "type": "string"
+              },
+              "default_avd": {
+                "default": "medium_phone",
+                "description": "Preferred AVD or device name.",
+                "type": "string"
+              },
+              "api_level": {
+                "default": "35",
+                "description": "Android API level used when generating projects, installing SDK packages, and selecting the default system image.",
+                "type": "string"
+              },
+              "build_tools_version": {
+                "default": "35.0.0",
+                "description": "Android SDK build-tools version used in installation guidance.",
+                "type": "string"
+              },
+              "system_image_variant": {
+                "default": "default",
+                "description": "Android system image variant: default, google_apis, or google_apis_playstore.",
+                "type": "string"
+              },
+              "system_image_abi": {
+                "default": "",
+                "description": "Optional Android system image ABI override. When empty, Apple Silicon/ARM64 hosts use arm64-v8a and other hosts use x86_64.",
+                "type": "string"
+              },
+              "jdk_major": {
+                "default": "17",
+                "description": "JDK major version used for preflight checks and installation guidance.",
+                "type": "string"
+              }
+            }
+          },
+          {
+            "id": "browser-use@zcode-plugins-official",
+            "name": "browser-use",
+            "description": "Built-in browser automation runtime and guidance for Desktop IAB and explicitly enabled CLI-managed headless CDP: open, navigate, inspect, click, type, screenshot, record workspace WebM videos, and verify web pages and local dev targets.",
+            "version": "0.5.1",
+            "enabled": true,
+            "source": "official",
+            "marketplace": "zcode-plugins-official",
+            "author": "Z.ai",
+            "skillCount": 2,
+            "skillRootCount": 1,
+            "commandRootCount": 0,
+            "components": [
+              {
+                "kind": "skill",
+                "items": [
+                  {
+                    "name": "control-browser",
+                    "description": "Use when opening, navigating, inspecting, testing, clicking, typing, filling, screenshotting, or verifying web pages and local HTTP targets (localhost, 127.0.0.1, ::1) inside ZCode, including browser/web-UI automation, rendered-page scraping, frontend checks, and visible page-state reading. Prefer this over Computer Use for anything that stays inside a web page, unless the user explicitly asks for Computer Use. Main agent only."
+                  },
+                  {
+                    "name": "web-gui-tester",
+                    "description": "Use the browser automation tooling available in the session to test web frontends interactively in a purely GUI-based, black-box manner: simulate real user clicks, text input, scrolling, and other actions; use screenshots for visual verification and read-only DOM inspection for cross-validation; and produce a final test report. Suitable for verifying whether web functionality works correctly, reproducing frontend bugs, checking interaction feedback and layout styling, or conducting exploratory testing of a page. Use this skill when the user asks to test a webpage/frontend feature, verify UI behavior, reproduce a page bug, or provides only a URL and asks you to “test it.”"
+                  }
+                ]
+              }
+            ],
+            "declaredMcpServerNames": [],
+            "hostMcpServerNames": [
+              "node_repl"
+            ],
+            "mcpServerNames": [],
+            "hookDetails": [],
+            "rootPath": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/browser-use/0.5.1"
+          },
+          {
+            "id": "documents@zcode-plugins-official",
+            "name": "documents",
+            "description": "DOCX document production skills, published as an official ZCode plugin.",
+            "version": "0.1.7",
+            "enabled": true,
+            "source": "official",
+            "marketplace": "zcode-plugins-official",
+            "author": "Z.ai",
+            "skillCount": 1,
+            "skillRootCount": 1,
+            "commandRootCount": 0,
+            "components": [
+              {
+                "kind": "agent",
+                "items": [
+                  {
+                    "name": "visual-judge",
+                    "description": "THE single visual acceptance pass for a rendered deliverable of these types only — pptx, docx, xlsx, pdf, poster, chart; for anything else, do not use it. Use it *instead of* looking at the page images yourself, never in addition: pick one gate — spawn visual-judge, or (only if visual-judge is unavailable) inspect the images yourself — and do not pre-screen the pages before dispatching, because a preliminary look followed by a visual-judge call duplicates the same review and wastes a full render pass. Its bar is user acceptance: it judges everything the user will see on its assigned pages — visual asset quality and layout & composition — and returns one JSON verdict line per page (pass/fail + evidence-backed issues; a clean programmatic/script check is no cover and no substitute). It is read-only and edits nothing; it can only Read pre-rendered page PNGs (never pptx/docx/HTML/PDF opened as images), so render the pages to PNG, hand visual-judge the paths, and act on its verdicts — those verdicts are the visual gate's result, not an input to your own re-judging. Dispatch grouping, what to pass in, and the repair loop follow the delivery protocol's visual gate in your system prompt."
+                  }
+                ]
+              },
+              {
+                "kind": "skill",
+                "items": [
+                  {
+                    "name": "docx",
+                    "description": "Complete DOCX document creation, editing, and analysis capabilities with support for revisions, comments, formatting preservation, and text extraction. Also handles Word format conversion: legacy .doc → .docx, DOCX → PDF, DOCX → images (PNG/JPG) for visual review or previews, and DOCX → Markdown/plain text extraction. Use for creating new documents, modifying content, handling revisions, adding comments, other professional Word document tasks, or when the user asks to convert, export, or render a Word document to another format (e.g. 'Word转PDF', 'doc转docx', 'export this docx as PDF/images')."
+                  }
+                ]
+              }
+            ],
+            "declaredMcpServerNames": [],
+            "mcpServerNames": [],
+            "hookDetails": [],
+            "rootPath": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/documents/0.1.7"
+          },
+          {
+            "id": "pdf@zcode-plugins-official",
+            "name": "pdf",
+            "description": "PDF document production skills, published as an official ZCode plugin.",
+            "version": "0.1.7",
+            "enabled": true,
+            "source": "official",
+            "marketplace": "zcode-plugins-official",
+            "author": "Z.ai",
+            "skillCount": 1,
+            "skillRootCount": 1,
+            "commandRootCount": 0,
+            "components": [
+              {
+                "kind": "agent",
+                "items": [
+                  {
+                    "name": "visual-judge",
+                    "description": "THE single visual acceptance pass for a rendered deliverable of these types only — pptx, docx, xlsx, pdf, poster, chart; for anything else, do not use it. Use it *instead of* looking at the page images yourself, never in addition: pick one gate — spawn visual-judge, or (only if visual-judge is unavailable) inspect the images yourself — and do not pre-screen the pages before dispatching, because a preliminary look followed by a visual-judge call duplicates the same review and wastes a full render pass. Its bar is user acceptance: it judges everything the user will see on its assigned pages — visual asset quality and layout & composition — and returns one JSON verdict line per page (pass/fail + evidence-backed issues; a clean programmatic/script check is no cover and no substitute). It is read-only and edits nothing; it can only Read pre-rendered page PNGs (never pptx/docx/HTML/PDF opened as images), so render the pages to PNG, hand visual-judge the paths, and act on its verdicts — those verdicts are the visual gate's result, not an input to your own re-judging. Dispatch grouping, what to pass in, and the repair loop follow the delivery protocol's visual gate in your system prompt."
+                  }
+                ]
+              },
+              {
+                "kind": "skill",
+                "items": [
+                  {
+                    "name": "pdf",
+                    "description": "Professional PDF toolkit covering four production workflows: reports, creative visuals, academic LaTeX, and existing PDF processing. Routes automatically by document type and supports reports, posters, papers, resumes, extraction, merging, splitting, and form filling. Use this skill for any conversion whose output is a PDF: Office → PDF (.docx/.doc/.pptx/.ppt/.xlsx/.xls/.odt/.odp/.ods/.rtf/.csv/.txt → PDF), HTML → PDF, and LaTeX/.tex → PDF; also PDF → images, PDF → text, and PDF → tables when reading a PDF apart. Trigger when the user asks to convert, export, render, print, or turn a file into a PDF, or to merge/split/extract from one — including phrasings like 'Word转PDF', 'PPT转PDF', 'Excel转PDF', 'html转pdf', '导出为PDF', 'save/export as PDF', or 'PDF转图片/文字'."
+                  }
+                ]
+              }
+            ],
+            "declaredMcpServerNames": [],
+            "mcpServerNames": [],
+            "hookDetails": [],
+            "rootPath": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/pdf/0.1.7"
+          },
+          {
+            "id": "presentations@zcode-plugins-official",
+            "name": "presentations",
+            "description": "PPTX presentation production skills, published as an official ZCode plugin.",
+            "version": "0.1.7",
+            "enabled": true,
+            "source": "official",
+            "marketplace": "zcode-plugins-official",
+            "author": "Z.ai",
+            "skillCount": 1,
+            "skillRootCount": 1,
+            "commandRootCount": 0,
+            "components": [
+              {
+                "kind": "agent",
+                "items": [
+                  {
+                    "name": "visual-judge",
+                    "description": "THE single visual acceptance pass for a rendered deliverable of these types only — pptx, docx, xlsx, pdf, poster, chart; for anything else, do not use it. Use it *instead of* looking at the page images yourself, never in addition: pick one gate — spawn visual-judge, or (only if visual-judge is unavailable) inspect the images yourself — and do not pre-screen the pages before dispatching, because a preliminary look followed by a visual-judge call duplicates the same review and wastes a full render pass. Its bar is user acceptance: it judges everything the user will see on its assigned pages — visual asset quality and layout & composition — and returns one JSON verdict line per page (pass/fail + evidence-backed issues; a clean programmatic/script check is no cover and no substitute). It is read-only and edits nothing; it can only Read pre-rendered page PNGs (never pptx/docx/HTML/PDF opened as images), so render the pages to PNG, hand visual-judge the paths, and act on its verdicts — those verdicts are the visual gate's result, not an input to your own re-judging. Dispatch grouping, what to pass in, and the repair loop follow the delivery protocol's visual gate in your system prompt."
+                  }
+                ]
+              },
+              {
+                "kind": "skill",
+                "items": [
+                  {
+                    "name": "pptx",
+                    "description": "Use this skill any time a presentation file is the primary input or output. Covers: creating new .pptx decks from scratch or from an outline/document (pptxgenjs / python-pptx); editing and restyling an existing .pptx; reading and extracting text/structure from a deck (markitdown); and rendering a deck to PDF (LibreOffice) or to per-slide PNG images (pdftoppm) for previews, thumbnails, or visual review. Trigger when the user references a .pptx file by name or path, says 'make/build a deck, slides, presentation, PPT, 幻灯片, 演示文稿, 汇报/路演材料', or asks to convert, export, render, or preview slides as PDF or images (e.g. 'PPT转PDF', 'ppt导出图片', 'turn these slides into a PDF')."
+                  }
+                ]
+              }
+            ],
+            "declaredMcpServerNames": [],
+            "mcpServerNames": [],
+            "hookDetails": [],
+            "rootPath": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/presentations/0.1.7"
+          },
+          {
+            "id": "spreadsheets@zcode-plugins-official",
+            "name": "spreadsheets",
+            "description": "XLSX spreadsheet production skills, published as an official ZCode plugin.",
+            "version": "0.1.7",
+            "enabled": true,
+            "source": "official",
+            "marketplace": "zcode-plugins-official",
+            "author": "Z.ai",
+            "skillCount": 1,
+            "skillRootCount": 1,
+            "commandRootCount": 0,
+            "components": [
+              {
+                "kind": "agent",
+                "items": [
+                  {
+                    "name": "visual-judge",
+                    "description": "THE single visual acceptance pass for a rendered deliverable of these types only — pptx, docx, xlsx, pdf, poster, chart; for anything else, do not use it. Use it *instead of* looking at the page images yourself, never in addition: pick one gate — spawn visual-judge, or (only if visual-judge is unavailable) inspect the images yourself — and do not pre-screen the pages before dispatching, because a preliminary look followed by a visual-judge call duplicates the same review and wastes a full render pass. Its bar is user acceptance: it judges everything the user will see on its assigned pages — visual asset quality and layout & composition — and returns one JSON verdict line per page (pass/fail + evidence-backed issues; a clean programmatic/script check is no cover and no substitute). It is read-only and edits nothing; it can only Read pre-rendered page PNGs (never pptx/docx/HTML/PDF opened as images), so render the pages to PNG, hand visual-judge the paths, and act on its verdicts — those verdicts are the visual gate's result, not an input to your own re-judging. Dispatch grouping, what to pass in, and the repair loop follow the delivery protocol's visual gate in your system prompt."
+                  }
+                ]
+              },
+              {
+                "kind": "skill",
+                "items": [
+                  {
+                    "name": "xlsx",
+                    "description": "Use this skill any time a spreadsheet file is the primary input or output. This means any task where the user wants to: open, read, edit, or fix an existing .xlsx, .xlsm, .csv, or .tsv file; create a new spreadsheet from scratch or from other data sources; analyze data and output results as an Excel file with charts; convert between tabular file formats (CSV/TSV/JSON/PDF-table → XLSX, or XLSX → CSV/JSON); clean, merge, pivot, or transform tabular data. Trigger especially when the user references a spreadsheet file by name or path, says 'make a table/report/model', mentions Excel/CSV/数据分析/报表/汇总, asks to convert or export a spreadsheet (e.g. 'csv转excel', 'json转表格', 'export as CSV'), or wants data visualization inside a spreadsheet."
+                  }
+                ]
+              }
+            ],
+            "declaredMcpServerNames": [],
+            "mcpServerNames": [],
+            "hookDetails": [],
+            "rootPath": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/spreadsheets/0.1.7"
+          },
+          {
+            "id": "image-search@zcode-plugins-official",
+            "name": "image-search",
+            "description": "Official ZCode image search MCP server for finding illustrations and reference images.",
+            "version": "0.1.1",
+            "enabled": true,
+            "source": "official",
+            "marketplace": "zcode-plugins-official",
+            "author": "Z.ai",
+            "skillCount": 0,
+            "skillRootCount": 0,
+            "commandRootCount": 0,
+            "components": [
+              {
+                "kind": "mcp",
+                "items": [
+                  {
+                    "name": "image_search"
+                  }
+                ]
+              }
+            ],
+            "declaredMcpServerNames": [
+              "image_search"
+            ],
+            "mcpServerNames": [],
+            "hookDetails": [],
+            "rootPath": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/image-search/0.1.1"
+          },
+          {
+            "id": "ios-simulator@zcode-plugins-official",
+            "name": "ios-simulator",
+            "description": "Provides iOS development workflows and simulator automation for ZCode.",
+            "version": "0.1.0",
+            "enabled": false,
+            "source": "official",
+            "marketplace": "zcode-plugins-official",
+            "author": "Z.ai",
+            "skillCount": 0,
+            "skillRootCount": 0,
+            "commandRootCount": 0,
+            "components": [
+              {
+                "kind": "command",
+                "items": [
+                  {
+                    "name": "ios-dev",
+                    "description": "Start the iOS simulator development loop."
+                  }
+                ]
+              },
+              {
+                "kind": "skill",
+                "items": [
+                  {
+                    "name": "ios-dev",
+                    "description": "Build, run, inspect, and lightly automate iOS simulator apps with the ios-simulator MCP tools."
+                  }
+                ]
+              },
+              {
+                "kind": "mcp",
+                "items": [
+                  {
+                    "name": "ios-simulator"
+                  }
+                ]
+              }
+            ],
+            "declaredMcpServerNames": [
+              "ios-simulator"
+            ],
+            "mcpServerNames": [],
+            "hookDetails": [],
+            "rootPath": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/ios-simulator/0.1.0",
+            "userConfig": {
+              "default_device": {
+                "default": "iPhone 16",
+                "description": "Preferred simulator device name.",
+                "type": "string"
+              },
+              "ui_backend": {
+                "default": "auto",
+                "description": "UI interaction backend: auto, idb, xcodebuildmcp, or none.",
+                "type": "string"
+              }
+            }
+          },
+          {
+            "id": "restore-legacy-sessions@zcode-plugins-official",
+            "name": "restore-legacy-sessions",
+            "description": "Select and restore legacy ACP-era ZCode sessions into the new ZCode task and session store.",
+            "version": "0.1.0",
+            "enabled": false,
+            "source": "official",
+            "marketplace": "zcode-plugins-official",
+            "author": "Z.ai",
+            "skillCount": 0,
+            "skillRootCount": 0,
+            "commandRootCount": 0,
+            "components": [
+              {
+                "kind": "command",
+                "items": [
+                  {
+                    "name": "restore-legacy-sessions",
+                    "description": "Select and restore a legacy ZCode session."
+                  }
+                ]
+              },
+              {
+                "kind": "skill",
+                "items": [
+                  {
+                    "name": "restore-legacy-sessions",
+                    "description": "Use when ZCode needs to inspect, plan, or execute restoration of old ACP-era ZCode sessions from ~/.zcode/v2/sessions into the new ZCode task/session stores. Trigger when the user wants to choose a previous agent, select a workspace to restore, pick a specific historical conversation, dry-run legacy session migration, or reason about tasks-index.sqlite and ~/.zcode/cli/db/db.sqlite consistency."
+                  }
+                ]
+              }
+            ],
+            "declaredMcpServerNames": [],
+            "mcpServerNames": [],
+            "hookDetails": [],
+            "rootPath": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/restore-legacy-sessions/0.1.0"
+          },
+          {
+            "id": "plugin-creator@zcode-plugins-official",
+            "name": "plugin-creator",
+            "description": "Develop and validate ZCode plugins through a local dev marketplace, installation, trials and updates.",
+            "version": "0.1.1",
+            "enabled": true,
+            "source": "official",
+            "marketplace": "zcode-plugins-official",
+            "author": "Z.ai",
+            "skillCount": 1,
+            "skillRootCount": 1,
+            "commandRootCount": 0,
+            "components": [
+              {
+                "kind": "skill",
+                "items": [
+                  {
+                    "name": "plugin-creator",
+                    "description": "Create or update ZCode plugin source and a local test marketplace, then guide the user to add, install, update and try it in the app. Use for new plugins or changes to an existing plugin's capabilities, manifest or local distribution."
+                  }
+                ]
+              }
+            ],
+            "declaredMcpServerNames": [],
+            "mcpServerNames": [],
+            "hookDetails": [],
+            "rootPath": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/plugin-creator/0.1.1"
+          },
+          {
+            "id": "skill-creator@zcode-plugins-official",
+            "name": "skill-creator",
+            "description": "Create, edit, and iterate local ZCode skills.",
+            "version": "0.1.0",
+            "enabled": true,
+            "source": "official",
+            "marketplace": "zcode-plugins-official",
+            "author": "Z.ai",
+            "skillCount": 1,
+            "skillRootCount": 1,
+            "commandRootCount": 0,
+            "components": [
+              {
+                "kind": "skill",
+                "items": [
+                  {
+                    "name": "skill-creator",
+                    "description": "Create new skills, edit existing skills, and iterate wording. Use when writing SKILL.md from scratch, improving existing skills, turning repeated workflows into reusable skills, or refining skill descriptions to improve trigger reliability."
+                  }
+                ]
+              }
+            ],
+            "declaredMcpServerNames": [],
+            "mcpServerNames": [],
+            "hookDetails": [],
+            "rootPath": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/skill-creator/0.1.0"
+          },
+          {
+            "id": "zcode-guide@zcode-plugins-official",
+            "name": "zcode-guide",
+            "description": "ZCode usage and self-diagnosis guide: teaches agents and users how to configure MCP servers, commands, skills, hooks, and plugins, and how to locate and fix configuration problems for each.",
+            "version": "0.3.0",
+            "enabled": true,
+            "source": "official",
+            "marketplace": "zcode-plugins-official",
+            "author": "Z.ai",
+            "skillCount": 6,
+            "skillRootCount": 1,
+            "commandRootCount": 0,
+            "components": [
+              {
+                "kind": "skill",
+                "items": [
+                  {
+                    "name": "diagnosing-commands",
+                    "description": "Use to diagnose and fix ZCode custom slash-command (/command) configuration problems in the ZCode client. Applies when a command is missing, is overridden by a higher-precedence command of the same name, has a frontmatter parse error, is dropped for having an empty body, has an invalid name, does not substitute $ARGUMENTS/$1, uses a colon rather than a slash for nested names, has a misspelled frontmatter key, or disappears because the plugin providing it is disabled. Provides the discovery order, how to inspect commands in the client, common pitfalls, and a step-by-step localization and repair workflow."
+                  },
+                  {
+                    "name": "diagnosing-hooks",
+                    "description": "Use to diagnose and fix ZCode hook configuration problems in the ZCode client. Applies when a hook does not trigger, an event name is wrong, a matcher does not match a tool name, a script is not executable, template variables are not expanded, a timeout unit is mistaken (seconds versus milliseconds), the command and process field styles are mixed, a hook's JSON output fails validation, a hook blocks the session unexpectedly, or configuration-file hooks are not enabled. Provides configuration sources, the hooks.json schema, how to inspect hooks in the client, and a step-by-step localization and repair workflow."
+                  },
+                  {
+                    "name": "diagnosing-mcp",
+                    "description": "Use to diagnose and fix ZCode MCP (Model Context Protocol) server configuration problems in the ZCode client. Applies when an MCP server will not connect, its tools (mcp__server__tool) do not appear, it shows as disabled or failed, connections time out, a command cannot be found, template variables are not expanded, or a server defined in a configuration file has no effect. Provides configuration locations, how to inspect status in Settings, common pitfalls, and a step-by-step localization and repair workflow."
+                  },
+                  {
+                    "name": "diagnosing-plugins",
+                    "description": "Use to diagnose and fix ZCode plugin and marketplace problems in the ZCode client. Applies when a plugin is not listed, adding a marketplace or installing a plugin fails, a plugin is enabled but its skills or commands are missing, a built-in plugin still appears after being disabled, a plugin is not enabled as expected, a plugin.json manifest has a parse error, a plugin name is invalid, a dependency is unresolved or blocked across marketplaces, or a sensitive configuration value cannot be entered in the interface. Provides the plugin lifecycle, manifest schema, how to manage plugins in the client, and a step-by-step localization and repair workflow."
+                  },
+                  {
+                    "name": "diagnosing-skills",
+                    "description": "Use to diagnose and fix ZCode skill configuration problems in the ZCode client. Applies when a skill is not discovered, is installed but does not trigger automatically, is shadowed by a higher-precedence skill of the same name, is disabled by configuration, has a SKILL.md frontmatter error, fails to load because its description is too long, or disappears because the plugin providing it is disabled. Provides the discovery order, how to inspect skills in the client, common pitfalls, and a step-by-step localization and repair workflow."
+                  },
+                  {
+                    "name": "zcode-configuration-guide",
+                    "description": "Use when configuring ZCode's extension resources (MCP servers, slash commands, skills, hooks, and plugins) or instruction files such as AGENTS.md in the ZCode client. Explains where each resource is configured at the user and workspace scope, the discovery order, precedence, and merge rules, plus guidance on which location to choose. Use when someone asks how to add an MCP server, command, skill, hook, plugin, or AGENTS.md instructions, where a configuration file lives, why a configuration is not taking effect, or needs routing to a specific diagnostic skill."
+                  }
+                ]
+              }
+            ],
+            "declaredMcpServerNames": [],
+            "mcpServerNames": [],
+            "hookDetails": [],
+            "rootPath": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/zcode-guide/0.3.0"
+          },
+          {
+            "id": "computer-use@zcode-plugins-official",
+            "name": "computer-use",
+            "description": "Computer Use: automate desktop apps with mouse, keyboard, and UI element control.",
+            "version": "0.6.3",
+            "enabled": false,
+            "source": "official",
+            "marketplace": "zcode-plugins-official",
+            "author": "Z.ai",
+            "skillCount": 0,
+            "skillRootCount": 0,
+            "commandRootCount": 0,
+            "components": [
+              {
+                "kind": "skill",
+                "items": [
+                  {
+                    "name": "computer-use",
+                    "description": "Use when a task needs a native desktop app's own UI or the OS. For anything inside a web page, use Browser Use. Main agent only."
+                  }
+                ]
+              }
+            ],
+            "declaredMcpServerNames": [],
+            "hostMcpServerNames": [
+              "node_repl"
+            ],
+            "mcpServerNames": [],
+            "hookDetails": [],
+            "rootPath": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/computer-use/0.6.3"
+          }
+        ],
+        "diagnostics": [
+          {
+            "code": "plugin_variable_missing",
+            "message": "Missing environment variable: ZCODE_BASE_URL",
+            "severity": "error",
+            "pluginId": "image-search@zcode-plugins-official"
+          }
+        ]
+      }
+    },
+    "pluginsListWorkspace": {
+      "result": {
+        "plugins": [
+          {
+            "id": "node-repl-host@zcode-plugins-official",
+            "name": "node-repl-host",
+            "description": "Shared node_repl runtime host for ZCode official capabilities. Not user-facing: it carries no skill and appears in no marketplace listing; Browser Use and Computer Use enable it and contribute their own skills, docs and runtime assets.",
+            "version": "0.6.0",
+            "enabled": true,
+            "source": "official",
+            "marketplace": "zcode-plugins-official",
+            "author": "Z.ai",
+            "skillCount": 0,
+            "skillRootCount": 0,
+            "commandRootCount": 0,
+            "components": [],
+            "declaredMcpServerNames": [],
+            "mcpServerNames": [],
+            "hookDetails": [],
+            "rootPath": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/node-repl-host/0.6.0"
+          },
+          {
+            "id": "android-emulator@zcode-plugins-official",
+            "name": "android-emulator",
+            "description": "Provides Android development workflows and emulator automation for ZCode.",
+            "version": "0.1.0",
+            "enabled": false,
+            "source": "official",
+            "marketplace": "zcode-plugins-official",
+            "author": "Z.ai",
+            "skillCount": 0,
+            "skillRootCount": 0,
+            "commandRootCount": 0,
+            "components": [
+              {
+                "kind": "command",
+                "items": [
+                  {
+                    "name": "android-dev",
+                    "description": "Start the Android emulator development loop."
+                  }
+                ]
+              },
+              {
+                "kind": "skill",
+                "items": [
+                  {
+                    "name": "android-dev",
+                    "description": "Build, run, inspect, and lightly automate Android apps with the android-emulator MCP tools."
+                  }
+                ]
+              },
+              {
+                "kind": "mcp",
+                "items": [
+                  {
+                    "name": "android-emulator"
+                  }
+                ]
+              }
+            ],
+            "declaredMcpServerNames": [
+              "android-emulator"
+            ],
+            "mcpServerNames": [],
+            "hookDetails": [],
+            "rootPath": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/android-emulator/0.1.0",
+            "userConfig": {
+              "sdk_path": {
+                "default": "",
+                "description": "Optional Android SDK root directory. When empty, falls back to ANDROID_HOME, ANDROID_SDK_ROOT, or common system paths.",
+                "type": "string"
+              },
+              "default_avd": {
+                "default": "medium_phone",
+                "description": "Preferred AVD or device name.",
+                "type": "string"
+              },
+              "api_level": {
+                "default": "35",
+                "description": "Android API level used when generating projects, installing SDK packages, and selecting the default system image.",
+                "type": "string"
+              },
+              "build_tools_version": {
+                "default": "35.0.0",
+                "description": "Android SDK build-tools version used in installation guidance.",
+                "type": "string"
+              },
+              "system_image_variant": {
+                "default": "default",
+                "description": "Android system image variant: default, google_apis, or google_apis_playstore.",
+                "type": "string"
+              },
+              "system_image_abi": {
+                "default": "",
+                "description": "Optional Android system image ABI override. When empty, Apple Silicon/ARM64 hosts use arm64-v8a and other hosts use x86_64.",
+                "type": "string"
+              },
+              "jdk_major": {
+                "default": "17",
+                "description": "JDK major version used for preflight checks and installation guidance.",
+                "type": "string"
+              }
+            }
+          },
+          {
+            "id": "browser-use@zcode-plugins-official",
+            "name": "browser-use",
+            "description": "Built-in browser automation runtime and guidance for Desktop IAB and explicitly enabled CLI-managed headless CDP: open, navigate, inspect, click, type, screenshot, record workspace WebM videos, and verify web pages and local dev targets.",
+            "version": "0.5.1",
+            "enabled": true,
+            "source": "official",
+            "marketplace": "zcode-plugins-official",
+            "author": "Z.ai",
+            "skillCount": 2,
+            "skillRootCount": 1,
+            "commandRootCount": 0,
+            "components": [
+              {
+                "kind": "skill",
+                "items": [
+                  {
+                    "name": "control-browser",
+                    "description": "Use when opening, navigating, inspecting, testing, clicking, typing, filling, screenshotting, or verifying web pages and local HTTP targets (localhost, 127.0.0.1, ::1) inside ZCode, including browser/web-UI automation, rendered-page scraping, frontend checks, and visible page-state reading. Prefer this over Computer Use for anything that stays inside a web page, unless the user explicitly asks for Computer Use. Main agent only."
+                  },
+                  {
+                    "name": "web-gui-tester",
+                    "description": "Use the browser automation tooling available in the session to test web frontends interactively in a purely GUI-based, black-box manner: simulate real user clicks, text input, scrolling, and other actions; use screenshots for visual verification and read-only DOM inspection for cross-validation; and produce a final test report. Suitable for verifying whether web functionality works correctly, reproducing frontend bugs, checking interaction feedback and layout styling, or conducting exploratory testing of a page. Use this skill when the user asks to test a webpage/frontend feature, verify UI behavior, reproduce a page bug, or provides only a URL and asks you to “test it.”"
+                  }
+                ]
+              }
+            ],
+            "declaredMcpServerNames": [],
+            "hostMcpServerNames": [
+              "node_repl"
+            ],
+            "mcpServerNames": [],
+            "hookDetails": [],
+            "rootPath": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/browser-use/0.5.1"
+          },
+          {
+            "id": "documents@zcode-plugins-official",
+            "name": "documents",
+            "description": "DOCX document production skills, published as an official ZCode plugin.",
+            "version": "0.1.7",
+            "enabled": true,
+            "source": "official",
+            "marketplace": "zcode-plugins-official",
+            "author": "Z.ai",
+            "skillCount": 1,
+            "skillRootCount": 1,
+            "commandRootCount": 0,
+            "components": [
+              {
+                "kind": "agent",
+                "items": [
+                  {
+                    "name": "visual-judge",
+                    "description": "THE single visual acceptance pass for a rendered deliverable of these types only — pptx, docx, xlsx, pdf, poster, chart; for anything else, do not use it. Use it *instead of* looking at the page images yourself, never in addition: pick one gate — spawn visual-judge, or (only if visual-judge is unavailable) inspect the images yourself — and do not pre-screen the pages before dispatching, because a preliminary look followed by a visual-judge call duplicates the same review and wastes a full render pass. Its bar is user acceptance: it judges everything the user will see on its assigned pages — visual asset quality and layout & composition — and returns one JSON verdict line per page (pass/fail + evidence-backed issues; a clean programmatic/script check is no cover and no substitute). It is read-only and edits nothing; it can only Read pre-rendered page PNGs (never pptx/docx/HTML/PDF opened as images), so render the pages to PNG, hand visual-judge the paths, and act on its verdicts — those verdicts are the visual gate's result, not an input to your own re-judging. Dispatch grouping, what to pass in, and the repair loop follow the delivery protocol's visual gate in your system prompt."
+                  }
+                ]
+              },
+              {
+                "kind": "skill",
+                "items": [
+                  {
+                    "name": "docx",
+                    "description": "Complete DOCX document creation, editing, and analysis capabilities with support for revisions, comments, formatting preservation, and text extraction. Also handles Word format conversion: legacy .doc → .docx, DOCX → PDF, DOCX → images (PNG/JPG) for visual review or previews, and DOCX → Markdown/plain text extraction. Use for creating new documents, modifying content, handling revisions, adding comments, other professional Word document tasks, or when the user asks to convert, export, or render a Word document to another format (e.g. 'Word转PDF', 'doc转docx', 'export this docx as PDF/images')."
+                  }
+                ]
+              }
+            ],
+            "declaredMcpServerNames": [],
+            "mcpServerNames": [],
+            "hookDetails": [],
+            "rootPath": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/documents/0.1.7"
+          },
+          {
+            "id": "pdf@zcode-plugins-official",
+            "name": "pdf",
+            "description": "PDF document production skills, published as an official ZCode plugin.",
+            "version": "0.1.7",
+            "enabled": true,
+            "source": "official",
+            "marketplace": "zcode-plugins-official",
+            "author": "Z.ai",
+            "skillCount": 1,
+            "skillRootCount": 1,
+            "commandRootCount": 0,
+            "components": [
+              {
+                "kind": "agent",
+                "items": [
+                  {
+                    "name": "visual-judge",
+                    "description": "THE single visual acceptance pass for a rendered deliverable of these types only — pptx, docx, xlsx, pdf, poster, chart; for anything else, do not use it. Use it *instead of* looking at the page images yourself, never in addition: pick one gate — spawn visual-judge, or (only if visual-judge is unavailable) inspect the images yourself — and do not pre-screen the pages before dispatching, because a preliminary look followed by a visual-judge call duplicates the same review and wastes a full render pass. Its bar is user acceptance: it judges everything the user will see on its assigned pages — visual asset quality and layout & composition — and returns one JSON verdict line per page (pass/fail + evidence-backed issues; a clean programmatic/script check is no cover and no substitute). It is read-only and edits nothing; it can only Read pre-rendered page PNGs (never pptx/docx/HTML/PDF opened as images), so render the pages to PNG, hand visual-judge the paths, and act on its verdicts — those verdicts are the visual gate's result, not an input to your own re-judging. Dispatch grouping, what to pass in, and the repair loop follow the delivery protocol's visual gate in your system prompt."
+                  }
+                ]
+              },
+              {
+                "kind": "skill",
+                "items": [
+                  {
+                    "name": "pdf",
+                    "description": "Professional PDF toolkit covering four production workflows: reports, creative visuals, academic LaTeX, and existing PDF processing. Routes automatically by document type and supports reports, posters, papers, resumes, extraction, merging, splitting, and form filling. Use this skill for any conversion whose output is a PDF: Office → PDF (.docx/.doc/.pptx/.ppt/.xlsx/.xls/.odt/.odp/.ods/.rtf/.csv/.txt → PDF), HTML → PDF, and LaTeX/.tex → PDF; also PDF → images, PDF → text, and PDF → tables when reading a PDF apart. Trigger when the user asks to convert, export, render, print, or turn a file into a PDF, or to merge/split/extract from one — including phrasings like 'Word转PDF', 'PPT转PDF', 'Excel转PDF', 'html转pdf', '导出为PDF', 'save/export as PDF', or 'PDF转图片/文字'."
+                  }
+                ]
+              }
+            ],
+            "declaredMcpServerNames": [],
+            "mcpServerNames": [],
+            "hookDetails": [],
+            "rootPath": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/pdf/0.1.7"
+          },
+          {
+            "id": "presentations@zcode-plugins-official",
+            "name": "presentations",
+            "description": "PPTX presentation production skills, published as an official ZCode plugin.",
+            "version": "0.1.7",
+            "enabled": true,
+            "source": "official",
+            "marketplace": "zcode-plugins-official",
+            "author": "Z.ai",
+            "skillCount": 1,
+            "skillRootCount": 1,
+            "commandRootCount": 0,
+            "components": [
+              {
+                "kind": "agent",
+                "items": [
+                  {
+                    "name": "visual-judge",
+                    "description": "THE single visual acceptance pass for a rendered deliverable of these types only — pptx, docx, xlsx, pdf, poster, chart; for anything else, do not use it. Use it *instead of* looking at the page images yourself, never in addition: pick one gate — spawn visual-judge, or (only if visual-judge is unavailable) inspect the images yourself — and do not pre-screen the pages before dispatching, because a preliminary look followed by a visual-judge call duplicates the same review and wastes a full render pass. Its bar is user acceptance: it judges everything the user will see on its assigned pages — visual asset quality and layout & composition — and returns one JSON verdict line per page (pass/fail + evidence-backed issues; a clean programmatic/script check is no cover and no substitute). It is read-only and edits nothing; it can only Read pre-rendered page PNGs (never pptx/docx/HTML/PDF opened as images), so render the pages to PNG, hand visual-judge the paths, and act on its verdicts — those verdicts are the visual gate's result, not an input to your own re-judging. Dispatch grouping, what to pass in, and the repair loop follow the delivery protocol's visual gate in your system prompt."
+                  }
+                ]
+              },
+              {
+                "kind": "skill",
+                "items": [
+                  {
+                    "name": "pptx",
+                    "description": "Use this skill any time a presentation file is the primary input or output. Covers: creating new .pptx decks from scratch or from an outline/document (pptxgenjs / python-pptx); editing and restyling an existing .pptx; reading and extracting text/structure from a deck (markitdown); and rendering a deck to PDF (LibreOffice) or to per-slide PNG images (pdftoppm) for previews, thumbnails, or visual review. Trigger when the user references a .pptx file by name or path, says 'make/build a deck, slides, presentation, PPT, 幻灯片, 演示文稿, 汇报/路演材料', or asks to convert, export, render, or preview slides as PDF or images (e.g. 'PPT转PDF', 'ppt导出图片', 'turn these slides into a PDF')."
+                  }
+                ]
+              }
+            ],
+            "declaredMcpServerNames": [],
+            "mcpServerNames": [],
+            "hookDetails": [],
+            "rootPath": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/presentations/0.1.7"
+          },
+          {
+            "id": "spreadsheets@zcode-plugins-official",
+            "name": "spreadsheets",
+            "description": "XLSX spreadsheet production skills, published as an official ZCode plugin.",
+            "version": "0.1.7",
+            "enabled": true,
+            "source": "official",
+            "marketplace": "zcode-plugins-official",
+            "author": "Z.ai",
+            "skillCount": 1,
+            "skillRootCount": 1,
+            "commandRootCount": 0,
+            "components": [
+              {
+                "kind": "agent",
+                "items": [
+                  {
+                    "name": "visual-judge",
+                    "description": "THE single visual acceptance pass for a rendered deliverable of these types only — pptx, docx, xlsx, pdf, poster, chart; for anything else, do not use it. Use it *instead of* looking at the page images yourself, never in addition: pick one gate — spawn visual-judge, or (only if visual-judge is unavailable) inspect the images yourself — and do not pre-screen the pages before dispatching, because a preliminary look followed by a visual-judge call duplicates the same review and wastes a full render pass. Its bar is user acceptance: it judges everything the user will see on its assigned pages — visual asset quality and layout & composition — and returns one JSON verdict line per page (pass/fail + evidence-backed issues; a clean programmatic/script check is no cover and no substitute). It is read-only and edits nothing; it can only Read pre-rendered page PNGs (never pptx/docx/HTML/PDF opened as images), so render the pages to PNG, hand visual-judge the paths, and act on its verdicts — those verdicts are the visual gate's result, not an input to your own re-judging. Dispatch grouping, what to pass in, and the repair loop follow the delivery protocol's visual gate in your system prompt."
+                  }
+                ]
+              },
+              {
+                "kind": "skill",
+                "items": [
+                  {
+                    "name": "xlsx",
+                    "description": "Use this skill any time a spreadsheet file is the primary input or output. This means any task where the user wants to: open, read, edit, or fix an existing .xlsx, .xlsm, .csv, or .tsv file; create a new spreadsheet from scratch or from other data sources; analyze data and output results as an Excel file with charts; convert between tabular file formats (CSV/TSV/JSON/PDF-table → XLSX, or XLSX → CSV/JSON); clean, merge, pivot, or transform tabular data. Trigger especially when the user references a spreadsheet file by name or path, says 'make a table/report/model', mentions Excel/CSV/数据分析/报表/汇总, asks to convert or export a spreadsheet (e.g. 'csv转excel', 'json转表格', 'export as CSV'), or wants data visualization inside a spreadsheet."
+                  }
+                ]
+              }
+            ],
+            "declaredMcpServerNames": [],
+            "mcpServerNames": [],
+            "hookDetails": [],
+            "rootPath": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/spreadsheets/0.1.7"
+          },
+          {
+            "id": "image-search@zcode-plugins-official",
+            "name": "image-search",
+            "description": "Official ZCode image search MCP server for finding illustrations and reference images.",
+            "version": "0.1.1",
+            "enabled": true,
+            "source": "official",
+            "marketplace": "zcode-plugins-official",
+            "author": "Z.ai",
+            "skillCount": 0,
+            "skillRootCount": 0,
+            "commandRootCount": 0,
+            "components": [
+              {
+                "kind": "mcp",
+                "items": [
+                  {
+                    "name": "image_search"
+                  }
+                ]
+              }
+            ],
+            "declaredMcpServerNames": [
+              "image_search"
+            ],
+            "mcpServerNames": [],
+            "hookDetails": [],
+            "rootPath": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/image-search/0.1.1"
+          },
+          {
+            "id": "ios-simulator@zcode-plugins-official",
+            "name": "ios-simulator",
+            "description": "Provides iOS development workflows and simulator automation for ZCode.",
+            "version": "0.1.0",
+            "enabled": false,
+            "source": "official",
+            "marketplace": "zcode-plugins-official",
+            "author": "Z.ai",
+            "skillCount": 0,
+            "skillRootCount": 0,
+            "commandRootCount": 0,
+            "components": [
+              {
+                "kind": "command",
+                "items": [
+                  {
+                    "name": "ios-dev",
+                    "description": "Start the iOS simulator development loop."
+                  }
+                ]
+              },
+              {
+                "kind": "skill",
+                "items": [
+                  {
+                    "name": "ios-dev",
+                    "description": "Build, run, inspect, and lightly automate iOS simulator apps with the ios-simulator MCP tools."
+                  }
+                ]
+              },
+              {
+                "kind": "mcp",
+                "items": [
+                  {
+                    "name": "ios-simulator"
+                  }
+                ]
+              }
+            ],
+            "declaredMcpServerNames": [
+              "ios-simulator"
+            ],
+            "mcpServerNames": [],
+            "hookDetails": [],
+            "rootPath": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/ios-simulator/0.1.0",
+            "userConfig": {
+              "default_device": {
+                "default": "iPhone 16",
+                "description": "Preferred simulator device name.",
+                "type": "string"
+              },
+              "ui_backend": {
+                "default": "auto",
+                "description": "UI interaction backend: auto, idb, xcodebuildmcp, or none.",
+                "type": "string"
+              }
+            }
+          },
+          {
+            "id": "restore-legacy-sessions@zcode-plugins-official",
+            "name": "restore-legacy-sessions",
+            "description": "Select and restore legacy ACP-era ZCode sessions into the new ZCode task and session store.",
+            "version": "0.1.0",
+            "enabled": false,
+            "source": "official",
+            "marketplace": "zcode-plugins-official",
+            "author": "Z.ai",
+            "skillCount": 0,
+            "skillRootCount": 0,
+            "commandRootCount": 0,
+            "components": [
+              {
+                "kind": "command",
+                "items": [
+                  {
+                    "name": "restore-legacy-sessions",
+                    "description": "Select and restore a legacy ZCode session."
+                  }
+                ]
+              },
+              {
+                "kind": "skill",
+                "items": [
+                  {
+                    "name": "restore-legacy-sessions",
+                    "description": "Use when ZCode needs to inspect, plan, or execute restoration of old ACP-era ZCode sessions from ~/.zcode/v2/sessions into the new ZCode task/session stores. Trigger when the user wants to choose a previous agent, select a workspace to restore, pick a specific historical conversation, dry-run legacy session migration, or reason about tasks-index.sqlite and ~/.zcode/cli/db/db.sqlite consistency."
+                  }
+                ]
+              }
+            ],
+            "declaredMcpServerNames": [],
+            "mcpServerNames": [],
+            "hookDetails": [],
+            "rootPath": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/restore-legacy-sessions/0.1.0"
+          },
+          {
+            "id": "plugin-creator@zcode-plugins-official",
+            "name": "plugin-creator",
+            "description": "Develop and validate ZCode plugins through a local dev marketplace, installation, trials and updates.",
+            "version": "0.1.1",
+            "enabled": true,
+            "source": "official",
+            "marketplace": "zcode-plugins-official",
+            "author": "Z.ai",
+            "skillCount": 1,
+            "skillRootCount": 1,
+            "commandRootCount": 0,
+            "components": [
+              {
+                "kind": "skill",
+                "items": [
+                  {
+                    "name": "plugin-creator",
+                    "description": "Create or update ZCode plugin source and a local test marketplace, then guide the user to add, install, update and try it in the app. Use for new plugins or changes to an existing plugin's capabilities, manifest or local distribution."
+                  }
+                ]
+              }
+            ],
+            "declaredMcpServerNames": [],
+            "mcpServerNames": [],
+            "hookDetails": [],
+            "rootPath": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/plugin-creator/0.1.1"
+          },
+          {
+            "id": "skill-creator@zcode-plugins-official",
+            "name": "skill-creator",
+            "description": "Create, edit, and iterate local ZCode skills.",
+            "version": "0.1.0",
+            "enabled": true,
+            "source": "official",
+            "marketplace": "zcode-plugins-official",
+            "author": "Z.ai",
+            "skillCount": 1,
+            "skillRootCount": 1,
+            "commandRootCount": 0,
+            "components": [
+              {
+                "kind": "skill",
+                "items": [
+                  {
+                    "name": "skill-creator",
+                    "description": "Create new skills, edit existing skills, and iterate wording. Use when writing SKILL.md from scratch, improving existing skills, turning repeated workflows into reusable skills, or refining skill descriptions to improve trigger reliability."
+                  }
+                ]
+              }
+            ],
+            "declaredMcpServerNames": [],
+            "mcpServerNames": [],
+            "hookDetails": [],
+            "rootPath": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/skill-creator/0.1.0"
+          },
+          {
+            "id": "zcode-guide@zcode-plugins-official",
+            "name": "zcode-guide",
+            "description": "ZCode usage and self-diagnosis guide: teaches agents and users how to configure MCP servers, commands, skills, hooks, and plugins, and how to locate and fix configuration problems for each.",
+            "version": "0.3.0",
+            "enabled": true,
+            "source": "official",
+            "marketplace": "zcode-plugins-official",
+            "author": "Z.ai",
+            "skillCount": 6,
+            "skillRootCount": 1,
+            "commandRootCount": 0,
+            "components": [
+              {
+                "kind": "skill",
+                "items": [
+                  {
+                    "name": "diagnosing-commands",
+                    "description": "Use to diagnose and fix ZCode custom slash-command (/command) configuration problems in the ZCode client. Applies when a command is missing, is overridden by a higher-precedence command of the same name, has a frontmatter parse error, is dropped for having an empty body, has an invalid name, does not substitute $ARGUMENTS/$1, uses a colon rather than a slash for nested names, has a misspelled frontmatter key, or disappears because the plugin providing it is disabled. Provides the discovery order, how to inspect commands in the client, common pitfalls, and a step-by-step localization and repair workflow."
+                  },
+                  {
+                    "name": "diagnosing-hooks",
+                    "description": "Use to diagnose and fix ZCode hook configuration problems in the ZCode client. Applies when a hook does not trigger, an event name is wrong, a matcher does not match a tool name, a script is not executable, template variables are not expanded, a timeout unit is mistaken (seconds versus milliseconds), the command and process field styles are mixed, a hook's JSON output fails validation, a hook blocks the session unexpectedly, or configuration-file hooks are not enabled. Provides configuration sources, the hooks.json schema, how to inspect hooks in the client, and a step-by-step localization and repair workflow."
+                  },
+                  {
+                    "name": "diagnosing-mcp",
+                    "description": "Use to diagnose and fix ZCode MCP (Model Context Protocol) server configuration problems in the ZCode client. Applies when an MCP server will not connect, its tools (mcp__server__tool) do not appear, it shows as disabled or failed, connections time out, a command cannot be found, template variables are not expanded, or a server defined in a configuration file has no effect. Provides configuration locations, how to inspect status in Settings, common pitfalls, and a step-by-step localization and repair workflow."
+                  },
+                  {
+                    "name": "diagnosing-plugins",
+                    "description": "Use to diagnose and fix ZCode plugin and marketplace problems in the ZCode client. Applies when a plugin is not listed, adding a marketplace or installing a plugin fails, a plugin is enabled but its skills or commands are missing, a built-in plugin still appears after being disabled, a plugin is not enabled as expected, a plugin.json manifest has a parse error, a plugin name is invalid, a dependency is unresolved or blocked across marketplaces, or a sensitive configuration value cannot be entered in the interface. Provides the plugin lifecycle, manifest schema, how to manage plugins in the client, and a step-by-step localization and repair workflow."
+                  },
+                  {
+                    "name": "diagnosing-skills",
+                    "description": "Use to diagnose and fix ZCode skill configuration problems in the ZCode client. Applies when a skill is not discovered, is installed but does not trigger automatically, is shadowed by a higher-precedence skill of the same name, is disabled by configuration, has a SKILL.md frontmatter error, fails to load because its description is too long, or disappears because the plugin providing it is disabled. Provides the discovery order, how to inspect skills in the client, common pitfalls, and a step-by-step localization and repair workflow."
+                  },
+                  {
+                    "name": "zcode-configuration-guide",
+                    "description": "Use when configuring ZCode's extension resources (MCP servers, slash commands, skills, hooks, and plugins) or instruction files such as AGENTS.md in the ZCode client. Explains where each resource is configured at the user and workspace scope, the discovery order, precedence, and merge rules, plus guidance on which location to choose. Use when someone asks how to add an MCP server, command, skill, hook, plugin, or AGENTS.md instructions, where a configuration file lives, why a configuration is not taking effect, or needs routing to a specific diagnostic skill."
+                  }
+                ]
+              }
+            ],
+            "declaredMcpServerNames": [],
+            "mcpServerNames": [],
+            "hookDetails": [],
+            "rootPath": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/zcode-guide/0.3.0"
+          },
+          {
+            "id": "computer-use@zcode-plugins-official",
+            "name": "computer-use",
+            "description": "Computer Use: automate desktop apps with mouse, keyboard, and UI element control.",
+            "version": "0.6.3",
+            "enabled": false,
+            "source": "official",
+            "marketplace": "zcode-plugins-official",
+            "author": "Z.ai",
+            "skillCount": 0,
+            "skillRootCount": 0,
+            "commandRootCount": 0,
+            "components": [
+              {
+                "kind": "skill",
+                "items": [
+                  {
+                    "name": "computer-use",
+                    "description": "Use when a task needs a native desktop app's own UI or the OS. For anything inside a web page, use Browser Use. Main agent only."
+                  }
+                ]
+              }
+            ],
+            "declaredMcpServerNames": [],
+            "hostMcpServerNames": [
+              "node_repl"
+            ],
+            "mcpServerNames": [],
+            "hookDetails": [],
+            "rootPath": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/computer-use/0.6.3"
+          }
+        ],
+        "diagnostics": [
+          {
+            "code": "plugin_variable_missing",
+            "message": "Missing environment variable: ZCODE_BASE_URL",
+            "severity": "error",
+            "pluginId": "image-search@zcode-plugins-official"
+          }
+        ]
+      }
+    },
+    "pluginReference": {
+      "result": {
+        "authority": "workspace",
+        "plugins": [
+          {
+            "pluginId": "node-repl-host@zcode-plugins-official",
+            "name": "node-repl-host",
+            "marketplace": "zcode-plugins-official",
+            "description": "Shared node_repl runtime host for ZCode official capabilities. Not user-facing: it carries no skill and appears in no marketplace listing; Browser Use and Computer Use enable it and contribute their own skills, docs and runtime assets.",
+            "enabled": true,
+            "conflictingPluginIds": [],
+            "skillQualifiedNames": [],
+            "mcpServerNames": [],
+            "subagentNames": []
+          },
+          {
+            "pluginId": "android-emulator@zcode-plugins-official",
+            "name": "android-emulator",
+            "marketplace": "zcode-plugins-official",
+            "icon": "https://cdn-zcode.z.ai/zcode/official-plugin/assets/android-emulator/icon.png",
+            "displayName": "Android Emulator",
+            "displayNameI18n": {
+              "zh-CN": "Android 模拟器"
+            },
+            "description": "Provides Android development workflows and emulator automation for ZCode.",
+            "descriptionI18n": {
+              "zh-CN": "提供 Android 开发工作流与模拟器自动化能力。"
+            },
+            "enabled": false,
+            "conflictingPluginIds": [],
+            "skillQualifiedNames": [
+              "android-emulator:android-dev"
+            ],
+            "mcpServerNames": [],
+            "subagentNames": []
+          },
+          {
+            "pluginId": "browser-use@zcode-plugins-official",
+            "name": "browser-use",
+            "marketplace": "zcode-plugins-official",
+            "icon": "https://cdn-zcode.z.ai/zcode/official-plugin/assets/browser-use/icon.png",
+            "displayName": "Browser Use",
+            "displayNameI18n": {
+              "zh-CN": "浏览器操作"
+            },
+            "description": "Built-in browser automation runtime and guidance for Desktop IAB and explicitly enabled CLI-managed headless CDP: open, navigate, inspect, click, type, screenshot, record workspace WebM videos, and verify web pages and local dev targets.",
+            "descriptionI18n": {
+              "zh-CN": "操作 ZCode 内置浏览器，检查网页并验证交互。"
+            },
+            "enabled": true,
+            "conflictingPluginIds": [],
+            "skillQualifiedNames": [
+              "browser-use:control-browser",
+              "browser-use:web-gui-tester"
+            ],
+            "mcpServerNames": [],
+            "subagentNames": []
+          },
+          {
+            "pluginId": "documents@zcode-plugins-official",
+            "name": "documents",
+            "marketplace": "zcode-plugins-official",
+            "icon": "https://cdn-zcode.z.ai/zcode/official-plugin/assets/document-skills/icon.png",
+            "displayName": "Documents",
+            "displayNameI18n": {
+              "zh-CN": "Word文档"
+            },
+            "description": "DOCX document production skills, published as an official ZCode plugin.",
+            "descriptionI18n": {
+              "zh-CN": "创建、编辑与审阅Word文档（DOCX）。"
+            },
+            "enabled": true,
+            "conflictingPluginIds": [],
+            "skillQualifiedNames": [
+              "documents:docx"
+            ],
+            "mcpServerNames": [],
+            "subagentNames": [
+              "documents:visual-judge"
+            ]
+          },
+          {
+            "pluginId": "pdf@zcode-plugins-official",
+            "name": "pdf",
+            "marketplace": "zcode-plugins-official",
+            "icon": "https://cdn-zcode.z.ai/zcode/official-plugin/assets/document-skills/icon.png",
+            "displayName": "PDF",
+            "displayNameI18n": {
+              "zh-CN": "PDF"
+            },
+            "description": "PDF document production skills, published as an official ZCode plugin.",
+            "descriptionI18n": {
+              "zh-CN": "创建、编辑与审阅PDF（PDF）。"
+            },
+            "enabled": true,
+            "conflictingPluginIds": [],
+            "skillQualifiedNames": [
+              "pdf:pdf"
+            ],
+            "mcpServerNames": [],
+            "subagentNames": [
+              "pdf:visual-judge"
+            ]
+          },
+          {
+            "pluginId": "presentations@zcode-plugins-official",
+            "name": "presentations",
+            "marketplace": "zcode-plugins-official",
+            "icon": "https://cdn-zcode.z.ai/zcode/official-plugin/assets/document-skills/icon.png",
+            "displayName": "Presentations",
+            "displayNameI18n": {
+              "zh-CN": "演示文档"
+            },
+            "description": "PPTX presentation production skills, published as an official ZCode plugin.",
+            "descriptionI18n": {
+              "zh-CN": "创建、编辑与审阅演示文档（PPTX）。"
+            },
+            "enabled": true,
+            "conflictingPluginIds": [],
+            "skillQualifiedNames": [
+              "presentations:pptx"
+            ],
+            "mcpServerNames": [],
+            "subagentNames": [
+              "presentations:visual-judge"
+            ]
+          },
+          {
+            "pluginId": "spreadsheets@zcode-plugins-official",
+            "name": "spreadsheets",
+            "marketplace": "zcode-plugins-official",
+            "icon": "https://cdn-zcode.z.ai/zcode/official-plugin/assets/document-skills/icon.png",
+            "displayName": "Spreadsheets",
+            "displayNameI18n": {
+              "zh-CN": "电子表格"
+            },
+            "description": "XLSX spreadsheet production skills, published as an official ZCode plugin.",
+            "descriptionI18n": {
+              "zh-CN": "创建、编辑与审阅电子表格（XLSX）。"
+            },
+            "enabled": true,
+            "conflictingPluginIds": [],
+            "skillQualifiedNames": [
+              "spreadsheets:xlsx"
+            ],
+            "mcpServerNames": [],
+            "subagentNames": [
+              "spreadsheets:visual-judge"
+            ]
+          },
+          {
+            "pluginId": "image-search@zcode-plugins-official",
+            "name": "image-search",
+            "marketplace": "zcode-plugins-official",
+            "displayName": "Image Search",
+            "displayNameI18n": {
+              "zh-CN": "搜图"
+            },
+            "description": "Official ZCode image search MCP server for finding illustrations and reference images.",
+            "descriptionI18n": {
+              "zh-CN": "查找插图与参考配图。"
+            },
+            "enabled": true,
+            "conflictingPluginIds": [],
+            "skillQualifiedNames": [],
+            "mcpServerNames": [],
+            "subagentNames": []
+          },
+          {
+            "pluginId": "ios-simulator@zcode-plugins-official",
+            "name": "ios-simulator",
+            "marketplace": "zcode-plugins-official",
+            "icon": "https://cdn-zcode.z.ai/zcode/official-plugin/assets/ios-simulator/icon.png",
+            "displayName": "iOS Simulator",
+            "displayNameI18n": {
+              "zh-CN": "iOS 模拟器"
+            },
+            "description": "Provides iOS development workflows and simulator automation for ZCode.",
+            "descriptionI18n": {
+              "zh-CN": "提供 iOS 开发工作流与模拟器自动化能力。"
+            },
+            "enabled": false,
+            "conflictingPluginIds": [],
+            "skillQualifiedNames": [
+              "ios-simulator:ios-dev"
+            ],
+            "mcpServerNames": [],
+            "subagentNames": []
+          },
+          {
+            "pluginId": "restore-legacy-sessions@zcode-plugins-official",
+            "name": "restore-legacy-sessions",
+            "marketplace": "zcode-plugins-official",
+            "icon": "https://cdn-zcode.z.ai/zcode/official-plugin/assets/restore-legacy-sessions/icon.png",
+            "displayName": "Restore Legacy Sessions",
+            "displayNameI18n": {
+              "zh-CN": "恢复旧版会话"
+            },
+            "description": "Select and restore legacy ACP-era ZCode sessions into the new ZCode task and session store.",
+            "descriptionI18n": {
+              "zh-CN": "将旧版会话恢复为 ZCode 任务与会话记录。"
+            },
+            "enabled": false,
+            "conflictingPluginIds": [],
+            "skillQualifiedNames": [
+              "restore-legacy-sessions:restore-legacy-sessions"
+            ],
+            "mcpServerNames": [],
+            "subagentNames": []
+          },
+          {
+            "pluginId": "plugin-creator@zcode-plugins-official",
+            "name": "plugin-creator",
+            "marketplace": "zcode-plugins-official",
+            "displayName": "Plugin Creator",
+            "displayNameI18n": {
+              "zh-CN": "插件创建器"
+            },
+            "description": "Develop and validate ZCode plugins through a local dev marketplace, installation, trials and updates.",
+            "descriptionI18n": {
+              "zh-CN": "开发、校验 ZCode 插件，完成本地 dev 市场安装、试用与更新。"
+            },
+            "enabled": true,
+            "conflictingPluginIds": [],
+            "skillQualifiedNames": [
+              "plugin-creator:plugin-creator"
+            ],
+            "mcpServerNames": [],
+            "subagentNames": []
+          },
+          {
+            "pluginId": "skill-creator@zcode-plugins-official",
+            "name": "skill-creator",
+            "marketplace": "zcode-plugins-official",
+            "icon": "https://cdn-zcode.z.ai/zcode/official-plugin/assets/skill-creator/icon.png",
+            "displayName": "Skill Creator",
+            "displayNameI18n": {
+              "zh-CN": "技能创建器"
+            },
+            "description": "Create, edit, and iterate local ZCode skills.",
+            "descriptionI18n": {
+              "zh-CN": "创建、编辑和验证可复用的 ZCode 技能。"
+            },
+            "enabled": true,
+            "conflictingPluginIds": [],
+            "skillQualifiedNames": [
+              "skill-creator:skill-creator"
+            ],
+            "mcpServerNames": [],
+            "subagentNames": []
+          },
+          {
+            "pluginId": "zcode-guide@zcode-plugins-official",
+            "name": "zcode-guide",
+            "marketplace": "zcode-plugins-official",
+            "icon": "https://cdn-zcode.z.ai/zcode/official-plugin/assets/zcode-guide/icon.png",
+            "displayName": "ZCode Guide",
+            "displayNameI18n": {
+              "zh-CN": "ZCode 使用指南"
+            },
+            "description": "ZCode usage and self-diagnosis guide: teaches agents and users how to configure MCP servers, commands, skills, hooks, and plugins, and how to locate and fix configuration problems for each.",
+            "descriptionI18n": {
+              "zh-CN": "提供 ZCode 配置指南与插件、技能、MCP、命令和钩子诊断。"
+            },
+            "enabled": true,
+            "conflictingPluginIds": [],
+            "skillQualifiedNames": [
+              "zcode-guide:diagnosing-commands",
+              "zcode-guide:diagnosing-hooks",
+              "zcode-guide:diagnosing-mcp",
+              "zcode-guide:diagnosing-plugins",
+              "zcode-guide:diagnosing-skills",
+              "zcode-guide:zcode-configuration-guide"
+            ],
+            "mcpServerNames": [],
+            "subagentNames": []
+          },
+          {
+            "pluginId": "computer-use@zcode-plugins-official",
+            "name": "computer-use",
+            "marketplace": "zcode-plugins-official",
+            "icon": "https://cdn-zcode.z.ai/zcode/official-plugin/assets/zcode-cua/icon.png",
+            "displayName": "Computer Use",
+            "displayNameI18n": {
+              "zh-CN": "电脑控制"
+            },
+            "description": "Computer Use: automate desktop apps with mouse, keyboard, and UI element control.",
+            "descriptionI18n": {
+              "zh-CN": "自动化桌面应用：智能体驱动鼠标、键盘与界面元素，代你完成实际任务。"
+            },
+            "enabled": false,
+            "conflictingPluginIds": [],
+            "skillQualifiedNames": [
+              "computer-use:computer-use"
+            ],
+            "mcpServerNames": [],
+            "subagentNames": []
+          }
+        ]
+      }
+    },
+    "skillReference": {
+      "result": {
+        "authority": "workspace",
+        "skills": [
+          {
+            "id": "glm:plugin:/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/browser-use/0.5.1/skills/control-browser/SKILL.md",
+            "name": "control-browser",
+            "description": "Use when opening, navigating, inspecting, testing, clicking, typing, filling, screenshotting, or verifying web pages and local HTTP targets (localhost, 127.0.0.1, ::1) inside ZCode, including browser/web-UI automation, rendered-page scraping, frontend checks, and visible page-state reading. Prefer this over Computer Use for anything that stays inside a web page, unless the user explicitly asks for Computer Use. Main agent only.",
+            "path": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/browser-use/0.5.1/skills/control-browser/SKILL.md",
+            "scope": "plugin",
+            "enabled": true,
+            "pluginName": "browser-use"
+          },
+          {
+            "id": "glm:plugin:/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/zcode-guide/0.3.0/skills/diagnosing-commands/SKILL.md",
+            "name": "diagnosing-commands",
+            "description": "Use to diagnose and fix ZCode custom slash-command (/command) configuration problems in the ZCode client. Applies when a command is missing, is overridden by a higher-precedence command of the same name, has a frontmatter parse error, is dropped for having an empty body, has an invalid name, does not substitute $ARGUMENTS/$1, uses a colon rather than a slash for nested names, has a misspelled frontmatter key, or disappears because the plugin providing it is disabled. Provides the discovery order, how to inspect commands in the client, common pitfalls, and a step-by-step localization and repair workflow.",
+            "path": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/zcode-guide/0.3.0/skills/diagnosing-commands/SKILL.md",
+            "scope": "plugin",
+            "enabled": true,
+            "pluginName": "zcode-guide"
+          },
+          {
+            "id": "glm:plugin:/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/zcode-guide/0.3.0/skills/diagnosing-hooks/SKILL.md",
+            "name": "diagnosing-hooks",
+            "description": "Use to diagnose and fix ZCode hook configuration problems in the ZCode client. Applies when a hook does not trigger, an event name is wrong, a matcher does not match a tool name, a script is not executable, template variables are not expanded, a timeout unit is mistaken (seconds versus milliseconds), the command and process field styles are mixed, a hook's JSON output fails validation, a hook blocks the session unexpectedly, or configuration-file hooks are not enabled. Provides configuration sources, the hooks.json schema, how to inspect hooks in the client, and a step-by-step localization and repair workflow.",
+            "path": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/zcode-guide/0.3.0/skills/diagnosing-hooks/SKILL.md",
+            "scope": "plugin",
+            "enabled": true,
+            "pluginName": "zcode-guide"
+          },
+          {
+            "id": "glm:plugin:/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/zcode-guide/0.3.0/skills/diagnosing-mcp/SKILL.md",
+            "name": "diagnosing-mcp",
+            "description": "Use to diagnose and fix ZCode MCP (Model Context Protocol) server configuration problems in the ZCode client. Applies when an MCP server will not connect, its tools (mcp__server__tool) do not appear, it shows as disabled or failed, connections time out, a command cannot be found, template variables are not expanded, or a server defined in a configuration file has no effect. Provides configuration locations, how to inspect status in Settings, common pitfalls, and a step-by-step localization and repair workflow.",
+            "path": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/zcode-guide/0.3.0/skills/diagnosing-mcp/SKILL.md",
+            "scope": "plugin",
+            "enabled": true,
+            "pluginName": "zcode-guide"
+          },
+          {
+            "id": "glm:plugin:/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/zcode-guide/0.3.0/skills/diagnosing-plugins/SKILL.md",
+            "name": "diagnosing-plugins",
+            "description": "Use to diagnose and fix ZCode plugin and marketplace problems in the ZCode client. Applies when a plugin is not listed, adding a marketplace or installing a plugin fails, a plugin is enabled but its skills or commands are missing, a built-in plugin still appears after being disabled, a plugin is not enabled as expected, a plugin.json manifest has a parse error, a plugin name is invalid, a dependency is unresolved or blocked across marketplaces, or a sensitive configuration value cannot be entered in the interface. Provides the plugin lifecycle, manifest schema, how to manage plugins in the client, and a step-by-step localization and repair workflow.",
+            "path": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/zcode-guide/0.3.0/skills/diagnosing-plugins/SKILL.md",
+            "scope": "plugin",
+            "enabled": true,
+            "pluginName": "zcode-guide"
+          },
+          {
+            "id": "glm:plugin:/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/zcode-guide/0.3.0/skills/diagnosing-skills/SKILL.md",
+            "name": "diagnosing-skills",
+            "description": "Use to diagnose and fix ZCode skill configuration problems in the ZCode client. Applies when a skill is not discovered, is installed but does not trigger automatically, is shadowed by a higher-precedence skill of the same name, is disabled by configuration, has a SKILL.md frontmatter error, fails to load because its description is too long, or disappears because the plugin providing it is disabled. Provides the discovery order, how to inspect skills in the client, common pitfalls, and a step-by-step localization and repair workflow.",
+            "path": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/zcode-guide/0.3.0/skills/diagnosing-skills/SKILL.md",
+            "scope": "plugin",
+            "enabled": true,
+            "pluginName": "zcode-guide"
+          },
+          {
+            "id": "glm:plugin:/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/documents/0.1.7/skills/docx/SKILL.md",
+            "name": "docx",
+            "description": "Complete DOCX document creation, editing, and analysis capabilities with support for revisions, comments, formatting preservation, and text extraction. Also handles Word format conversion: legacy .doc → .docx, DOCX → PDF, DOCX → images (PNG/JPG) for visual review or previews, and DOCX → Markdown/plain text extraction. Use for creating new documents, modifying content, handling revisions, adding comments, other professional Word document tasks, or when the user asks to convert, export, or render a Word document to another format (e.g. 'Word转PDF', 'doc转docx', 'export this docx as PDF/images').",
+            "path": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/documents/0.1.7/skills/docx/SKILL.md",
+            "scope": "plugin",
+            "enabled": true,
+            "pluginName": "documents"
+          },
+          {
+            "id": "glm:plugin:/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/pdf/0.1.7/skills/pdf/SKILL.md",
+            "name": "pdf",
+            "description": "Professional PDF toolkit covering four production workflows: reports, creative visuals, academic LaTeX, and existing PDF processing. Routes automatically by document type and supports reports, posters, papers, resumes, extraction, merging, splitting, and form filling. Use this skill for any conversion whose output is a PDF: Office → PDF (.docx/.doc/.pptx/.ppt/.xlsx/.xls/.odt/.odp/.ods/.rtf/.csv/.txt → PDF), HTML → PDF, and LaTeX/.tex → PDF; also PDF → images, PDF → text, and PDF → tables when reading a PDF apart. Trigger when the user asks to convert, export, render, print, or turn a file into a PDF, or to merge/split/extract from one — including phrasings like 'Word转PDF', 'PPT转PDF', 'Excel转PDF', 'html转pdf', '导出为PDF', 'save/export as PDF', or 'PDF转图片/文字'.",
+            "path": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/pdf/0.1.7/skills/pdf/SKILL.md",
+            "scope": "plugin",
+            "enabled": true,
+            "pluginName": "pdf"
+          },
+          {
+            "id": "glm:plugin:/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/plugin-creator/0.1.1/skills/plugin-creator/SKILL.md",
+            "name": "plugin-creator",
+            "description": "Create or update ZCode plugin source and a local test marketplace, then guide the user to add, install, update and try it in the app. Use for new plugins or changes to an existing plugin's capabilities, manifest or local distribution.",
+            "path": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/plugin-creator/0.1.1/skills/plugin-creator/SKILL.md",
+            "scope": "plugin",
+            "enabled": true,
+            "pluginName": "plugin-creator"
+          },
+          {
+            "id": "glm:plugin:/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/presentations/0.1.7/skills/pptx/SKILL.md",
+            "name": "pptx",
+            "description": "Use this skill any time a presentation file is the primary input or output. Covers: creating new .pptx decks from scratch or from an outline/document (pptxgenjs / python-pptx); editing and restyling an existing .pptx; reading and extracting text/structure from a deck (markitdown); and rendering a deck to PDF (LibreOffice) or to per-slide PNG images (pdftoppm) for previews, thumbnails, or visual review. Trigger when the user references a .pptx file by name or path, says 'make/build a deck, slides, presentation, PPT, 幻灯片, 演示文稿, 汇报/路演材料', or asks to convert, export, render, or preview slides as PDF or images (e.g. 'PPT转PDF', 'ppt导出图片', 'turn these slides into a PDF').",
+            "path": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/presentations/0.1.7/skills/pptx/SKILL.md",
+            "scope": "plugin",
+            "enabled": true,
+            "pluginName": "presentations"
+          },
+          {
+            "id": "glm:plugin:/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/skill-creator/0.1.0/skills/skill-creator/SKILL.md",
+            "name": "skill-creator",
+            "description": "Create new skills, edit existing skills, and iterate wording. Use when writing SKILL.md from scratch, improving existing skills, turning repeated workflows into reusable skills, or refining skill descriptions to improve trigger reliability.",
+            "path": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/skill-creator/0.1.0/skills/skill-creator/SKILL.md",
+            "scope": "plugin",
+            "enabled": true,
+            "pluginName": "skill-creator"
+          },
+          {
+            "id": "glm:plugin:/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/browser-use/0.5.1/skills/web-gui-tester/SKILL.md",
+            "name": "web-gui-tester",
+            "description": "Use the browser automation tooling available in the session to test web frontends interactively in a purely GUI-based, black-box manner: simulate real user clicks, text input, scrolling, and other actions; use screenshots for visual verification and read-only DOM inspection for cross-validation; and produce a final test report. Suitable for verifying whether web functionality works correctly, reproducing frontend bugs, checking interaction feedback and layout styling, or conducting exploratory testing of a page. Use this skill when the user asks to test a webpage/frontend feature, verify UI behavior, reproduce a page bug, or provides only a URL and asks you to “test it.”",
+            "path": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/browser-use/0.5.1/skills/web-gui-tester/SKILL.md",
+            "scope": "plugin",
+            "enabled": true,
+            "pluginName": "browser-use"
+          },
+          {
+            "id": "glm:plugin:/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/spreadsheets/0.1.7/skills/xlsx/SKILL.md",
+            "name": "xlsx",
+            "description": "Use this skill any time a spreadsheet file is the primary input or output. This means any task where the user wants to: open, read, edit, or fix an existing .xlsx, .xlsm, .csv, or .tsv file; create a new spreadsheet from scratch or from other data sources; analyze data and output results as an Excel file with charts; convert between tabular file formats (CSV/TSV/JSON/PDF-table → XLSX, or XLSX → CSV/JSON); clean, merge, pivot, or transform tabular data. Trigger especially when the user references a spreadsheet file by name or path, says 'make a table/report/model', mentions Excel/CSV/数据分析/报表/汇总, asks to convert or export a spreadsheet (e.g. 'csv转excel', 'json转表格', 'export as CSV'), or wants data visualization inside a spreadsheet.",
+            "path": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/spreadsheets/0.1.7/skills/xlsx/SKILL.md",
+            "scope": "plugin",
+            "enabled": true,
+            "pluginName": "spreadsheets"
+          },
+          {
+            "id": "glm:plugin:/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/zcode-guide/0.3.0/skills/zcode-configuration-guide/SKILL.md",
+            "name": "zcode-configuration-guide",
+            "description": "Use when configuring ZCode's extension resources (MCP servers, slash commands, skills, hooks, and plugins) or instruction files such as AGENTS.md in the ZCode client. Explains where each resource is configured at the user and workspace scope, the discovery order, precedence, and merge rules, plus guidance on which location to choose. Use when someone asks how to add an MCP server, command, skill, hook, plugin, or AGENTS.md instructions, where a configuration file lives, why a configuration is not taking effect, or needs routing to a specific diagnostic skill.",
+            "path": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/zcode-guide/0.3.0/skills/zcode-configuration-guide/SKILL.md",
+            "scope": "plugin",
+            "enabled": true,
+            "pluginName": "zcode-guide"
+          }
+        ]
+      }
+    },
+    "pluginsOverview": {
+      "result": {
+        "marketplaces": [
+          {
+            "id": "zcode-plugins-official",
+            "name": "zcode-plugins-official",
+            "source": {
+              "source": "url",
+              "url": "https://cdn-zcode.z.ai/zcode/official-plugin/marketplace.json"
+            },
+            "description": "Official ZCode plugins marketplace: built-in and community plugins for ZCode.",
+            "pluginCount": 13,
+            "isOfficial": true
+          },
+          {
+            "id": "claude-plugins-official",
+            "name": "claude-plugins-official",
+            "source": {
+              "source": "github",
+              "repo": "anthropics/claude-plugins-official"
+            },
+            "description": "Directory of popular Claude Code extensions including development tools, productivity plugins, and MCP integrations",
+            "pluginCount": 0,
+            "isOfficial": true
+          }
+        ],
+        "availablePlugins": [
+          {
+            "id": "node-repl-host@zcode-plugins-official",
+            "name": "node-repl-host",
+            "marketplace": "zcode-plugins-official",
+            "description": "Shared node_repl runtime host for ZCode official capabilities. Not user-facing: it carries no skill and appears in no marketplace listing; Browser Use and Computer Use enable it and contribute their own skills, docs and runtime assets.",
+            "version": "0.6.0",
+            "installed": false,
+            "componentTypes": []
+          },
+          {
+            "id": "android-emulator@zcode-plugins-official",
+            "name": "android-emulator",
+            "marketplace": "zcode-plugins-official",
+            "description": "Provides Android development workflows and emulator automation for ZCode.",
+            "version": "0.1.0",
+            "installed": false,
+            "componentTypes": [],
+            "listing": {
+              "displayName": "Android Emulator",
+              "displayNameI18n": {
+                "zh-CN": "Android 模拟器"
+              },
+              "descriptionI18n": {
+                "zh-CN": "提供 Android 开发工作流与模拟器自动化能力。"
+              },
+              "icon": "https://cdn-zcode.z.ai/zcode/official-plugin/assets/android-emulator/icon.png",
+              "category": "developer-tools",
+              "author": "Z.ai",
+              "authorUrl": "https://z.ai"
+            }
+          },
+          {
+            "id": "browser-use@zcode-plugins-official",
+            "name": "browser-use",
+            "marketplace": "zcode-plugins-official",
+            "description": "Built-in browser automation runtime and guidance for Desktop IAB and explicitly enabled CLI-managed headless CDP: open, navigate, inspect, click, type, screenshot, record workspace WebM videos, and verify web pages and local dev targets.",
+            "version": "0.5.1",
+            "installed": false,
+            "componentTypes": [],
+            "listing": {
+              "displayName": "Browser Use",
+              "displayNameI18n": {
+                "zh-CN": "浏览器操作"
+              },
+              "descriptionI18n": {
+                "zh-CN": "操作 ZCode 内置浏览器，检查网页并验证交互。"
+              },
+              "icon": "https://cdn-zcode.z.ai/zcode/official-plugin/assets/browser-use/icon.png",
+              "category": "productivity",
+              "author": "Z.ai",
+              "authorUrl": "https://z.ai"
+            }
+          },
+          {
+            "id": "documents@zcode-plugins-official",
+            "name": "documents",
+            "marketplace": "zcode-plugins-official",
+            "description": "DOCX document production skills, published as an official ZCode plugin.",
+            "version": "0.1.7",
+            "installed": false,
+            "componentTypes": [],
+            "listing": {
+              "displayName": "Documents",
+              "displayNameI18n": {
+                "zh-CN": "Word文档"
+              },
+              "descriptionI18n": {
+                "zh-CN": "创建、编辑与审阅Word文档（DOCX）。"
+              },
+              "icon": "https://cdn-zcode.z.ai/zcode/official-plugin/assets/document-skills/icon.png",
+              "category": "productivity",
+              "author": "Z.ai",
+              "authorUrl": "https://z.ai"
+            }
+          },
+          {
+            "id": "pdf@zcode-plugins-official",
+            "name": "pdf",
+            "marketplace": "zcode-plugins-official",
+            "description": "PDF document production skills, published as an official ZCode plugin.",
+            "version": "0.1.7",
+            "installed": false,
+            "componentTypes": [],
+            "listing": {
+              "displayName": "PDF",
+              "displayNameI18n": {
+                "zh-CN": "PDF"
+              },
+              "descriptionI18n": {
+                "zh-CN": "创建、编辑与审阅PDF（PDF）。"
+              },
+              "icon": "https://cdn-zcode.z.ai/zcode/official-plugin/assets/document-skills/icon.png",
+              "category": "productivity",
+              "author": "Z.ai",
+              "authorUrl": "https://z.ai"
+            }
+          },
+          {
+            "id": "presentations@zcode-plugins-official",
+            "name": "presentations",
+            "marketplace": "zcode-plugins-official",
+            "description": "PPTX presentation production skills, published as an official ZCode plugin.",
+            "version": "0.1.7",
+            "installed": false,
+            "componentTypes": [],
+            "listing": {
+              "displayName": "Presentations",
+              "displayNameI18n": {
+                "zh-CN": "演示文档"
+              },
+              "descriptionI18n": {
+                "zh-CN": "创建、编辑与审阅演示文档（PPTX）。"
+              },
+              "icon": "https://cdn-zcode.z.ai/zcode/official-plugin/assets/document-skills/icon.png",
+              "category": "productivity",
+              "author": "Z.ai",
+              "authorUrl": "https://z.ai"
+            }
+          },
+          {
+            "id": "spreadsheets@zcode-plugins-official",
+            "name": "spreadsheets",
+            "marketplace": "zcode-plugins-official",
+            "description": "XLSX spreadsheet production skills, published as an official ZCode plugin.",
+            "version": "0.1.7",
+            "installed": false,
+            "componentTypes": [],
+            "listing": {
+              "displayName": "Spreadsheets",
+              "displayNameI18n": {
+                "zh-CN": "电子表格"
+              },
+              "descriptionI18n": {
+                "zh-CN": "创建、编辑与审阅电子表格（XLSX）。"
+              },
+              "icon": "https://cdn-zcode.z.ai/zcode/official-plugin/assets/document-skills/icon.png",
+              "category": "productivity",
+              "author": "Z.ai",
+              "authorUrl": "https://z.ai"
+            }
+          },
+          {
+            "id": "image-search@zcode-plugins-official",
+            "name": "image-search",
+            "marketplace": "zcode-plugins-official",
+            "description": "Official ZCode image search MCP server for finding illustrations and reference images.",
+            "version": "0.1.1",
+            "installed": false,
+            "componentTypes": [],
+            "listing": {
+              "displayName": "Image Search",
+              "displayNameI18n": {
+                "zh-CN": "搜图"
+              },
+              "descriptionI18n": {
+                "zh-CN": "查找插图与参考配图。"
+              },
+              "category": "productivity",
+              "author": "Z.ai",
+              "authorUrl": "https://z.ai"
+            }
+          },
+          {
+            "id": "ios-simulator@zcode-plugins-official",
+            "name": "ios-simulator",
+            "marketplace": "zcode-plugins-official",
+            "description": "Provides iOS development workflows and simulator automation for ZCode.",
+            "version": "0.1.0",
+            "installed": false,
+            "componentTypes": [],
+            "listing": {
+              "displayName": "iOS Simulator",
+              "displayNameI18n": {
+                "zh-CN": "iOS 模拟器"
+              },
+              "descriptionI18n": {
+                "zh-CN": "提供 iOS 开发工作流与模拟器自动化能力。"
+              },
+              "icon": "https://cdn-zcode.z.ai/zcode/official-plugin/assets/ios-simulator/icon.png",
+              "category": "developer-tools",
+              "author": "Z.ai",
+              "authorUrl": "https://z.ai"
+            }
+          },
+          {
+            "id": "restore-legacy-sessions@zcode-plugins-official",
+            "name": "restore-legacy-sessions",
+            "marketplace": "zcode-plugins-official",
+            "description": "Select and restore legacy ACP-era ZCode sessions into the new ZCode task and session store.",
+            "version": "0.1.0",
+            "installed": false,
+            "componentTypes": [],
+            "listing": {
+              "displayName": "Restore Legacy Sessions",
+              "displayNameI18n": {
+                "zh-CN": "恢复旧版会话"
+              },
+              "descriptionI18n": {
+                "zh-CN": "将旧版会话恢复为 ZCode 任务与会话记录。"
+              },
+              "icon": "https://cdn-zcode.z.ai/zcode/official-plugin/assets/restore-legacy-sessions/icon.png",
+              "category": "utilities",
+              "author": "Z.ai",
+              "authorUrl": "https://z.ai"
+            }
+          },
+          {
+            "id": "plugin-creator@zcode-plugins-official",
+            "name": "plugin-creator",
+            "marketplace": "zcode-plugins-official",
+            "description": "Develop and validate ZCode plugins through a local dev marketplace, installation, trials and updates.",
+            "version": "0.1.1",
+            "installed": false,
+            "componentTypes": [],
+            "listing": {
+              "displayName": "Plugin Creator",
+              "displayNameI18n": {
+                "zh-CN": "插件创建器"
+              },
+              "descriptionI18n": {
+                "zh-CN": "开发、校验 ZCode 插件，完成本地 dev 市场安装、试用与更新。"
+              },
+              "category": "utilities",
+              "author": "Z.ai",
+              "authorUrl": "https://z.ai"
+            }
+          },
+          {
+            "id": "skill-creator@zcode-plugins-official",
+            "name": "skill-creator",
+            "marketplace": "zcode-plugins-official",
+            "description": "Create, edit, and iterate local ZCode skills.",
+            "version": "0.1.0",
+            "installed": false,
+            "componentTypes": [],
+            "listing": {
+              "displayName": "Skill Creator",
+              "displayNameI18n": {
+                "zh-CN": "技能创建器"
+              },
+              "descriptionI18n": {
+                "zh-CN": "创建、编辑和验证可复用的 ZCode 技能。"
+              },
+              "icon": "https://cdn-zcode.z.ai/zcode/official-plugin/assets/skill-creator/icon.png",
+              "category": "utilities",
+              "author": "Z.ai",
+              "authorUrl": "https://z.ai"
+            }
+          },
+          {
+            "id": "zcode-guide@zcode-plugins-official",
+            "name": "zcode-guide",
+            "marketplace": "zcode-plugins-official",
+            "description": "ZCode usage and self-diagnosis guide: teaches agents and users how to configure MCP servers, commands, skills, hooks, and plugins, and how to locate and fix configuration problems for each.",
+            "version": "0.3.0",
+            "installed": false,
+            "componentTypes": [],
+            "listing": {
+              "displayName": "ZCode Guide",
+              "displayNameI18n": {
+                "zh-CN": "ZCode 使用指南"
+              },
+              "descriptionI18n": {
+                "zh-CN": "提供 ZCode 配置指南与插件、技能、MCP、命令和钩子诊断。"
+              },
+              "icon": "https://cdn-zcode.z.ai/zcode/official-plugin/assets/zcode-guide/icon.png",
+              "category": "utilities",
+              "author": "Z.ai",
+              "authorUrl": "https://z.ai",
+              "examplePrompts": [
+                "How do I configure MCP servers in ZCode?",
+                "Diagnose my current ZCode setup"
+              ],
+              "examplePromptsI18n": {
+                "zh-CN": [
+                  "ZCode 里怎么配置 MCP 服务器？",
+                  "帮我诊断当前的 ZCode 配置"
+                ]
+              }
+            }
+          },
+          {
+            "id": "computer-use@zcode-plugins-official",
+            "name": "computer-use",
+            "marketplace": "zcode-plugins-official",
+            "description": "Computer Use: automate desktop apps with mouse, keyboard, and UI element control.",
+            "version": "0.6.3",
+            "installed": false,
+            "componentTypes": [],
+            "listing": {
+              "displayName": "Computer Use",
+              "displayNameI18n": {
+                "zh-CN": "电脑控制"
+              },
+              "descriptionI18n": {
+                "zh-CN": "自动化桌面应用：智能体驱动鼠标、键盘与界面元素，代你完成实际任务。"
+              },
+              "icon": "https://cdn-zcode.z.ai/zcode/official-plugin/assets/zcode-cua/icon.png",
+              "category": "productivity",
+              "author": "Z.ai",
+              "authorUrl": "https://z.ai"
+            }
+          }
+        ],
+        "installedPlugins": [],
+        "restorableBuiltins": [],
+        "diagnostics": [
+          {
+            "code": "plugin_variable_missing",
+            "message": "Missing environment variable: ZCODE_BASE_URL",
+            "severity": "error",
+            "pluginId": "image-search@zcode-plugins-official"
+          }
+        ],
+        "capability": {
+          "supported": true
+        }
+      }
+    },
+    "pluginValidateBare": {
+      "result": {
+        "ok": true,
+        "diagnostics": [],
+        "compatibility": {
+          "runnable": [
+            "skills",
+            "commands",
+            "hooks",
+            "mcpServers",
+            "userConfig"
+          ],
+          "diagnosticOnly": [
+            "agents",
+            "lspServers",
+            "outputStyles",
+            "channels",
+            "settings"
+          ],
+          "unsupported": [
+            "mcpb",
+            "dxt",
+            "npm",
+            "hostPattern",
+            "pathPattern"
+          ]
+        }
+      }
+    },
+    "pluginValidateMissing": {
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "plugin_marketplace_invalid",
+            "message": "Marketplace not found: catalog-management-local",
+            "severity": "error"
+          }
+        ],
+        "compatibility": {
+          "runnable": [
+            "skills",
+            "commands",
+            "hooks",
+            "mcpServers",
+            "userConfig"
+          ],
+          "diagnosticOnly": [
+            "agents",
+            "lspServers",
+            "outputStyles",
+            "channels",
+            "settings"
+          ],
+          "unsupported": [
+            "mcpb",
+            "dxt",
+            "npm",
+            "hostPattern",
+            "pathPattern"
+          ]
+        }
+      }
+    },
+    "readUnknown": {
+      "error": {
+        "code": "catalog-read-unknown"
+      }
+    }
+  },
+  "write": {
+    "cancelUnknown": {
+      "result": {
+        "operationId": "catalog-management-never-created",
+        "cancelled": false
+      }
+    },
+    "marketplaceAddDryRun": {
+      "result": {
+        "marketplace": {
+          "id": "dry-run",
+          "name": "dry-run",
+          "source": {
+            "source": "directory",
+            "path": "/fixture/catalog-management-workspace/local-marketplace"
+          },
+          "pluginCount": 0,
+          "isOfficial": false
+        },
+        "diagnostics": []
+      }
+    },
+    "marketplaceAdd": {
+      "result": {
+        "marketplace": {
+          "id": "catalog-management-local",
+          "name": "catalog-management-local",
+          "source": {
+            "source": "directory",
+            "path": "/fixture/catalog-management-workspace/local-marketplace"
+          },
+          "description": "Catalog synthetic local marketplace",
+          "lastUpdated": "2026-10-04T00:53:09.335Z",
+          "pluginCount": 1,
+          "isOfficial": false
+        },
+        "diagnostics": []
+      }
+    },
+    "overviewAfterAdd": {
+      "result": {
+        "marketplaces": [
+          {
+            "id": "zcode-plugins-official",
+            "name": "zcode-plugins-official",
+            "source": {
+              "source": "url",
+              "url": "https://cdn-zcode.z.ai/zcode/official-plugin/marketplace.json"
+            },
+            "description": "Official ZCode plugins marketplace: built-in and community plugins for ZCode.",
+            "pluginCount": 13,
+            "isOfficial": true
+          },
+          {
+            "id": "claude-plugins-official",
+            "name": "claude-plugins-official",
+            "source": {
+              "source": "github",
+              "repo": "anthropics/claude-plugins-official"
+            },
+            "description": "Directory of popular Claude Code extensions including development tools, productivity plugins, and MCP integrations",
+            "pluginCount": 0,
+            "isOfficial": true
+          },
+          {
+            "id": "catalog-management-local",
+            "name": "catalog-management-local",
+            "source": {
+              "source": "directory",
+              "path": "/fixture/catalog-management-workspace/local-marketplace"
+            },
+            "description": "Catalog synthetic local marketplace",
+            "lastUpdated": "2026-10-04T00:53:09.335Z",
+            "pluginCount": 1,
+            "isOfficial": false
+          }
+        ],
+        "availablePlugins": [
+          {
+            "id": "node-repl-host@zcode-plugins-official",
+            "name": "node-repl-host",
+            "marketplace": "zcode-plugins-official",
+            "description": "Shared node_repl runtime host for ZCode official capabilities. Not user-facing: it carries no skill and appears in no marketplace listing; Browser Use and Computer Use enable it and contribute their own skills, docs and runtime assets.",
+            "version": "0.6.0",
+            "installed": false,
+            "componentTypes": []
+          },
+          {
+            "id": "android-emulator@zcode-plugins-official",
+            "name": "android-emulator",
+            "marketplace": "zcode-plugins-official",
+            "description": "Provides Android development workflows and emulator automation for ZCode.",
+            "version": "0.1.0",
+            "installed": false,
+            "componentTypes": [],
+            "listing": {
+              "displayName": "Android Emulator",
+              "displayNameI18n": {
+                "zh-CN": "Android 模拟器"
+              },
+              "descriptionI18n": {
+                "zh-CN": "提供 Android 开发工作流与模拟器自动化能力。"
+              },
+              "icon": "https://cdn-zcode.z.ai/zcode/official-plugin/assets/android-emulator/icon.png",
+              "category": "developer-tools",
+              "author": "Z.ai",
+              "authorUrl": "https://z.ai"
+            }
+          },
+          {
+            "id": "browser-use@zcode-plugins-official",
+            "name": "browser-use",
+            "marketplace": "zcode-plugins-official",
+            "description": "Built-in browser automation runtime and guidance for Desktop IAB and explicitly enabled CLI-managed headless CDP: open, navigate, inspect, click, type, screenshot, record workspace WebM videos, and verify web pages and local dev targets.",
+            "version": "0.5.1",
+            "installed": false,
+            "componentTypes": [],
+            "listing": {
+              "displayName": "Browser Use",
+              "displayNameI18n": {
+                "zh-CN": "浏览器操作"
+              },
+              "descriptionI18n": {
+                "zh-CN": "操作 ZCode 内置浏览器，检查网页并验证交互。"
+              },
+              "icon": "https://cdn-zcode.z.ai/zcode/official-plugin/assets/browser-use/icon.png",
+              "category": "productivity",
+              "author": "Z.ai",
+              "authorUrl": "https://z.ai"
+            }
+          },
+          {
+            "id": "documents@zcode-plugins-official",
+            "name": "documents",
+            "marketplace": "zcode-plugins-official",
+            "description": "DOCX document production skills, published as an official ZCode plugin.",
+            "version": "0.1.7",
+            "installed": false,
+            "componentTypes": [],
+            "listing": {
+              "displayName": "Documents",
+              "displayNameI18n": {
+                "zh-CN": "Word文档"
+              },
+              "descriptionI18n": {
+                "zh-CN": "创建、编辑与审阅Word文档（DOCX）。"
+              },
+              "icon": "https://cdn-zcode.z.ai/zcode/official-plugin/assets/document-skills/icon.png",
+              "category": "productivity",
+              "author": "Z.ai",
+              "authorUrl": "https://z.ai"
+            }
+          },
+          {
+            "id": "pdf@zcode-plugins-official",
+            "name": "pdf",
+            "marketplace": "zcode-plugins-official",
+            "description": "PDF document production skills, published as an official ZCode plugin.",
+            "version": "0.1.7",
+            "installed": false,
+            "componentTypes": [],
+            "listing": {
+              "displayName": "PDF",
+              "displayNameI18n": {
+                "zh-CN": "PDF"
+              },
+              "descriptionI18n": {
+                "zh-CN": "创建、编辑与审阅PDF（PDF）。"
+              },
+              "icon": "https://cdn-zcode.z.ai/zcode/official-plugin/assets/document-skills/icon.png",
+              "category": "productivity",
+              "author": "Z.ai",
+              "authorUrl": "https://z.ai"
+            }
+          },
+          {
+            "id": "presentations@zcode-plugins-official",
+            "name": "presentations",
+            "marketplace": "zcode-plugins-official",
+            "description": "PPTX presentation production skills, published as an official ZCode plugin.",
+            "version": "0.1.7",
+            "installed": false,
+            "componentTypes": [],
+            "listing": {
+              "displayName": "Presentations",
+              "displayNameI18n": {
+                "zh-CN": "演示文档"
+              },
+              "descriptionI18n": {
+                "zh-CN": "创建、编辑与审阅演示文档（PPTX）。"
+              },
+              "icon": "https://cdn-zcode.z.ai/zcode/official-plugin/assets/document-skills/icon.png",
+              "category": "productivity",
+              "author": "Z.ai",
+              "authorUrl": "https://z.ai"
+            }
+          },
+          {
+            "id": "spreadsheets@zcode-plugins-official",
+            "name": "spreadsheets",
+            "marketplace": "zcode-plugins-official",
+            "description": "XLSX spreadsheet production skills, published as an official ZCode plugin.",
+            "version": "0.1.7",
+            "installed": false,
+            "componentTypes": [],
+            "listing": {
+              "displayName": "Spreadsheets",
+              "displayNameI18n": {
+                "zh-CN": "电子表格"
+              },
+              "descriptionI18n": {
+                "zh-CN": "创建、编辑与审阅电子表格（XLSX）。"
+              },
+              "icon": "https://cdn-zcode.z.ai/zcode/official-plugin/assets/document-skills/icon.png",
+              "category": "productivity",
+              "author": "Z.ai",
+              "authorUrl": "https://z.ai"
+            }
+          },
+          {
+            "id": "image-search@zcode-plugins-official",
+            "name": "image-search",
+            "marketplace": "zcode-plugins-official",
+            "description": "Official ZCode image search MCP server for finding illustrations and reference images.",
+            "version": "0.1.1",
+            "installed": false,
+            "componentTypes": [],
+            "listing": {
+              "displayName": "Image Search",
+              "displayNameI18n": {
+                "zh-CN": "搜图"
+              },
+              "descriptionI18n": {
+                "zh-CN": "查找插图与参考配图。"
+              },
+              "category": "productivity",
+              "author": "Z.ai",
+              "authorUrl": "https://z.ai"
+            }
+          },
+          {
+            "id": "ios-simulator@zcode-plugins-official",
+            "name": "ios-simulator",
+            "marketplace": "zcode-plugins-official",
+            "description": "Provides iOS development workflows and simulator automation for ZCode.",
+            "version": "0.1.0",
+            "installed": false,
+            "componentTypes": [],
+            "listing": {
+              "displayName": "iOS Simulator",
+              "displayNameI18n": {
+                "zh-CN": "iOS 模拟器"
+              },
+              "descriptionI18n": {
+                "zh-CN": "提供 iOS 开发工作流与模拟器自动化能力。"
+              },
+              "icon": "https://cdn-zcode.z.ai/zcode/official-plugin/assets/ios-simulator/icon.png",
+              "category": "developer-tools",
+              "author": "Z.ai",
+              "authorUrl": "https://z.ai"
+            }
+          },
+          {
+            "id": "restore-legacy-sessions@zcode-plugins-official",
+            "name": "restore-legacy-sessions",
+            "marketplace": "zcode-plugins-official",
+            "description": "Select and restore legacy ACP-era ZCode sessions into the new ZCode task and session store.",
+            "version": "0.1.0",
+            "installed": false,
+            "componentTypes": [],
+            "listing": {
+              "displayName": "Restore Legacy Sessions",
+              "displayNameI18n": {
+                "zh-CN": "恢复旧版会话"
+              },
+              "descriptionI18n": {
+                "zh-CN": "将旧版会话恢复为 ZCode 任务与会话记录。"
+              },
+              "icon": "https://cdn-zcode.z.ai/zcode/official-plugin/assets/restore-legacy-sessions/icon.png",
+              "category": "utilities",
+              "author": "Z.ai",
+              "authorUrl": "https://z.ai"
+            }
+          },
+          {
+            "id": "plugin-creator@zcode-plugins-official",
+            "name": "plugin-creator",
+            "marketplace": "zcode-plugins-official",
+            "description": "Develop and validate ZCode plugins through a local dev marketplace, installation, trials and updates.",
+            "version": "0.1.1",
+            "installed": false,
+            "componentTypes": [],
+            "listing": {
+              "displayName": "Plugin Creator",
+              "displayNameI18n": {
+                "zh-CN": "插件创建器"
+              },
+              "descriptionI18n": {
+                "zh-CN": "开发、校验 ZCode 插件，完成本地 dev 市场安装、试用与更新。"
+              },
+              "category": "utilities",
+              "author": "Z.ai",
+              "authorUrl": "https://z.ai"
+            }
+          },
+          {
+            "id": "skill-creator@zcode-plugins-official",
+            "name": "skill-creator",
+            "marketplace": "zcode-plugins-official",
+            "description": "Create, edit, and iterate local ZCode skills.",
+            "version": "0.1.0",
+            "installed": false,
+            "componentTypes": [],
+            "listing": {
+              "displayName": "Skill Creator",
+              "displayNameI18n": {
+                "zh-CN": "技能创建器"
+              },
+              "descriptionI18n": {
+                "zh-CN": "创建、编辑和验证可复用的 ZCode 技能。"
+              },
+              "icon": "https://cdn-zcode.z.ai/zcode/official-plugin/assets/skill-creator/icon.png",
+              "category": "utilities",
+              "author": "Z.ai",
+              "authorUrl": "https://z.ai"
+            }
+          },
+          {
+            "id": "zcode-guide@zcode-plugins-official",
+            "name": "zcode-guide",
+            "marketplace": "zcode-plugins-official",
+            "description": "ZCode usage and self-diagnosis guide: teaches agents and users how to configure MCP servers, commands, skills, hooks, and plugins, and how to locate and fix configuration problems for each.",
+            "version": "0.3.0",
+            "installed": false,
+            "componentTypes": [],
+            "listing": {
+              "displayName": "ZCode Guide",
+              "displayNameI18n": {
+                "zh-CN": "ZCode 使用指南"
+              },
+              "descriptionI18n": {
+                "zh-CN": "提供 ZCode 配置指南与插件、技能、MCP、命令和钩子诊断。"
+              },
+              "icon": "https://cdn-zcode.z.ai/zcode/official-plugin/assets/zcode-guide/icon.png",
+              "category": "utilities",
+              "author": "Z.ai",
+              "authorUrl": "https://z.ai",
+              "examplePrompts": [
+                "How do I configure MCP servers in ZCode?",
+                "Diagnose my current ZCode setup"
+              ],
+              "examplePromptsI18n": {
+                "zh-CN": [
+                  "ZCode 里怎么配置 MCP 服务器？",
+                  "帮我诊断当前的 ZCode 配置"
+                ]
+              }
+            }
+          },
+          {
+            "id": "computer-use@zcode-plugins-official",
+            "name": "computer-use",
+            "marketplace": "zcode-plugins-official",
+            "description": "Computer Use: automate desktop apps with mouse, keyboard, and UI element control.",
+            "version": "0.6.3",
+            "installed": false,
+            "componentTypes": [],
+            "listing": {
+              "displayName": "Computer Use",
+              "displayNameI18n": {
+                "zh-CN": "电脑控制"
+              },
+              "descriptionI18n": {
+                "zh-CN": "自动化桌面应用：智能体驱动鼠标、键盘与界面元素，代你完成实际任务。"
+              },
+              "icon": "https://cdn-zcode.z.ai/zcode/official-plugin/assets/zcode-cua/icon.png",
+              "category": "productivity",
+              "author": "Z.ai",
+              "authorUrl": "https://z.ai"
+            }
+          },
+          {
+            "id": "catalog-demo@catalog-management-local",
+            "name": "catalog-demo",
+            "marketplace": "catalog-management-local",
+            "description": "Catalog synthetic capture plugin",
+            "version": "1.0.0",
+            "installed": false,
+            "componentTypes": []
+          }
+        ],
+        "installedPlugins": [],
+        "restorableBuiltins": [],
+        "diagnostics": [
+          {
+            "code": "plugin_variable_missing",
+            "message": "Missing environment variable: ZCODE_BASE_URL",
+            "severity": "error",
+            "pluginId": "image-search@zcode-plugins-official"
+          }
+        ],
+        "capability": {
+          "supported": true
+        }
+      }
+    },
+    "install": {
+      "result": {
+        "installedPlugins": [
+          {
+            "id": "catalog-demo@catalog-management-local",
+            "name": "catalog-demo",
+            "marketplace": "catalog-management-local",
+            "version": "1.0.0",
+            "enabled": true,
+            "scope": "user",
+            "installPath": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/catalog-management-local/catalog-demo/1.0.0",
+            "installedAt": "2026-10-04T00:53:09.477Z"
+          }
+        ],
+        "dependencyClosure": [
+          "catalog-demo@catalog-management-local"
+        ],
+        "diagnostics": []
+      }
+    },
+    "overviewAfterInstall": {
+      "result": {
+        "marketplaces": [
+          {
+            "id": "zcode-plugins-official",
+            "name": "zcode-plugins-official",
+            "source": {
+              "source": "url",
+              "url": "https://cdn-zcode.z.ai/zcode/official-plugin/marketplace.json"
+            },
+            "description": "Official ZCode plugins marketplace: built-in and community plugins for ZCode.",
+            "pluginCount": 13,
+            "isOfficial": true
+          },
+          {
+            "id": "claude-plugins-official",
+            "name": "claude-plugins-official",
+            "source": {
+              "source": "github",
+              "repo": "anthropics/claude-plugins-official"
+            },
+            "description": "Directory of popular Claude Code extensions including development tools, productivity plugins, and MCP integrations",
+            "pluginCount": 0,
+            "isOfficial": true
+          },
+          {
+            "id": "catalog-management-local",
+            "name": "catalog-management-local",
+            "source": {
+              "source": "directory",
+              "path": "/fixture/catalog-management-workspace/local-marketplace"
+            },
+            "description": "Catalog synthetic local marketplace",
+            "lastUpdated": "2026-10-04T00:53:09.335Z",
+            "pluginCount": 1,
+            "isOfficial": false
+          }
+        ],
+        "availablePlugins": [
+          {
+            "id": "node-repl-host@zcode-plugins-official",
+            "name": "node-repl-host",
+            "marketplace": "zcode-plugins-official",
+            "description": "Shared node_repl runtime host for ZCode official capabilities. Not user-facing: it carries no skill and appears in no marketplace listing; Browser Use and Computer Use enable it and contribute their own skills, docs and runtime assets.",
+            "version": "0.6.0",
+            "installed": false,
+            "componentTypes": []
+          },
+          {
+            "id": "android-emulator@zcode-plugins-official",
+            "name": "android-emulator",
+            "marketplace": "zcode-plugins-official",
+            "description": "Provides Android development workflows and emulator automation for ZCode.",
+            "version": "0.1.0",
+            "installed": false,
+            "componentTypes": [],
+            "listing": {
+              "displayName": "Android Emulator",
+              "displayNameI18n": {
+                "zh-CN": "Android 模拟器"
+              },
+              "descriptionI18n": {
+                "zh-CN": "提供 Android 开发工作流与模拟器自动化能力。"
+              },
+              "icon": "https://cdn-zcode.z.ai/zcode/official-plugin/assets/android-emulator/icon.png",
+              "category": "developer-tools",
+              "author": "Z.ai",
+              "authorUrl": "https://z.ai"
+            }
+          },
+          {
+            "id": "browser-use@zcode-plugins-official",
+            "name": "browser-use",
+            "marketplace": "zcode-plugins-official",
+            "description": "Built-in browser automation runtime and guidance for Desktop IAB and explicitly enabled CLI-managed headless CDP: open, navigate, inspect, click, type, screenshot, record workspace WebM videos, and verify web pages and local dev targets.",
+            "version": "0.5.1",
+            "installed": false,
+            "componentTypes": [],
+            "listing": {
+              "displayName": "Browser Use",
+              "displayNameI18n": {
+                "zh-CN": "浏览器操作"
+              },
+              "descriptionI18n": {
+                "zh-CN": "操作 ZCode 内置浏览器，检查网页并验证交互。"
+              },
+              "icon": "https://cdn-zcode.z.ai/zcode/official-plugin/assets/browser-use/icon.png",
+              "category": "productivity",
+              "author": "Z.ai",
+              "authorUrl": "https://z.ai"
+            }
+          },
+          {
+            "id": "documents@zcode-plugins-official",
+            "name": "documents",
+            "marketplace": "zcode-plugins-official",
+            "description": "DOCX document production skills, published as an official ZCode plugin.",
+            "version": "0.1.7",
+            "installed": false,
+            "componentTypes": [],
+            "listing": {
+              "displayName": "Documents",
+              "displayNameI18n": {
+                "zh-CN": "Word文档"
+              },
+              "descriptionI18n": {
+                "zh-CN": "创建、编辑与审阅Word文档（DOCX）。"
+              },
+              "icon": "https://cdn-zcode.z.ai/zcode/official-plugin/assets/document-skills/icon.png",
+              "category": "productivity",
+              "author": "Z.ai",
+              "authorUrl": "https://z.ai"
+            }
+          },
+          {
+            "id": "pdf@zcode-plugins-official",
+            "name": "pdf",
+            "marketplace": "zcode-plugins-official",
+            "description": "PDF document production skills, published as an official ZCode plugin.",
+            "version": "0.1.7",
+            "installed": false,
+            "componentTypes": [],
+            "listing": {
+              "displayName": "PDF",
+              "displayNameI18n": {
+                "zh-CN": "PDF"
+              },
+              "descriptionI18n": {
+                "zh-CN": "创建、编辑与审阅PDF（PDF）。"
+              },
+              "icon": "https://cdn-zcode.z.ai/zcode/official-plugin/assets/document-skills/icon.png",
+              "category": "productivity",
+              "author": "Z.ai",
+              "authorUrl": "https://z.ai"
+            }
+          },
+          {
+            "id": "presentations@zcode-plugins-official",
+            "name": "presentations",
+            "marketplace": "zcode-plugins-official",
+            "description": "PPTX presentation production skills, published as an official ZCode plugin.",
+            "version": "0.1.7",
+            "installed": false,
+            "componentTypes": [],
+            "listing": {
+              "displayName": "Presentations",
+              "displayNameI18n": {
+                "zh-CN": "演示文档"
+              },
+              "descriptionI18n": {
+                "zh-CN": "创建、编辑与审阅演示文档（PPTX）。"
+              },
+              "icon": "https://cdn-zcode.z.ai/zcode/official-plugin/assets/document-skills/icon.png",
+              "category": "productivity",
+              "author": "Z.ai",
+              "authorUrl": "https://z.ai"
+            }
+          },
+          {
+            "id": "spreadsheets@zcode-plugins-official",
+            "name": "spreadsheets",
+            "marketplace": "zcode-plugins-official",
+            "description": "XLSX spreadsheet production skills, published as an official ZCode plugin.",
+            "version": "0.1.7",
+            "installed": false,
+            "componentTypes": [],
+            "listing": {
+              "displayName": "Spreadsheets",
+              "displayNameI18n": {
+                "zh-CN": "电子表格"
+              },
+              "descriptionI18n": {
+                "zh-CN": "创建、编辑与审阅电子表格（XLSX）。"
+              },
+              "icon": "https://cdn-zcode.z.ai/zcode/official-plugin/assets/document-skills/icon.png",
+              "category": "productivity",
+              "author": "Z.ai",
+              "authorUrl": "https://z.ai"
+            }
+          },
+          {
+            "id": "image-search@zcode-plugins-official",
+            "name": "image-search",
+            "marketplace": "zcode-plugins-official",
+            "description": "Official ZCode image search MCP server for finding illustrations and reference images.",
+            "version": "0.1.1",
+            "installed": false,
+            "componentTypes": [],
+            "listing": {
+              "displayName": "Image Search",
+              "displayNameI18n": {
+                "zh-CN": "搜图"
+              },
+              "descriptionI18n": {
+                "zh-CN": "查找插图与参考配图。"
+              },
+              "category": "productivity",
+              "author": "Z.ai",
+              "authorUrl": "https://z.ai"
+            }
+          },
+          {
+            "id": "ios-simulator@zcode-plugins-official",
+            "name": "ios-simulator",
+            "marketplace": "zcode-plugins-official",
+            "description": "Provides iOS development workflows and simulator automation for ZCode.",
+            "version": "0.1.0",
+            "installed": false,
+            "componentTypes": [],
+            "listing": {
+              "displayName": "iOS Simulator",
+              "displayNameI18n": {
+                "zh-CN": "iOS 模拟器"
+              },
+              "descriptionI18n": {
+                "zh-CN": "提供 iOS 开发工作流与模拟器自动化能力。"
+              },
+              "icon": "https://cdn-zcode.z.ai/zcode/official-plugin/assets/ios-simulator/icon.png",
+              "category": "developer-tools",
+              "author": "Z.ai",
+              "authorUrl": "https://z.ai"
+            }
+          },
+          {
+            "id": "restore-legacy-sessions@zcode-plugins-official",
+            "name": "restore-legacy-sessions",
+            "marketplace": "zcode-plugins-official",
+            "description": "Select and restore legacy ACP-era ZCode sessions into the new ZCode task and session store.",
+            "version": "0.1.0",
+            "installed": false,
+            "componentTypes": [],
+            "listing": {
+              "displayName": "Restore Legacy Sessions",
+              "displayNameI18n": {
+                "zh-CN": "恢复旧版会话"
+              },
+              "descriptionI18n": {
+                "zh-CN": "将旧版会话恢复为 ZCode 任务与会话记录。"
+              },
+              "icon": "https://cdn-zcode.z.ai/zcode/official-plugin/assets/restore-legacy-sessions/icon.png",
+              "category": "utilities",
+              "author": "Z.ai",
+              "authorUrl": "https://z.ai"
+            }
+          },
+          {
+            "id": "plugin-creator@zcode-plugins-official",
+            "name": "plugin-creator",
+            "marketplace": "zcode-plugins-official",
+            "description": "Develop and validate ZCode plugins through a local dev marketplace, installation, trials and updates.",
+            "version": "0.1.1",
+            "installed": false,
+            "componentTypes": [],
+            "listing": {
+              "displayName": "Plugin Creator",
+              "displayNameI18n": {
+                "zh-CN": "插件创建器"
+              },
+              "descriptionI18n": {
+                "zh-CN": "开发、校验 ZCode 插件，完成本地 dev 市场安装、试用与更新。"
+              },
+              "category": "utilities",
+              "author": "Z.ai",
+              "authorUrl": "https://z.ai"
+            }
+          },
+          {
+            "id": "skill-creator@zcode-plugins-official",
+            "name": "skill-creator",
+            "marketplace": "zcode-plugins-official",
+            "description": "Create, edit, and iterate local ZCode skills.",
+            "version": "0.1.0",
+            "installed": false,
+            "componentTypes": [],
+            "listing": {
+              "displayName": "Skill Creator",
+              "displayNameI18n": {
+                "zh-CN": "技能创建器"
+              },
+              "descriptionI18n": {
+                "zh-CN": "创建、编辑和验证可复用的 ZCode 技能。"
+              },
+              "icon": "https://cdn-zcode.z.ai/zcode/official-plugin/assets/skill-creator/icon.png",
+              "category": "utilities",
+              "author": "Z.ai",
+              "authorUrl": "https://z.ai"
+            }
+          },
+          {
+            "id": "zcode-guide@zcode-plugins-official",
+            "name": "zcode-guide",
+            "marketplace": "zcode-plugins-official",
+            "description": "ZCode usage and self-diagnosis guide: teaches agents and users how to configure MCP servers, commands, skills, hooks, and plugins, and how to locate and fix configuration problems for each.",
+            "version": "0.3.0",
+            "installed": false,
+            "componentTypes": [],
+            "listing": {
+              "displayName": "ZCode Guide",
+              "displayNameI18n": {
+                "zh-CN": "ZCode 使用指南"
+              },
+              "descriptionI18n": {
+                "zh-CN": "提供 ZCode 配置指南与插件、技能、MCP、命令和钩子诊断。"
+              },
+              "icon": "https://cdn-zcode.z.ai/zcode/official-plugin/assets/zcode-guide/icon.png",
+              "category": "utilities",
+              "author": "Z.ai",
+              "authorUrl": "https://z.ai",
+              "examplePrompts": [
+                "How do I configure MCP servers in ZCode?",
+                "Diagnose my current ZCode setup"
+              ],
+              "examplePromptsI18n": {
+                "zh-CN": [
+                  "ZCode 里怎么配置 MCP 服务器？",
+                  "帮我诊断当前的 ZCode 配置"
+                ]
+              }
+            }
+          },
+          {
+            "id": "computer-use@zcode-plugins-official",
+            "name": "computer-use",
+            "marketplace": "zcode-plugins-official",
+            "description": "Computer Use: automate desktop apps with mouse, keyboard, and UI element control.",
+            "version": "0.6.3",
+            "installed": false,
+            "componentTypes": [],
+            "listing": {
+              "displayName": "Computer Use",
+              "displayNameI18n": {
+                "zh-CN": "电脑控制"
+              },
+              "descriptionI18n": {
+                "zh-CN": "自动化桌面应用：智能体驱动鼠标、键盘与界面元素，代你完成实际任务。"
+              },
+              "icon": "https://cdn-zcode.z.ai/zcode/official-plugin/assets/zcode-cua/icon.png",
+              "category": "productivity",
+              "author": "Z.ai",
+              "authorUrl": "https://z.ai"
+            }
+          },
+          {
+            "id": "catalog-demo@catalog-management-local",
+            "name": "catalog-demo",
+            "marketplace": "catalog-management-local",
+            "description": "Catalog synthetic capture plugin",
+            "version": "1.0.0",
+            "installed": true,
+            "componentTypes": []
+          }
+        ],
+        "installedPlugins": [
+          {
+            "id": "catalog-demo@catalog-management-local",
+            "name": "catalog-demo",
+            "marketplace": "catalog-management-local",
+            "description": "Catalog synthetic capture plugin",
+            "version": "1.0.0",
+            "enabled": true,
+            "scope": "user",
+            "installPath": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/catalog-management-local/catalog-demo/1.0.0",
+            "installedAt": "2026-10-04T00:53:09.477Z",
+            "componentTypes": [
+              "skill"
+            ],
+            "hookDetails": [],
+            "updateStatus": "none",
+            "latestVersion": "1.0.0"
+          }
+        ],
+        "restorableBuiltins": [],
+        "diagnostics": [
+          {
+            "code": "plugin_variable_missing",
+            "message": "Missing environment variable: ZCODE_BASE_URL",
+            "severity": "error",
+            "pluginId": "image-search@zcode-plugins-official"
+          }
+        ],
+        "capability": {
+          "supported": true
+        }
+      }
+    },
+    "pluginsListAfterInstall": {
+      "result": {
+        "plugins": [
+          {
+            "id": "node-repl-host@zcode-plugins-official",
+            "name": "node-repl-host",
+            "description": "Shared node_repl runtime host for ZCode official capabilities. Not user-facing: it carries no skill and appears in no marketplace listing; Browser Use and Computer Use enable it and contribute their own skills, docs and runtime assets.",
+            "version": "0.6.0",
+            "enabled": true,
+            "source": "official",
+            "marketplace": "zcode-plugins-official",
+            "author": "Z.ai",
+            "skillCount": 0,
+            "skillRootCount": 0,
+            "commandRootCount": 0,
+            "components": [],
+            "declaredMcpServerNames": [],
+            "mcpServerNames": [],
+            "hookDetails": [],
+            "rootPath": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/node-repl-host/0.6.0"
+          },
+          {
+            "id": "android-emulator@zcode-plugins-official",
+            "name": "android-emulator",
+            "description": "Provides Android development workflows and emulator automation for ZCode.",
+            "version": "0.1.0",
+            "enabled": false,
+            "source": "official",
+            "marketplace": "zcode-plugins-official",
+            "author": "Z.ai",
+            "skillCount": 0,
+            "skillRootCount": 0,
+            "commandRootCount": 0,
+            "components": [
+              {
+                "kind": "command",
+                "items": [
+                  {
+                    "name": "android-dev",
+                    "description": "Start the Android emulator development loop."
+                  }
+                ]
+              },
+              {
+                "kind": "skill",
+                "items": [
+                  {
+                    "name": "android-dev",
+                    "description": "Build, run, inspect, and lightly automate Android apps with the android-emulator MCP tools."
+                  }
+                ]
+              },
+              {
+                "kind": "mcp",
+                "items": [
+                  {
+                    "name": "android-emulator"
+                  }
+                ]
+              }
+            ],
+            "declaredMcpServerNames": [
+              "android-emulator"
+            ],
+            "mcpServerNames": [],
+            "hookDetails": [],
+            "rootPath": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/android-emulator/0.1.0",
+            "userConfig": {
+              "sdk_path": {
+                "default": "",
+                "description": "Optional Android SDK root directory. When empty, falls back to ANDROID_HOME, ANDROID_SDK_ROOT, or common system paths.",
+                "type": "string"
+              },
+              "default_avd": {
+                "default": "medium_phone",
+                "description": "Preferred AVD or device name.",
+                "type": "string"
+              },
+              "api_level": {
+                "default": "35",
+                "description": "Android API level used when generating projects, installing SDK packages, and selecting the default system image.",
+                "type": "string"
+              },
+              "build_tools_version": {
+                "default": "35.0.0",
+                "description": "Android SDK build-tools version used in installation guidance.",
+                "type": "string"
+              },
+              "system_image_variant": {
+                "default": "default",
+                "description": "Android system image variant: default, google_apis, or google_apis_playstore.",
+                "type": "string"
+              },
+              "system_image_abi": {
+                "default": "",
+                "description": "Optional Android system image ABI override. When empty, Apple Silicon/ARM64 hosts use arm64-v8a and other hosts use x86_64.",
+                "type": "string"
+              },
+              "jdk_major": {
+                "default": "17",
+                "description": "JDK major version used for preflight checks and installation guidance.",
+                "type": "string"
+              }
+            }
+          },
+          {
+            "id": "browser-use@zcode-plugins-official",
+            "name": "browser-use",
+            "description": "Built-in browser automation runtime and guidance for Desktop IAB and explicitly enabled CLI-managed headless CDP: open, navigate, inspect, click, type, screenshot, record workspace WebM videos, and verify web pages and local dev targets.",
+            "version": "0.5.1",
+            "enabled": true,
+            "source": "official",
+            "marketplace": "zcode-plugins-official",
+            "author": "Z.ai",
+            "skillCount": 2,
+            "skillRootCount": 1,
+            "commandRootCount": 0,
+            "components": [
+              {
+                "kind": "skill",
+                "items": [
+                  {
+                    "name": "control-browser",
+                    "description": "Use when opening, navigating, inspecting, testing, clicking, typing, filling, screenshotting, or verifying web pages and local HTTP targets (localhost, 127.0.0.1, ::1) inside ZCode, including browser/web-UI automation, rendered-page scraping, frontend checks, and visible page-state reading. Prefer this over Computer Use for anything that stays inside a web page, unless the user explicitly asks for Computer Use. Main agent only."
+                  },
+                  {
+                    "name": "web-gui-tester",
+                    "description": "Use the browser automation tooling available in the session to test web frontends interactively in a purely GUI-based, black-box manner: simulate real user clicks, text input, scrolling, and other actions; use screenshots for visual verification and read-only DOM inspection for cross-validation; and produce a final test report. Suitable for verifying whether web functionality works correctly, reproducing frontend bugs, checking interaction feedback and layout styling, or conducting exploratory testing of a page. Use this skill when the user asks to test a webpage/frontend feature, verify UI behavior, reproduce a page bug, or provides only a URL and asks you to “test it.”"
+                  }
+                ]
+              }
+            ],
+            "declaredMcpServerNames": [],
+            "hostMcpServerNames": [
+              "node_repl"
+            ],
+            "mcpServerNames": [],
+            "hookDetails": [],
+            "rootPath": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/browser-use/0.5.1"
+          },
+          {
+            "id": "documents@zcode-plugins-official",
+            "name": "documents",
+            "description": "DOCX document production skills, published as an official ZCode plugin.",
+            "version": "0.1.7",
+            "enabled": true,
+            "source": "official",
+            "marketplace": "zcode-plugins-official",
+            "author": "Z.ai",
+            "skillCount": 1,
+            "skillRootCount": 1,
+            "commandRootCount": 0,
+            "components": [
+              {
+                "kind": "agent",
+                "items": [
+                  {
+                    "name": "visual-judge",
+                    "description": "THE single visual acceptance pass for a rendered deliverable of these types only — pptx, docx, xlsx, pdf, poster, chart; for anything else, do not use it. Use it *instead of* looking at the page images yourself, never in addition: pick one gate — spawn visual-judge, or (only if visual-judge is unavailable) inspect the images yourself — and do not pre-screen the pages before dispatching, because a preliminary look followed by a visual-judge call duplicates the same review and wastes a full render pass. Its bar is user acceptance: it judges everything the user will see on its assigned pages — visual asset quality and layout & composition — and returns one JSON verdict line per page (pass/fail + evidence-backed issues; a clean programmatic/script check is no cover and no substitute). It is read-only and edits nothing; it can only Read pre-rendered page PNGs (never pptx/docx/HTML/PDF opened as images), so render the pages to PNG, hand visual-judge the paths, and act on its verdicts — those verdicts are the visual gate's result, not an input to your own re-judging. Dispatch grouping, what to pass in, and the repair loop follow the delivery protocol's visual gate in your system prompt."
+                  }
+                ]
+              },
+              {
+                "kind": "skill",
+                "items": [
+                  {
+                    "name": "docx",
+                    "description": "Complete DOCX document creation, editing, and analysis capabilities with support for revisions, comments, formatting preservation, and text extraction. Also handles Word format conversion: legacy .doc → .docx, DOCX → PDF, DOCX → images (PNG/JPG) for visual review or previews, and DOCX → Markdown/plain text extraction. Use for creating new documents, modifying content, handling revisions, adding comments, other professional Word document tasks, or when the user asks to convert, export, or render a Word document to another format (e.g. 'Word转PDF', 'doc转docx', 'export this docx as PDF/images')."
+                  }
+                ]
+              }
+            ],
+            "declaredMcpServerNames": [],
+            "mcpServerNames": [],
+            "hookDetails": [],
+            "rootPath": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/documents/0.1.7"
+          },
+          {
+            "id": "pdf@zcode-plugins-official",
+            "name": "pdf",
+            "description": "PDF document production skills, published as an official ZCode plugin.",
+            "version": "0.1.7",
+            "enabled": true,
+            "source": "official",
+            "marketplace": "zcode-plugins-official",
+            "author": "Z.ai",
+            "skillCount": 1,
+            "skillRootCount": 1,
+            "commandRootCount": 0,
+            "components": [
+              {
+                "kind": "agent",
+                "items": [
+                  {
+                    "name": "visual-judge",
+                    "description": "THE single visual acceptance pass for a rendered deliverable of these types only — pptx, docx, xlsx, pdf, poster, chart; for anything else, do not use it. Use it *instead of* looking at the page images yourself, never in addition: pick one gate — spawn visual-judge, or (only if visual-judge is unavailable) inspect the images yourself — and do not pre-screen the pages before dispatching, because a preliminary look followed by a visual-judge call duplicates the same review and wastes a full render pass. Its bar is user acceptance: it judges everything the user will see on its assigned pages — visual asset quality and layout & composition — and returns one JSON verdict line per page (pass/fail + evidence-backed issues; a clean programmatic/script check is no cover and no substitute). It is read-only and edits nothing; it can only Read pre-rendered page PNGs (never pptx/docx/HTML/PDF opened as images), so render the pages to PNG, hand visual-judge the paths, and act on its verdicts — those verdicts are the visual gate's result, not an input to your own re-judging. Dispatch grouping, what to pass in, and the repair loop follow the delivery protocol's visual gate in your system prompt."
+                  }
+                ]
+              },
+              {
+                "kind": "skill",
+                "items": [
+                  {
+                    "name": "pdf",
+                    "description": "Professional PDF toolkit covering four production workflows: reports, creative visuals, academic LaTeX, and existing PDF processing. Routes automatically by document type and supports reports, posters, papers, resumes, extraction, merging, splitting, and form filling. Use this skill for any conversion whose output is a PDF: Office → PDF (.docx/.doc/.pptx/.ppt/.xlsx/.xls/.odt/.odp/.ods/.rtf/.csv/.txt → PDF), HTML → PDF, and LaTeX/.tex → PDF; also PDF → images, PDF → text, and PDF → tables when reading a PDF apart. Trigger when the user asks to convert, export, render, print, or turn a file into a PDF, or to merge/split/extract from one — including phrasings like 'Word转PDF', 'PPT转PDF', 'Excel转PDF', 'html转pdf', '导出为PDF', 'save/export as PDF', or 'PDF转图片/文字'."
+                  }
+                ]
+              }
+            ],
+            "declaredMcpServerNames": [],
+            "mcpServerNames": [],
+            "hookDetails": [],
+            "rootPath": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/pdf/0.1.7"
+          },
+          {
+            "id": "presentations@zcode-plugins-official",
+            "name": "presentations",
+            "description": "PPTX presentation production skills, published as an official ZCode plugin.",
+            "version": "0.1.7",
+            "enabled": true,
+            "source": "official",
+            "marketplace": "zcode-plugins-official",
+            "author": "Z.ai",
+            "skillCount": 1,
+            "skillRootCount": 1,
+            "commandRootCount": 0,
+            "components": [
+              {
+                "kind": "agent",
+                "items": [
+                  {
+                    "name": "visual-judge",
+                    "description": "THE single visual acceptance pass for a rendered deliverable of these types only — pptx, docx, xlsx, pdf, poster, chart; for anything else, do not use it. Use it *instead of* looking at the page images yourself, never in addition: pick one gate — spawn visual-judge, or (only if visual-judge is unavailable) inspect the images yourself — and do not pre-screen the pages before dispatching, because a preliminary look followed by a visual-judge call duplicates the same review and wastes a full render pass. Its bar is user acceptance: it judges everything the user will see on its assigned pages — visual asset quality and layout & composition — and returns one JSON verdict line per page (pass/fail + evidence-backed issues; a clean programmatic/script check is no cover and no substitute). It is read-only and edits nothing; it can only Read pre-rendered page PNGs (never pptx/docx/HTML/PDF opened as images), so render the pages to PNG, hand visual-judge the paths, and act on its verdicts — those verdicts are the visual gate's result, not an input to your own re-judging. Dispatch grouping, what to pass in, and the repair loop follow the delivery protocol's visual gate in your system prompt."
+                  }
+                ]
+              },
+              {
+                "kind": "skill",
+                "items": [
+                  {
+                    "name": "pptx",
+                    "description": "Use this skill any time a presentation file is the primary input or output. Covers: creating new .pptx decks from scratch or from an outline/document (pptxgenjs / python-pptx); editing and restyling an existing .pptx; reading and extracting text/structure from a deck (markitdown); and rendering a deck to PDF (LibreOffice) or to per-slide PNG images (pdftoppm) for previews, thumbnails, or visual review. Trigger when the user references a .pptx file by name or path, says 'make/build a deck, slides, presentation, PPT, 幻灯片, 演示文稿, 汇报/路演材料', or asks to convert, export, render, or preview slides as PDF or images (e.g. 'PPT转PDF', 'ppt导出图片', 'turn these slides into a PDF')."
+                  }
+                ]
+              }
+            ],
+            "declaredMcpServerNames": [],
+            "mcpServerNames": [],
+            "hookDetails": [],
+            "rootPath": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/presentations/0.1.7"
+          },
+          {
+            "id": "spreadsheets@zcode-plugins-official",
+            "name": "spreadsheets",
+            "description": "XLSX spreadsheet production skills, published as an official ZCode plugin.",
+            "version": "0.1.7",
+            "enabled": true,
+            "source": "official",
+            "marketplace": "zcode-plugins-official",
+            "author": "Z.ai",
+            "skillCount": 1,
+            "skillRootCount": 1,
+            "commandRootCount": 0,
+            "components": [
+              {
+                "kind": "agent",
+                "items": [
+                  {
+                    "name": "visual-judge",
+                    "description": "THE single visual acceptance pass for a rendered deliverable of these types only — pptx, docx, xlsx, pdf, poster, chart; for anything else, do not use it. Use it *instead of* looking at the page images yourself, never in addition: pick one gate — spawn visual-judge, or (only if visual-judge is unavailable) inspect the images yourself — and do not pre-screen the pages before dispatching, because a preliminary look followed by a visual-judge call duplicates the same review and wastes a full render pass. Its bar is user acceptance: it judges everything the user will see on its assigned pages — visual asset quality and layout & composition — and returns one JSON verdict line per page (pass/fail + evidence-backed issues; a clean programmatic/script check is no cover and no substitute). It is read-only and edits nothing; it can only Read pre-rendered page PNGs (never pptx/docx/HTML/PDF opened as images), so render the pages to PNG, hand visual-judge the paths, and act on its verdicts — those verdicts are the visual gate's result, not an input to your own re-judging. Dispatch grouping, what to pass in, and the repair loop follow the delivery protocol's visual gate in your system prompt."
+                  }
+                ]
+              },
+              {
+                "kind": "skill",
+                "items": [
+                  {
+                    "name": "xlsx",
+                    "description": "Use this skill any time a spreadsheet file is the primary input or output. This means any task where the user wants to: open, read, edit, or fix an existing .xlsx, .xlsm, .csv, or .tsv file; create a new spreadsheet from scratch or from other data sources; analyze data and output results as an Excel file with charts; convert between tabular file formats (CSV/TSV/JSON/PDF-table → XLSX, or XLSX → CSV/JSON); clean, merge, pivot, or transform tabular data. Trigger especially when the user references a spreadsheet file by name or path, says 'make a table/report/model', mentions Excel/CSV/数据分析/报表/汇总, asks to convert or export a spreadsheet (e.g. 'csv转excel', 'json转表格', 'export as CSV'), or wants data visualization inside a spreadsheet."
+                  }
+                ]
+              }
+            ],
+            "declaredMcpServerNames": [],
+            "mcpServerNames": [],
+            "hookDetails": [],
+            "rootPath": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/spreadsheets/0.1.7"
+          },
+          {
+            "id": "image-search@zcode-plugins-official",
+            "name": "image-search",
+            "description": "Official ZCode image search MCP server for finding illustrations and reference images.",
+            "version": "0.1.1",
+            "enabled": true,
+            "source": "official",
+            "marketplace": "zcode-plugins-official",
+            "author": "Z.ai",
+            "skillCount": 0,
+            "skillRootCount": 0,
+            "commandRootCount": 0,
+            "components": [
+              {
+                "kind": "mcp",
+                "items": [
+                  {
+                    "name": "image_search"
+                  }
+                ]
+              }
+            ],
+            "declaredMcpServerNames": [
+              "image_search"
+            ],
+            "mcpServerNames": [],
+            "hookDetails": [],
+            "rootPath": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/image-search/0.1.1"
+          },
+          {
+            "id": "ios-simulator@zcode-plugins-official",
+            "name": "ios-simulator",
+            "description": "Provides iOS development workflows and simulator automation for ZCode.",
+            "version": "0.1.0",
+            "enabled": false,
+            "source": "official",
+            "marketplace": "zcode-plugins-official",
+            "author": "Z.ai",
+            "skillCount": 0,
+            "skillRootCount": 0,
+            "commandRootCount": 0,
+            "components": [
+              {
+                "kind": "command",
+                "items": [
+                  {
+                    "name": "ios-dev",
+                    "description": "Start the iOS simulator development loop."
+                  }
+                ]
+              },
+              {
+                "kind": "skill",
+                "items": [
+                  {
+                    "name": "ios-dev",
+                    "description": "Build, run, inspect, and lightly automate iOS simulator apps with the ios-simulator MCP tools."
+                  }
+                ]
+              },
+              {
+                "kind": "mcp",
+                "items": [
+                  {
+                    "name": "ios-simulator"
+                  }
+                ]
+              }
+            ],
+            "declaredMcpServerNames": [
+              "ios-simulator"
+            ],
+            "mcpServerNames": [],
+            "hookDetails": [],
+            "rootPath": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/ios-simulator/0.1.0",
+            "userConfig": {
+              "default_device": {
+                "default": "iPhone 16",
+                "description": "Preferred simulator device name.",
+                "type": "string"
+              },
+              "ui_backend": {
+                "default": "auto",
+                "description": "UI interaction backend: auto, idb, xcodebuildmcp, or none.",
+                "type": "string"
+              }
+            }
+          },
+          {
+            "id": "restore-legacy-sessions@zcode-plugins-official",
+            "name": "restore-legacy-sessions",
+            "description": "Select and restore legacy ACP-era ZCode sessions into the new ZCode task and session store.",
+            "version": "0.1.0",
+            "enabled": false,
+            "source": "official",
+            "marketplace": "zcode-plugins-official",
+            "author": "Z.ai",
+            "skillCount": 0,
+            "skillRootCount": 0,
+            "commandRootCount": 0,
+            "components": [
+              {
+                "kind": "command",
+                "items": [
+                  {
+                    "name": "restore-legacy-sessions",
+                    "description": "Select and restore a legacy ZCode session."
+                  }
+                ]
+              },
+              {
+                "kind": "skill",
+                "items": [
+                  {
+                    "name": "restore-legacy-sessions",
+                    "description": "Use when ZCode needs to inspect, plan, or execute restoration of old ACP-era ZCode sessions from ~/.zcode/v2/sessions into the new ZCode task/session stores. Trigger when the user wants to choose a previous agent, select a workspace to restore, pick a specific historical conversation, dry-run legacy session migration, or reason about tasks-index.sqlite and ~/.zcode/cli/db/db.sqlite consistency."
+                  }
+                ]
+              }
+            ],
+            "declaredMcpServerNames": [],
+            "mcpServerNames": [],
+            "hookDetails": [],
+            "rootPath": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/restore-legacy-sessions/0.1.0"
+          },
+          {
+            "id": "plugin-creator@zcode-plugins-official",
+            "name": "plugin-creator",
+            "description": "Develop and validate ZCode plugins through a local dev marketplace, installation, trials and updates.",
+            "version": "0.1.1",
+            "enabled": true,
+            "source": "official",
+            "marketplace": "zcode-plugins-official",
+            "author": "Z.ai",
+            "skillCount": 1,
+            "skillRootCount": 1,
+            "commandRootCount": 0,
+            "components": [
+              {
+                "kind": "skill",
+                "items": [
+                  {
+                    "name": "plugin-creator",
+                    "description": "Create or update ZCode plugin source and a local test marketplace, then guide the user to add, install, update and try it in the app. Use for new plugins or changes to an existing plugin's capabilities, manifest or local distribution."
+                  }
+                ]
+              }
+            ],
+            "declaredMcpServerNames": [],
+            "mcpServerNames": [],
+            "hookDetails": [],
+            "rootPath": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/plugin-creator/0.1.1"
+          },
+          {
+            "id": "skill-creator@zcode-plugins-official",
+            "name": "skill-creator",
+            "description": "Create, edit, and iterate local ZCode skills.",
+            "version": "0.1.0",
+            "enabled": true,
+            "source": "official",
+            "marketplace": "zcode-plugins-official",
+            "author": "Z.ai",
+            "skillCount": 1,
+            "skillRootCount": 1,
+            "commandRootCount": 0,
+            "components": [
+              {
+                "kind": "skill",
+                "items": [
+                  {
+                    "name": "skill-creator",
+                    "description": "Create new skills, edit existing skills, and iterate wording. Use when writing SKILL.md from scratch, improving existing skills, turning repeated workflows into reusable skills, or refining skill descriptions to improve trigger reliability."
+                  }
+                ]
+              }
+            ],
+            "declaredMcpServerNames": [],
+            "mcpServerNames": [],
+            "hookDetails": [],
+            "rootPath": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/skill-creator/0.1.0"
+          },
+          {
+            "id": "zcode-guide@zcode-plugins-official",
+            "name": "zcode-guide",
+            "description": "ZCode usage and self-diagnosis guide: teaches agents and users how to configure MCP servers, commands, skills, hooks, and plugins, and how to locate and fix configuration problems for each.",
+            "version": "0.3.0",
+            "enabled": true,
+            "source": "official",
+            "marketplace": "zcode-plugins-official",
+            "author": "Z.ai",
+            "skillCount": 6,
+            "skillRootCount": 1,
+            "commandRootCount": 0,
+            "components": [
+              {
+                "kind": "skill",
+                "items": [
+                  {
+                    "name": "diagnosing-commands",
+                    "description": "Use to diagnose and fix ZCode custom slash-command (/command) configuration problems in the ZCode client. Applies when a command is missing, is overridden by a higher-precedence command of the same name, has a frontmatter parse error, is dropped for having an empty body, has an invalid name, does not substitute $ARGUMENTS/$1, uses a colon rather than a slash for nested names, has a misspelled frontmatter key, or disappears because the plugin providing it is disabled. Provides the discovery order, how to inspect commands in the client, common pitfalls, and a step-by-step localization and repair workflow."
+                  },
+                  {
+                    "name": "diagnosing-hooks",
+                    "description": "Use to diagnose and fix ZCode hook configuration problems in the ZCode client. Applies when a hook does not trigger, an event name is wrong, a matcher does not match a tool name, a script is not executable, template variables are not expanded, a timeout unit is mistaken (seconds versus milliseconds), the command and process field styles are mixed, a hook's JSON output fails validation, a hook blocks the session unexpectedly, or configuration-file hooks are not enabled. Provides configuration sources, the hooks.json schema, how to inspect hooks in the client, and a step-by-step localization and repair workflow."
+                  },
+                  {
+                    "name": "diagnosing-mcp",
+                    "description": "Use to diagnose and fix ZCode MCP (Model Context Protocol) server configuration problems in the ZCode client. Applies when an MCP server will not connect, its tools (mcp__server__tool) do not appear, it shows as disabled or failed, connections time out, a command cannot be found, template variables are not expanded, or a server defined in a configuration file has no effect. Provides configuration locations, how to inspect status in Settings, common pitfalls, and a step-by-step localization and repair workflow."
+                  },
+                  {
+                    "name": "diagnosing-plugins",
+                    "description": "Use to diagnose and fix ZCode plugin and marketplace problems in the ZCode client. Applies when a plugin is not listed, adding a marketplace or installing a plugin fails, a plugin is enabled but its skills or commands are missing, a built-in plugin still appears after being disabled, a plugin is not enabled as expected, a plugin.json manifest has a parse error, a plugin name is invalid, a dependency is unresolved or blocked across marketplaces, or a sensitive configuration value cannot be entered in the interface. Provides the plugin lifecycle, manifest schema, how to manage plugins in the client, and a step-by-step localization and repair workflow."
+                  },
+                  {
+                    "name": "diagnosing-skills",
+                    "description": "Use to diagnose and fix ZCode skill configuration problems in the ZCode client. Applies when a skill is not discovered, is installed but does not trigger automatically, is shadowed by a higher-precedence skill of the same name, is disabled by configuration, has a SKILL.md frontmatter error, fails to load because its description is too long, or disappears because the plugin providing it is disabled. Provides the discovery order, how to inspect skills in the client, common pitfalls, and a step-by-step localization and repair workflow."
+                  },
+                  {
+                    "name": "zcode-configuration-guide",
+                    "description": "Use when configuring ZCode's extension resources (MCP servers, slash commands, skills, hooks, and plugins) or instruction files such as AGENTS.md in the ZCode client. Explains where each resource is configured at the user and workspace scope, the discovery order, precedence, and merge rules, plus guidance on which location to choose. Use when someone asks how to add an MCP server, command, skill, hook, plugin, or AGENTS.md instructions, where a configuration file lives, why a configuration is not taking effect, or needs routing to a specific diagnostic skill."
+                  }
+                ]
+              }
+            ],
+            "declaredMcpServerNames": [],
+            "mcpServerNames": [],
+            "hookDetails": [],
+            "rootPath": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/zcode-guide/0.3.0"
+          },
+          {
+            "id": "computer-use@zcode-plugins-official",
+            "name": "computer-use",
+            "description": "Computer Use: automate desktop apps with mouse, keyboard, and UI element control.",
+            "version": "0.6.3",
+            "enabled": false,
+            "source": "official",
+            "marketplace": "zcode-plugins-official",
+            "author": "Z.ai",
+            "skillCount": 0,
+            "skillRootCount": 0,
+            "commandRootCount": 0,
+            "components": [
+              {
+                "kind": "skill",
+                "items": [
+                  {
+                    "name": "computer-use",
+                    "description": "Use when a task needs a native desktop app's own UI or the OS. For anything inside a web page, use Browser Use. Main agent only."
+                  }
+                ]
+              }
+            ],
+            "declaredMcpServerNames": [],
+            "hostMcpServerNames": [
+              "node_repl"
+            ],
+            "mcpServerNames": [],
+            "hookDetails": [],
+            "rootPath": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/zcode-plugins-official/computer-use/0.6.3"
+          },
+          {
+            "id": "catalog-demo@catalog-management-local",
+            "name": "catalog-demo",
+            "description": "Catalog synthetic capture plugin",
+            "version": "1.0.0",
+            "enabled": true,
+            "source": "cache",
+            "marketplace": "catalog-management-local",
+            "author": "bridge-catalog",
+            "skillCount": 1,
+            "skillRootCount": 1,
+            "commandRootCount": 0,
+            "components": [
+              {
+                "kind": "skill",
+                "items": [
+                  {
+                    "name": "catalog-demo-skill"
+                  }
+                ]
+              }
+            ],
+            "declaredMcpServerNames": [],
+            "mcpServerNames": [],
+            "hookDetails": [],
+            "rootPath": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/catalog-management-local/catalog-demo/1.0.0",
+            "enabledSource": "user"
+          }
+        ],
+        "diagnostics": [
+          {
+            "code": "plugin_variable_missing",
+            "message": "Missing environment variable: ZCODE_BASE_URL",
+            "severity": "error",
+            "pluginId": "image-search@zcode-plugins-official"
+          }
+        ]
+      }
+    },
+    "validateInstalled": {
+      "result": {
+        "ok": true,
+        "diagnostics": [],
+        "compatibility": {
+          "runnable": [
+            "skills",
+            "commands",
+            "hooks",
+            "mcpServers",
+            "userConfig"
+          ],
+          "diagnosticOnly": [
+            "agents",
+            "lspServers",
+            "outputStyles",
+            "channels",
+            "settings"
+          ],
+          "unsupported": [
+            "mcpb",
+            "dxt",
+            "npm",
+            "hostPattern",
+            "pathPattern"
+          ]
+        }
+      }
+    },
+    "describe": {
+      "result": {
+        "components": [
+          {
+            "kind": "skill",
+            "items": [
+              {
+                "name": "catalog-demo-skill"
+              }
+            ]
+          }
+        ],
+        "metadata": {
+          "author": "bridge-catalog",
+          "version": "1.0.0"
+        }
+      }
+    },
+    "configure": {
+      "result": {
+        "pluginId": "catalog-demo@catalog-management-local",
+        "diagnostics": []
+      }
+    },
+    "resetConfig": {
+      "result": {
+        "pluginId": "catalog-demo@catalog-management-local",
+        "diagnostics": []
+      }
+    },
+    "setDisabled": {
+      "result": {
+        "plugin": {
+          "id": "catalog-demo@catalog-management-local",
+          "name": "catalog-demo",
+          "description": "Catalog synthetic capture plugin",
+          "version": "1.0.0",
+          "enabled": false,
+          "source": "cache",
+          "marketplace": "catalog-management-local",
+          "author": "bridge-catalog",
+          "skillCount": 1,
+          "skillRootCount": 1,
+          "commandRootCount": 0,
+          "components": [
+            {
+              "kind": "skill",
+              "items": [
+                {
+                  "name": "catalog-demo-skill"
+                }
+              ]
+            }
+          ],
+          "declaredMcpServerNames": [],
+          "mcpServerNames": [],
+          "hookDetails": [],
+          "rootPath": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/catalog-management-local/catalog-demo/1.0.0",
+          "enabledSource": "workspace"
+        },
+        "enabled": false
+      }
+    },
+    "setEnabled": {
+      "result": {
+        "plugin": {
+          "id": "catalog-demo@catalog-management-local",
+          "name": "catalog-demo",
+          "description": "Catalog synthetic capture plugin",
+          "version": "1.0.0",
+          "enabled": true,
+          "source": "cache",
+          "marketplace": "catalog-management-local",
+          "author": "bridge-catalog",
+          "skillCount": 0,
+          "skillRootCount": 0,
+          "commandRootCount": 0,
+          "components": [
+            {
+              "kind": "skill",
+              "items": [
+                {
+                  "name": "catalog-demo-skill"
+                }
+              ]
+            }
+          ],
+          "declaredMcpServerNames": [],
+          "mcpServerNames": [],
+          "hookDetails": [],
+          "rootPath": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/catalog-management-local/catalog-demo/1.0.0",
+          "enabledSource": "workspace"
+        },
+        "enabled": true
+      }
+    },
+    "installFailure": {
+      "result": {
+        "installedPlugins": [],
+        "dependencyClosure": [],
+        "diagnostics": [
+          {
+            "code": "plugin_dependency_missing",
+            "message": "Dependency not found: catalog-management-missing-plugin@catalog-management-local required by catalog-management-missing-plugin@catalog-management-local",
+            "severity": "error",
+            "pluginId": "catalog-management-missing-plugin@catalog-management-local"
+          }
+        ]
+      }
+    },
+    "update": {
+      "result": {
+        "installedPlugins": [
+          {
+            "id": "catalog-demo@catalog-management-local",
+            "name": "catalog-demo",
+            "marketplace": "catalog-management-local",
+            "version": "1.0.0",
+            "enabled": true,
+            "scope": "user",
+            "installPath": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/catalog-management-local/catalog-demo/1.0.0",
+            "installedAt": "2026-10-04T00:53:09.797Z"
+          }
+        ],
+        "dependencyClosure": [
+          "catalog-demo@catalog-management-local"
+        ],
+        "diagnostics": []
+      }
+    },
+    "uninstall": {
+      "result": {
+        "removedPlugin": {
+          "id": "catalog-demo@catalog-management-local",
+          "name": "catalog-demo",
+          "marketplace": "catalog-management-local",
+          "version": "1.0.0",
+          "enabled": false,
+          "scope": "user",
+          "installPath": "/fixture/catalog-management-home/.zcode/cli/plugins/cache/catalog-management-local/catalog-demo/1.0.0",
+          "installedAt": "2026-10-04T00:53:09.477Z"
+        },
+        "diagnostics": []
+      }
+    },
+    "marketplaceRemove": {
+      "result": {
+        "diagnostics": []
+      }
+    },
+    "restoreBuiltin": {
+      "result": {
+        "pluginId": "browser-use@zcode-plugins-official",
+        "diagnostics": []
+      }
+    },
+    "operateUnknown": {
+      "error": {
+        "code": "catalog-operation-unknown"
+      }
+    }
+  },
+  "errorFacts": [
+    {
+      "kind": "unknownKind",
+      "code": "catalog-read-unknown"
+    },
+    {
+      "action": "unknownAction",
+      "code": "catalog-operation-unknown"
+    }
+  ],
+  "catalogAdmission": {
+    "reads": {
+      "allowed": true,
+      "reason": null
+    },
+    "writes": {
+      "allowed": true,
+      "reason": null
+    }
+  },
+  "operations": [
+    {
+      "operation": "marketplaceAdd",
+      "operationId": "catalog-op-add",
+      "state": "completed",
+      "progress": []
+    },
+    {
+      "operation": "install",
+      "operationId": "catalog-op-install",
+      "state": "completed",
+      "progress": []
+    },
+    {
+      "operation": "setEnabled",
+      "operationId": "catalog-op-disable",
+      "state": "completed",
+      "progress": []
+    },
+    {
+      "operation": "setEnabled",
+      "operationId": "catalog-op-enable",
+      "state": "completed",
+      "progress": []
+    },
+    {
+      "operation": "install",
+      "operationId": "catalog-op-install-fail",
+      "state": "completed",
+      "progress": []
+    }
+  ],
+  "status": "PASS"
+}

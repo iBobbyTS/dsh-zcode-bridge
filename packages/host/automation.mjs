@@ -8,7 +8,7 @@ import {
 } from './vendor/zcode/v4.mjs';
 
 /**
- * Automation / Off-Peak carrier classification (S01-CARRIERS rows 65–71, re-probed live for S13).
+ * Automation / Off-Peak carrier classification (carrier inventory rows 65–71, re-probed live for automation-offpeak).
  *
  * The `automation/*` and `offPeak/*` legacy methods are **reverse Host-consumed** carriers: the CLI
  * agent asks its attached Host to serve them (`createProtocolAutomationPort` /
@@ -16,7 +16,7 @@ import {
  * owns the store (packages/services/src/zcode-agent/zcodeAgentService.ts:2491–2817,
  * automationService/offPeakTaskService). The app-server CLI dispatcher has **no** case for them, so a
  * client attached to `app-server --stdio` cannot request them: a real probe returns -32601 for every
- * one (tests/fixtures/s13/official.json). There is no v4 management command either — the only v4
+ * one (tests/fixtures/automation-offpeak/official.json). There is no v4 management command either — the only v4
  * carriers (`sendText` payload automationId/offPeakTaskId and `offPeakToolEnabled`) mark a dispatch or
  * a tool-policy flag, not management.
  *

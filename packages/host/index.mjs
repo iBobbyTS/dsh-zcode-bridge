@@ -54,7 +54,7 @@ export async function handleTaskUsage(host,payload,signal){
   catch(error){return {ok:false,error:{code:error.code??'task-usage-unavailable',message:'Official session usage unavailable',details:error.protocolCode===undefined?{}:{protocolCode:error.protocolCode}}}}
 }
 const sourceEndpoint='sessions';
-/** S04 single-turn endpoint. Accepts no caller data: Main owns the one-shot claim, the new session
+/** Minimal turn single-turn endpoint. Accepts no caller data: Main owns the one-shot claim, the new session
  *  identity and the prompt, so this can never be pointed at an existing shared session. */
 export async function handleOwnTurn(host,payload,signal){
   if(payload!==undefined&&payload!==null&&!(typeof payload==='object'&&!Array.isArray(payload)&&Object.keys(payload).length===0))return {ok:false,error:{code:'invalid-payload',message:'This endpoint accepts no runtime commands',details:{}}};
@@ -62,7 +62,7 @@ export async function handleOwnTurn(host,payload,signal){
   try{return {ok:true,value:await host.runMinimalTurn({signal})}}
   catch(error){return {ok:false,error:{code:error.code??'minimal-turn-unavailable',message:'Bridge-owned minimal turn was not started',details:error.protocolCode===undefined?{}:{protocolCode:error.protocolCode}}}}
 }
-/** Read-only S15 projection; remote identity, target and credentials are never accepted. */
+/** Read-only remote workspace projection; remote identity, target and credentials are never accepted. */
 export async function handleRemote(host,payload,signal){
   if(!payload||typeof payload!=='object'||Array.isArray(payload)||payload.operation!=='state'||Object.keys(payload).some(key=>key!=='operation'))return {ok:false,error:{code:'invalid-payload',message:'Only remote state may be read',details:{}}};
   if(signal?.aborted)return {ok:false,error:{code:'cancelled',message:'Cancelled',details:{}}};

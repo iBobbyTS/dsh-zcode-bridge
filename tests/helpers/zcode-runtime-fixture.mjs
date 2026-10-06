@@ -1,5 +1,5 @@
 import {readFileSync} from 'node:fs';
-const captured=JSON.parse(readFileSync(new URL('../fixtures/s03a/success.json',import.meta.url)));
+const captured=JSON.parse(readFileSync(new URL('../fixtures/transport-v4/success.json',import.meta.url)));
 export const tick=()=>new Promise(resolve=>setImmediate(resolve));
 /** Sample official account discovery. Real account discovery plugs into the same shape later. */
 export function sampleProviders(){return [

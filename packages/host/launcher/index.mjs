@@ -11,18 +11,18 @@ import { createLauncherConfig, prepareLauncher, sandboxProfile, fault } from './
 export function recoveryRunId(scratchRoot){
   const template=join(resolve(scratchRoot),'runs','x','tmp','znr-00000000-0000-0000-0000-000000000000.sock');
   const budget=103-(Buffer.byteLength(template)-1);
-  if(budget<1)throw fault('route-b-temp-socket-path-too-long');
+  if(budget<1)throw fault('live-http-temp-socket-path-too-long');
   return randomBytes(8).toString('hex').slice(0,Math.min(16,budget));
 }
 
 /** Node/DSH-side resource owner. Status is a projection, never a command or auth transport. */
 export class HostLauncher {
-  #state={phase:'idle',revision:0,channelAvailable:false,services:[],login:'disabled-s03',sharedOfficialMain:'NO-GO'};
-  #executionNonce;#routeBAttempted=false;#routeBReady=false;#launchCount=0;#reads=new Map();#readSeq=0;#events=new EventEmitter();#child;#starting;#stopping;#disposed=false;#exited;
+  #state={phase:'idle',revision:0,channelAvailable:false,services:[],login:'disabled-host-managed',sharedOfficialMain:'NO-GO'};
+  #executionNonce;#liveHttpAttempted=false;#liveHttpReady=false;#launchCount=0;#reads=new Map();#readSeq=0;#events=new EventEmitter();#child;#starting;#stopping;#disposed=false;#exited;
   constructor(options,{spawnProcess=spawn}={}){this.options=options;this.spawnProcess=spawnProcess}
   get state(){return structuredClone(this.#state)}
   subscribe(listener){this.#events.on('state',listener);return ()=>this.#events.off('state',listener)}
-  #publish(state){if(this.#routeBAttempted&&state.phase==='ready'&&state.auth==='authenticated')this.#routeBReady=true;this.#state={...state,revision:this.#state.revision+1};this.#events.emit('state',this.state)}
+  #publish(state){if(this.#liveHttpAttempted&&state.phase==='ready'&&state.auth==='authenticated')this.#liveHttpReady=true;this.#state={...state,revision:this.#state.revision+1};this.#events.emit('state',this.state)}
   waitState(afterRevision,{signal,timeoutMs=25000}={}){
     if(signal?.aborted)return Promise.reject(fault('cancelled'));
     if(this.#state.revision>afterRevision||this.#disposed)return Promise.resolve(this.state);
@@ -38,19 +38,19 @@ export class HostLauncher {
       if(process.platform!=='darwin')throw fault('launcher-platform-unsupported');
       if(this.#stopping)await this.#stopping;
       if(this.#disposed)throw fault('disposed');
-      if(this.#routeBAttempted&&!this.#routeBReady)throw fault('route-b-retry-disabled');
+      if(this.#liveHttpAttempted&&!this.#liveHttpReady)throw fault('live-http-retry-disabled');
       // Recovery uses the same validated configuration/profile, with a fresh owned run. Failed
       // first bootstrap remains guarded; an authenticated ready owner may recover after exit.
       config=prepareLauncher(createLauncherConfig({...this.options,...(this.#launchCount?{runId:recoveryRunId(this.options.scratchRoot)}: {})}));this.#launchCount++;this.#executionNonce=config.executionNonce;
-      if(config.mode==='route-b')this.#routeBAttempted=true;
+      if(config.mode==='live-http')this.#liveHttpAttempted=true;
       const codeRoot=realpathSync(fileURLToPath(new URL('../',import.meta.url)));
       const dependencyRoot=dirname(fileURLToPath(import.meta.resolve('zod')));
       const dependencyLinks=[];for(let p=codeRoot;p!==dirname(p);p=dirname(p)){const candidate=join(p,'node_modules/zod');try{if(realpathSync(candidate)===realpathSync(dependencyRoot))dependencyLinks.push(candidate)}catch{}}
       const profile=join(config.runRoot,'launcher.sb');writeFileSync(profile,sandboxProfile(config,codeRoot,dependencyRoot,dependencyLinks),{mode:0o600});
-      this.#publish({phase:'starting',channelAvailable:false,landings:config.landing,routeB:config.routeB??null,services:[],login:'disabled-s03',sharedOfficialMain:'NO-GO'});
+      this.#publish({phase:'starting',channelAvailable:false,landings:config.landing,liveHttp:config.liveHttp??null,services:[],login:'disabled-host-managed',sharedOfficialMain:'NO-GO'});
       const child=this.#child=this.spawnProcess('/usr/bin/sandbox-exec',['-f',profile,config.electronPath,realpathSync(fileURLToPath(new URL('./bootstrap.cjs',import.meta.url))),join(config.runRoot,'launcher.json')],{cwd:config.cwd,env:config.env,stdio:['pipe','pipe','pipe'],detached:true});
       let tail='';
-      child.stdout.on('data',data=>{tail+=data.toString();if(tail.length>9*1024*1024){tail='';this.#publish({phase:'failed',reason:'launcher-output-limit',channelAvailable:false});void this.stop();return}let i;while((i=tail.indexOf('\n'))>=0){const line=tail.slice(0,i);tail=tail.slice(i+1);try{const m=JSON.parse(line);if(m.type==='launcher-event'&&m.nonce===this.#executionNonce){this.#events.emit('execution',m.event)}if(m.type==='launcher-read'){const p=this.#reads.get(m.id);if(p){this.#reads.delete(m.id);clearTimeout(p.timer);if(m.ok)p.resolve(m.value);else p.reject(Object.assign(fault(m.code??'route-b-read-failed'),typeof m.sent==='boolean'?{sent:m.sent}:{}));}}if(m.type==='launcher-state'&&m.state&&typeof m.state.phase==='string')this.#publish(m.state)}catch{/* Electron informational stdout is discarded. */}}});
+      child.stdout.on('data',data=>{tail+=data.toString();if(tail.length>9*1024*1024){tail='';this.#publish({phase:'failed',reason:'launcher-output-limit',channelAvailable:false});void this.stop();return}let i;while((i=tail.indexOf('\n'))>=0){const line=tail.slice(0,i);tail=tail.slice(i+1);try{const m=JSON.parse(line);if(m.type==='launcher-event'&&m.nonce===this.#executionNonce){this.#events.emit('execution',m.event)}if(m.type==='launcher-read'){const p=this.#reads.get(m.id);if(p){this.#reads.delete(m.id);clearTimeout(p.timer);if(m.ok)p.resolve(m.value);else p.reject(Object.assign(fault(m.code??'live-http-read-failed'),typeof m.sent==='boolean'?{sent:m.sent}:{}));}}if(m.type==='launcher-state'&&m.state&&typeof m.state.phase==='string')this.#publish(m.state)}catch{/* Electron informational stdout is discarded. */}}});
       // Only error categories from Electron bootstrap are retained. Arbitrary diagnostic text,
       // file contents and Host output are never forwarded into DSH state.
       child.stderr.on('data',data=>{const categories=[...new Set(data.toString().match(/\b(?:ERR_[A-Z_]+|EACCES|EPERM|ENOENT|FATAL)\b/g)??[])];if(categories.length)this.#publish({...this.#state,bootstrapErrors:categories})});
@@ -59,17 +59,17 @@ export class HostLauncher {
     }catch(e){this.#publish({phase:'failed',reason:e.code??'launcher-configuration-failed',channelAvailable:false,services:[],landings:{passed:false}});return this.state}
   }
   read(operation,{address,signal}={}){
-    if(!['catalog','models','preflight','observation','taskUsage','sendMinimalTask'].includes(operation)||this.#state.phase!=='ready'||this.#state.landings?.mode!=='route-b'||!this.#child||this.#disposed)return Promise.reject(fault('route-b-read-unavailable'));
+    if(!['catalog','models','preflight','observation','taskUsage','sendMinimalTask'].includes(operation)||this.#state.phase!=='ready'||this.#state.landings?.mode!=='live-http'||!this.#child||this.#disposed)return Promise.reject(fault('live-http-read-unavailable'));
     if(signal?.aborted)return Promise.reject(fault('cancelled'));
-    if(this.#reads.size>=32)return Promise.reject(fault('route-b-read-limit'));
+    if(this.#reads.size>=32)return Promise.reject(fault('live-http-read-limit'));
     const id=++this.#readSeq;
     return new Promise((resolve,reject)=>{
       // preflight performs a bounded activity window inside Main; the single-turn dispatch waits on
       // one official session creation, so both carriers get a bounded extension.
       const timeoutMs=(operation==='preflight'?25000+(this.options.activityWindowMs??5000):operation==='sendMinimalTask'?120000:25000);
-      const timer=setTimeout(()=>{this.#reads.delete(id);reject(fault('route-b-read-timeout'));void this.stop();},timeoutMs);
+      const timer=setTimeout(()=>{this.#reads.delete(id);reject(fault('live-http-read-timeout'));void this.stop();},timeoutMs);
       this.#reads.set(id,{resolve,reject,timer});
-      this.#child.stdin.write(JSON.stringify({id,operation,...(address?{address}:{})})+'\n',e=>{if(e){clearTimeout(timer);this.#reads.delete(id);reject(fault('route-b-read-transport'));}});
+      this.#child.stdin.write(JSON.stringify({id,operation,...(address?{address}:{})})+'\n',e=>{if(e){clearTimeout(timer);this.#reads.delete(id);reject(fault('live-http-read-transport'));}});
     });
   }
   onExecutionEvent(listener){this.#events.on('execution',listener);return ()=>this.#events.off('execution',listener)}

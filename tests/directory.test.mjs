@@ -1,6 +1,6 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';import {tmpdir} from 'node:os';
 import {BridgeHost} from '../packages/host/runtime.mjs';import {V4Conversation} from '../packages/host/conversation.mjs';import {ProtocolPeer} from '../packages/host/protocol.mjs';import {readFileSync} from 'node:fs';
-import {controlledStore} from './fixtures/s04-store.mjs';
+import {controlledStore} from './fixtures/session-lifecycle-store.mjs';
 const inspect=async()=>({launcher:'fixture',cjs:'fixture',providerConfig:'fixture',verified:true});
 const create=async(store,options={})=>{const host=new BridgeHost({workspacePath:tmpdir(),inspect,spawnProcess:()=>store.child(),...options});await host.connect();return host};
 test('B02 directory grows past the official 50 prefix and declares saturated limits',async()=>{
@@ -23,7 +23,7 @@ test('controlled two views alternate and concurrently rename, then disconnect/re
  }finally{await host.dispose()}
 });
 test('accepted deletion fences every view, held frames and catalog replies; a failed command does not delete',async()=>{
- const lateFixture=JSON.parse(readFileSync('tests/fixtures/s04/lateframe.json','utf8'));
+ const lateFixture=JSON.parse(readFileSync('tests/fixtures/session-lifecycle/lateframe.json','utf8'));
  const store=controlledStore({holdFrames:true}),host=await create(store);
  try{
   const address=(await host.listSessions()).sessions[0].address,a=await host.openConversation(address),b=await host.openConversation(address);

@@ -2,7 +2,7 @@
 import { app, utilityProcess, MessageChannelMain, BrowserWindow, webContents } from 'electron';
 import { readFileSync, appendFileSync, existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { ROUTE_B_READ_CALLS, ROUTE_B_SEND_CALLS, authProjection, usageProjection } from './observation.mjs';
+import { LIVE_HTTP_READ_CALLS, LIVE_HTTP_SEND_CALLS, authProjection, usageProjection } from './observation.mjs';
 import { SharedWriteGate, usageActivity } from './write-gate.mjs';
 import { createExecutionRelay, EXECUTION_CALLS, EXECUTION_EVENTS } from './execution.mjs';
 import { createMinimalTurn } from './minimal-turn.mjs';
@@ -23,21 +23,21 @@ const electronPaths=['home','appData','userData','sessionData','logs','temp','cr
 for(const k of electronPaths)app.setPath(k,config.paths[k]);
 app.commandLine.appendSwitch('no-sandbox');app.commandLine.appendSwitch('disable-background-networking');app.commandLine.appendSwitch('disable-crash-reporter');
 let child,channel,closing=false,windowEvents=0,revision=0,disposeEvent;
-const routeB=config.mode==='route-b', rpc=[];
+const liveHttp=config.mode==='live-http', rpc=[];
 let lastRpc=null;
-const READ_CALLS=new Set(ROUTE_B_READ_CALLS);
-const safeCall=async(svc,method,args=[])=>{const name=svc+'.'+method;if(!READ_CALLS.has(name))throw fault('route-b-read-denied');lastRpc=name;rpc.push(name);return channel.call(svc,method,args)};
-// S04 write ledger. Separate from the read-only `rpc` observation so the S03 zero-request
+const READ_CALLS=new Set(LIVE_HTTP_READ_CALLS);
+const safeCall=async(svc,method,args=[])=>{const name=svc+'.'+method;if(!READ_CALLS.has(name))throw fault('live-http-read-denied');lastRpc=name;rpc.push(name);return channel.call(svc,method,args)};
+// Minimal turn write ledger. Separate from the read-only `rpc` observation so the zero-request
 // whitelist evidence stays meaningful; every entry is checked against the fixed send allowlist.
-const SEND_CALLS=new Set(ROUTE_B_SEND_CALLS),writeRpc=[],executionRpc=[];
-const safeSend=async(svc,method,args=[])=>{const name=svc+'.'+method;if(!SEND_CALLS.has(name))throw fault('route-b-write-denied');writeRpc.push(name);return channel.call(svc,method,args,{timeoutMs:110000})};
-const minimalTurnMarker=()=>join(config.runRoot,'s04-minimal-turn.json');
+const SEND_CALLS=new Set(LIVE_HTTP_SEND_CALLS),writeRpc=[],executionRpc=[];
+const safeSend=async(svc,method,args=[])=>{const name=svc+'.'+method;if(!SEND_CALLS.has(name))throw fault('live-http-write-denied');writeRpc.push(name);return channel.call(svc,method,args,{timeoutMs:110000})};
+const minimalTurnMarker=()=>join(config.runRoot,'minimal-turn.json');
 let minimalTurn,executionRelay;
 const schedulerPolicy={spawned:false,wakeCallback:false,settlementCallback:false,dispatchMessages:false};
 const authority=new HostAuthority(),gate=new ProviderRequestGate();
 const headless=()=>({windowEvents,windows:BrowserWindow.getAllWindows().length,webContents:webContents.getAllWebContents().length});
-let state={phase:'starting',channelAvailable:false,landings:config.landing,login:'disabled-s03',databaseControl:'disabled-s02',sharedOfficialMain:'NO-GO',requestGate:gate.state,services:[],routeB:config.routeB??null,schedulerPolicy};
-const publish=change=>{state={...state,...change,revision:++revision};const line=JSON.stringify({type:'launcher-state',at:Date.now(),state:{...state,headless:headless()}})+'\n';if(routeB)appendFileSync(join(config.runRoot,'launcher-states.jsonl'),line,{mode:0o600});process.stdout.write(line)};
+let state={phase:'starting',channelAvailable:false,landings:config.landing,login:'disabled-host-managed',databaseControl:'disabled-host-managed',sharedOfficialMain:'NO-GO',requestGate:gate.state,services:[],liveHttp:config.liveHttp??null,schedulerPolicy};
+const publish=change=>{state={...state,...change,revision:++revision};const line=JSON.stringify({type:'launcher-state',at:Date.now(),state:{...state,headless:headless()}})+'\n';if(liveHttp)appendFileSync(join(config.runRoot,'launcher-states.jsonl'),line,{mode:0o600});process.stdout.write(line)};
 export async function stop(code=0){
   if(closing)return;closing=true;clearTimeout(deadline);disposeEvent?.();executionRelay?.dispose();channel?.close();authority.dispose();
   publish({phase:'stopping',channelAvailable:false,services:[]});
@@ -54,7 +54,7 @@ const control=createInterface({input:process.stdin});control.on('close',()=>void
 let reading=Promise.resolve();
 control.on('line',line=>{
   if(line==='stop'){void stop();return;}
-  if(!routeB||closing)return;
+  if(!liveHttp||closing)return;
   let m;try{m=JSON.parse(line)}catch{return;}
   if(m.operation==='execution'){
     if(line.length>1024*1024||Object.keys(m).some(key=>!['id','operation','nonce','method','params'].includes(key)))return;
@@ -65,7 +65,7 @@ control.on('line',line=>{
   reading=reading.then(async()=>{
     if(closing)return;
     try{
-      // S04: single bridge-owned model turn. Creates its own session and sends one prompt; it never
+      // Minimal turn: single bridge-owned model turn. Creates its own session and sends one prompt; it never
       // reads a caller address and never resumes/closes anything.
       if(m.operation==='sendMinimalTask'){
         minimalTurn??=createMinimalTurn({call:safeSend,usage:async()=>usageProjection(await safeCall('zcode-agent','getAppUsageStats',[{range:'all',timeZone:'UTC'}])),readTasks,workspacePath:config.paths.workspace,recordClaim:()=>{if(existsSync(minimalTurnMarker()))throw fault('minimal-turn-already-claimed');writeFileSync(minimalTurnMarker(),JSON.stringify({at:Date.now(),prompt:'Reply with exactly: ok'}),{mode:0o600})},hasClaimed:()=>existsSync(minimalTurnMarker())});
@@ -91,9 +91,9 @@ control.on('line',line=>{
         value=await gate.preflight(m.address);
       }
       if(m.operation==='observation')value={tasks,usage:usageProjection(await safeCall('zcode-agent','getAppUsageStats',[{range:'all',timeZone:'UTC'}])),rpc:[...rpc],writeRpc:[...writeRpc],executionRpc:[...executionRpc],at:Date.now(),schedulerPolicy};
-      // Per-session official usage readback (the S04 model-request accounting surface).
+      // Per-session official usage readback (the minimal turn model-request accounting surface).
       if(m.operation==='taskUsage'){
-        if(!m.address||typeof m.address.sessionId!=='string'||!m.address.sessionId||typeof m.address.workspace!=='string'||!m.address.workspace)throw fault('route-b-address-required');
+        if(!m.address||typeof m.address.sessionId!=='string'||!m.address.sessionId||typeof m.address.workspace!=='string'||!m.address.workspace)throw fault('live-http-address-required');
         const raw=await safeCall('zcode-agent','getTaskTokenUsage',[{sessionId:m.address.sessionId,workspacePath:m.address.workspace,...(m.address.workspaceIdentity?{workspaceIdentity:m.address.workspaceIdentity}:{})}]);
         value={address:m.address,usage:usageActivity(raw,m.address.sessionId),at:Date.now()};
       }
@@ -103,7 +103,7 @@ control.on('line',line=>{
       // Local-only diagnostic (scratch runRoot, 0600): the carrier returns only a code, so the
       // bounded message is retained here for the operator. It is never forwarded to DSH state.
       try{appendFileSync(join(config.runRoot,'launcher-read-errors.jsonl'),JSON.stringify({operation:m.operation,code:typeof e?.code==='string'?e.code:null,name:typeof e?.name==='string'?e.name:null,message:String(e?.message??'').slice(0,300),at:Date.now()})+'\n',{mode:0o600})}catch{}
-      process.stdout.write(JSON.stringify({type:'launcher-read',id:m.id,ok:false,code:typeof e.code==='string'?e.code:'route-b-read-failed'})+'\n');publish({phase:'failed',reason:'route-b-read-failed'});void stop(2);
+      process.stdout.write(JSON.stringify({type:'launcher-read',id:m.id,ok:false,code:typeof e.code==='string'?e.code:'live-http-read-failed'})+'\n');publish({phase:'failed',reason:'live-http-read-failed'});void stop(2);
     }
   });
 });
@@ -134,13 +134,13 @@ app.whenReady().then(()=>{
   child.on('exit',code=>{if(!closing){publish({phase:'failed',channelAvailable:false,reason:'host-exited',hostExitCode:code});void stop(2)}});
   authority.onDatabase=(_id,database)=>publish({database});
   authority.register({hostId:config.hostId,child,workspaceKeys:[],deliveryKind:config.deliveryKind});
-  channel=new HostChannel(port1,{...(routeB?{allowCalls:new Set([...ROUTE_B_READ_CALLS,...ROUTE_B_SEND_CALLS,...EXECUTION_CALLS])}:{}),allowEvents:new Set([...EXECUTION_EVENTS,'provider-settings.onDidChange']),onClose:reason=>{if(!closing){publish({phase:'failed',channelAvailable:false,reason});void stop(2)}},onReady:async()=>{
+  channel=new HostChannel(port1,{...(liveHttp?{allowCalls:new Set([...LIVE_HTTP_READ_CALLS,...LIVE_HTTP_SEND_CALLS,...EXECUTION_CALLS])}:{}),allowEvents:new Set([...EXECUTION_EVENTS,'provider-settings.onDidChange']),onClose:reason=>{if(!closing){publish({phase:'failed',channelAvailable:false,reason});void stop(2)}},onReady:async()=>{
     clearTimeout(deadline);
     // Availability of these state services is verified by their real RPC responses; runtime/
     // session/command names are static topology only and never advertised as runnable.
     try{
       const cached=await safeCall('oauth','restoreCachedSessionState');
-      if(routeB&&cached?.status!=='authenticated'){publish({phase:'failed',auth:cached?.status??'unconfirmed',reason:cached?.status==='reauthentication-required'?'official-account-reauthentication-required':'official-account-signed-out-stop'});void stop(2);return;}
+      if(liveHttp&&cached?.status!=='authenticated'){publish({phase:'failed',auth:cached?.status??'unconfirmed',reason:cached?.status==='reauthentication-required'?'official-account-reauthentication-required':'official-account-signed-out-stop'});void stop(2);return;}
       const active=await safeCall('oauth','getActiveProvider');
       const providers=await safeCall('oauth','getProviders');
       const view=await safeCall('provider-settings','getView');
@@ -148,9 +148,9 @@ app.whenReady().then(()=>{
       if(closing)return;
       disposeEvent=channel.listen('provider-settings','onDidChange',()=>{
         publish({providerStateChanged:true});
-        if(routeB&&!closing)void verifyProvider().catch(()=>{publish({phase:'failed',auth:'unconfirmed',reason:'official-provider-status-lost'});void stop(2);});
+        if(liveHttp&&!closing)void verifyProvider().catch(()=>{publish({phase:'failed',auth:'unconfirmed',reason:'official-provider-status-lost'});void stop(2);});
       });
-      if(routeB){
+      if(liveHttp){
         const auth=authProjection(cached,active,view);
         if(auth.auth!=='authenticated')throw fault('official-provider-not-executable');
         publish({...auth,authVerified:true,execution:'zcode-agent-v4',schedulerPolicy});
@@ -162,7 +162,7 @@ app.whenReady().then(()=>{
         const usage=usageProjection(await safeCall('zcode-agent','getAppUsageStats',[{range:'all',timeZone:'UTC'}]));
         publish({phase:'ready',channelAvailable:true,...auth,login:'cached-official-account',services:['oauth','provider-settings','setting','zcode-task','zcode-agent'],execution:'zcode-agent-v4',rpcCount:rpc.length,executionWorkspace:config.paths.workspace,taskCount:tasks.length,sessionListCount:Array.isArray(sessions)?sessions.length:null,observationBaseline:{tasks,usage,rpc:[...rpc],at:Date.now()},schedulerPolicy});return;
       }
-      publish({phase:'ready',channelAvailable:true,providers:authProjection(cached,active,view).providers,auth:cached?.status==='signed-out'?'signed-out':'unconfirmed',activeProviderPresent:active!==null,providerCount:Array.isArray(providers)?providers.length:null,executableProviders:(view?.providers??[]).filter(p=>p.executable).length,services:['oauth','provider-settings','setting'],topologyServices:['zcode-agent','zcode-session','zcode-task'],execution:'disabled-s03',rpcCount:5});
+      publish({phase:'ready',channelAvailable:true,providers:authProjection(cached,active,view).providers,auth:cached?.status==='signed-out'?'signed-out':'unconfirmed',activeProviderPresent:active!==null,providerCount:Array.isArray(providers)?providers.length:null,executableProviders:(view?.providers??[]).filter(p=>p.executable).length,services:['oauth','provider-settings','setting'],topologyServices:['zcode-agent','zcode-session','zcode-task'],execution:'disabled-host-managed',rpcCount:5});
     }catch(e){publish({phase:'failed',failedRpc:lastRpc,reason:typeof e?.code==='string'?e.code:'status-query-failed',errorCategory:/disposed/i.test(e?.message??'')?'runtime-disposed':/no_active_workspace/.test(e?.message??'')?'usage-runtime-unavailable':'official-status-query-failed'});void stop(2)}
   }});
   child.postMessage({type:'init-local',hostId:config.hostId,deliveryKind:config.deliveryKind,databaseStartupId:config.runId,agentSpawnFallbackCwd:config.agentSpawnFallbackCwd,zcodeBuiltinProviderConfigFilePath:config.builtinConfig,runtimeProcessEnvPatch:config.runtimeProcessEnvPatch},[port2]);

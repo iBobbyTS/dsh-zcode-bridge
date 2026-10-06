@@ -19,7 +19,7 @@ for(let i=0;i<args.length;i++){
 if(!Number.isInteger(port)||port<1024||port>65535)throw Error('Invalid port');
 if(smoke&&prepareOnly)throw Error('Choose --smoke or --prepare-only');
 if(root){if(existsSync(root))throw Error('Root must be new; existing environments are never overwritten');mkdirSync(root,{recursive:true,mode:0o700})}
-else root=mkdtempSync(join(tmpdir(),'dsh-s08-npm-'));
+else root=mkdtempSync(join(tmpdir(),'dsh-closure-acceptance-npm-'));
 const repo=resolve(fileURLToPath(new URL('..',import.meta.url))),parent=resolve(repo,'..');
 const install=join(root,'npm'),dshHome=join(root,'dsh-home'),workspace=join(root,'workspace'),profile=join(dshHome,'profiles/web');
 const env={...process.env,DSH_HOME:dshHome,npm_config_cache:join(root,'npm-cache'),PNPM_HOME:join(root,'pnpm-home'),XDG_CACHE_HOME:join(root,'cache'),XDG_DATA_HOME:join(root,'data')};
@@ -50,7 +50,7 @@ try{
     run('plugin-install-diagnostic',process.execPath,pluginArgs);
   }
   const base=join(parent,'.agent-work/tmp/host-reuse-probe');
-  const launcher={mode:'route-b',scratchRoot:'/private/tmp/dshw/n8',runId:Date.now().toString(36),artifactRoot:process.env.DSH_ACCEPTANCE_ARTIFACT??join(base,'official-extracted'),electronPath:process.env.DSH_ACCEPTANCE_ELECTRON??join(base,'node_modules/electron/dist/Electron.app/Contents/MacOS/Electron'),builtinConfig:'/Applications/ZCode.app/Contents/Resources/config/provider/zcode-builtin.json'};
+  const launcher={mode:'live-http',scratchRoot:'/private/tmp/dshw/n8',runId:Date.now().toString(36),artifactRoot:process.env.DSH_ACCEPTANCE_ARTIFACT??join(base,'official-extracted'),electronPath:process.env.DSH_ACCEPTANCE_ELECTRON??join(base,'node_modules/electron/dist/Electron.app/Contents/MacOS/Electron'),builtinConfig:'/Applications/ZCode.app/Contents/Resources/config/provider/zcode-builtin.json'};
   // Production validator retains HOME/socket/landings; no alternate isolation profile.
   createLauncherConfig(launcher);
   for(const path of [launcher.artifactRoot,launcher.electronPath,launcher.builtinConfig])if(!existsSync(path))throw Error('Missing launcher prerequisite: '+path);

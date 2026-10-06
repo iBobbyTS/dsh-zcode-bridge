@@ -45,7 +45,7 @@ export function StatusCard({controller,view}){
   const install=state.installation;
   return <section aria-label="ZCode connection" style={{padding:16,color:'var(--dsw-alias-text-primary)',fontSize:14}}>
     <h3>ZCode</h3><p role="status">{statusText(state)}</p>
-    {state.launcher?.routeB?.allowed===false&&<p role="alert">{state.launcher.routeB.reason}</p>}
+    {state.launcher?.liveHttp?.allowed===false&&<p role="alert">{state.launcher.liveHttp.reason}</p>}
     <ZCodeVersionBanner compatibility={state.compatibility} store={compatibilityStore}/>
     {state.failSafe?.incompatible&&<p role="alert" data-testid="zcode-failsafe-core">Core protocol incompatibility: new side effects are stopped; reconnect to retry.</p>}
     {state.failSafe?.level==='non-core'&&<p data-testid="zcode-failsafe-isolated">Optional capabilities isolated: {state.failSafe.isolated.map(item=>item.capability).join(', ')}. Other paths keep working.</p>}
