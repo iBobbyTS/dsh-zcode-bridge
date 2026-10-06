@@ -1,8 +1,8 @@
-# S02-P2 handoff — scratch windowless Host launcher
+# scratch-host-launcher handoff — scratch windowless Host launcher
 
-任务：`../.agent-work/tasks/S02-P2-TASK.md`；消费 `PLAN-PHASE2.md` S02、排除项、按落点的集成依赖，以及 [S01 判定](../probes/AUTH-PHASE2-S01.md) 的落点表、协调边界、拓扑输入与必要回调表。bridge `feat/zcode-runtime-bridge`，基线 `0249f90`；DSH `21fb059745ddc1b78e387c24f3987b68569de236` 无改动；reference `29628c9`/官方 App 只读；EXECUTE_WITH_COMMIT，不 push。
+任务：`../.agent-work/tasks/scratch-host-launcher-TASK.md`；消费 `PLAN-PHASE2.md` session-create、排除项、按落点的集成依赖，以及 [official-runtime-install 判定](../probes/auth-phase2.md) 的落点表、协调边界、拓扑输入与必要回调表。bridge `feat/zcode-runtime-bridge`，基线 `0249f90`；DSH `21fb059745ddc1b78e387c24f3987b68569de236` 无改动；reference `29628c9`/官方 App 只读；EXECUTE_WITH_COMMIT，不 push。
 
-**自评 PARTIAL：scratch 状态面、Main 合同、安装/生命周期和错误路径已实现并实测；实际 provider 请求拦截未装入官方 Host，S04 必须 NOT_RUN(cannot-enforce)。** 不宣称登录、会话/命令切换、共享 GUI 写 authority 或模型执行可用。本 handoff 是实现者交付，不是独立 review CLEAN 或主 agent acceptance。
+**自评 PARTIAL：scratch 状态面、Main 合同、安装/生命周期和错误路径已实现并实测；实际 provider 请求拦截未装入官方 Host，minimal-turn-usage 必须 NOT_RUN(cannot-enforce)。** 不宣称登录、会话/命令切换、共享 GUI 写 authority 或模型执行可用。本 handoff 是实现者交付，不是独立 review CLEAN 或主 agent acceptance。
 
 ## 实现清单
 
@@ -42,20 +42,20 @@
 | owner command request/deliver/result | 实际 owner 才能 ack、stale run 拒绝、owner exit 失败；官方 30s timeout，不隐式重试 | 合同单测；真实执行 NOT_RUN |
 | realtime publish/deliver | eventId 去重、1000 条有界缓存、workspace 可见性、不回环 | 合同单测 |
 | stream op / batch / replay | owner/run gate、seq/batch、水位；60 batch/512KiB replay 界限；gap 和 owner-lost invalidation、两种 deliveryKind | 合同单测（61 batch 截断+watermark）；真实 runtime NOT_RUN |
-| database startup relay | 安全字段投影到状态通道，真实 migration→ready | LIVE；retry/control 显式 disabled-s02 |
+| database startup relay | 安全字段投影到状态通道，真实 migration→ready | LIVE；retry/control 显式 disabled-host-managed |
 | attachment teardown | attach 请求带正式 requestId/scope/clientMode；detach 幂等；base port close + Host dispose | 合同单测；base port/exit LIVE；额外真实 attachment NOT_RUN |
-| OAuth state/deep-link/browser | 显式禁用回调；不注册全局 URL handler、不打开浏览器、不声称登录可用 | disabled-s03；正式登录 NOT_RUN |
-| session routes、session-message、cron/off-peak/browser/CUA | S02 不向 bus 放行可能启动工作的 session 路由；无执行入口 | disabled；session/close/closeSession/closeDeferredDraftSession 从未发出 |
+| OAuth state/deep-link/browser | 显式禁用回调；不注册全局 URL handler、不打开浏览器、不声称登录可用 | disabled-host-managed；正式登录 NOT_RUN |
+| session routes、session-message、cron/off-peak/browser/CUA | session-create 不向 bus 放行可能启动工作的 session 路由；无执行入口 | disabled；session/close/closeSession/closeDeferredDraftSession 从未发出 |
 
 ## Provider 请求硬顶
 
 `ProviderRequestGate.dispatchBeforeSend(send)` 在回调执行前同步占用请求预算，limit=0 发包前拒绝；limit=1 的第二次发包被拒绝，第一次 transport failure 仍耗尽预算。单测只用合成 callback，不发送请求。
 
-**这不是已经安装的 provider hook。** 未改动官方 Host 的 request-auth resolver 和 app-server pipe 属于 Host 内部，状态 Channel 没有公开的逐模型请求 transport interceptor。没有把 prompt RPC 数量或 usage 当请求计数。实际状态明确 `installed=false/enforceable=false`，执行面关闭；S04 是 NOT_RUN(cannot-enforce)，不得解锁 1 次任务预算。本节 0 模型请求依据是 fresh scratch、五项 RPC 白名单和继承给全部子进程的 OS 禁网，不依据 gate 的 0 counter 或“没看到 usage”。
+**这不是已经安装的 provider hook。** 未改动官方 Host 的 request-auth resolver 和 app-server pipe 属于 Host 内部，状态 Channel 没有公开的逐模型请求 transport interceptor。没有把 prompt RPC 数量或 usage 当请求计数。实际状态明确 `installed=false/enforceable=false`，执行面关闭；minimal-turn-usage 是 NOT_RUN(cannot-enforce)，不得解锁 1 次任务预算。本节 0 模型请求依据是 fresh scratch、五项 RPC 白名单和继承给全部子进程的 OS 禁网，不依据 gate 的 0 counter 或“没看到 usage”。
 
 ## Checks 实跑
 
-证据目录：[host-launcher-s02](../probes/checks/host-launcher-s02/)。最终成功安装链为 `installed-isolated2/`；`installed-bootstrap/` 保留修复后的另一次成功链。更早失败文件没有替换成 PASS。
+证据目录：[scratch-host-launcher](../probes/checks/scratch-host-launcher/)。最终成功安装链为 `installed-isolated2/`；`installed-bootstrap/` 保留修复后的另一次成功链。更早失败文件没有替换成 PASS。
 
 | 检查 | 结果 |
 |---|---|
@@ -67,13 +67,13 @@
 | clean profile install→installed launcher→DSH HTTP→uninstall | **LIVE PASS**；installer HOME/cache/store 全 scratch；自身 zod 声明及 createRequire.resolve 成功；install/remove exit 0；host bundle 包无残留 |
 | non-login headless / owned tree / GUI coexistence | 最终两次 Host 各 5 状态 RPC；signed-out、0 executable provider；windows/WebContents/windowEvents=0；自有树全退出；每次 GUI ps 清单一致，仅观察 |
 | crash bootstrap | **LIVE 3/3 PASS**：真实 host-bus 的缺失 zod import、uncaughtException、unhandledRejection；均 structured exit 2；fixture native dialog hook=0、windows/WebContents/windowEvents=0；不启动 Host、不发模型请求 |
-| official identity | ASAR sha 与 S01 相同；18 Host 文件取 ASAR header integrity、启动逐一验证；CLI digest 与 S01 相同 |
+| official identity | ASAR sha 与 official-runtime-install 相同；18 Host 文件取 ASAR header integrity、启动逐一验证；CLI digest 与 official-runtime-install 相同 |
 
 ## 失败入账与用户可见事件
 
-详细 [attempt-ledger.json](../probes/checks/host-launcher-s02/attempt-ledger.json) 保留阶段、输出位置、已知结果和未保留的诊断，未把失败覆盖成 PASS。
+详细 [attempt-ledger.json](../probes/checks/scratch-host-launcher/attempt-ledger.json) 保留阶段、输出位置、已知结果和未保留的诊断，未把失败覆盖成 PASS。
 
-1. **用户可见无窗口红线事件**：用户报告 `s02-profile-guGfqa` 的 Electron “Uncaught Exception” 原生对话框，`ERR_MODULE_NOT_FOUND: Cannot find package 'zod' ... launcher/host-bus.mjs`。早期 static import 先于 Main handlers，Electron 默认 handler 弹框；因此早期失败 run 的崩溃路径不能宣称无窗口。至少一次对话框由用户确认，其他早期 run 未测得原生对话框次数。
+1. **用户可见无窗口红线事件**：用户报告 `scratch-launcher-profile-guGfqa` 的 Electron “Uncaught Exception” 原生对话框，`ERR_MODULE_NOT_FOUND: Cannot find package 'zod' ... launcher/host-bus.mjs`。早期 static import 先于 Main handlers，Electron 默认 handler 弹框；因此早期失败 run 的崩溃路径不能宣称无窗口。至少一次对话框由用户确认，其他早期 run 未测得原生对话框次数。
 2. zod **不是缺少依赖声明**：基线和当前独立 Host 包均声明 `zod@4.6.5`。隔离策略漏了 pnpm 逻辑链接读权限；policy diagnostic 显示真实 zod package 可读、其 sibling node_modules/zod 链接路径 EPERM。先补精确链接读权限；再加入无 application import 的 CJS bootstrap，先注册 uncaught/rejection handlers并绑定路径，再动态 import Main。最终安装解析证明和上述三条 LIVE 故障测试闭合这两个缺陷。
 3. targeted 初轮 9/32 PASS、23 FAIL：macOS tmpdir 的 `/var` 符号链接与 strict schema fixture（traceId/runId、多余字段、stream event 必要字段）。第二轮 30/32；随后 owner-exit fixture误取末尾 invalidation 当 result，31/32。修正正式 schema/查询后通过。前两轮原日志保留；第三轮原输出仅存在执行会话，不伪造独立原始日志。
 4. 第一次 LIVE preflight ENOENT：错误猜测 CLI 为 `glm/index.cjs`；官方路径是 `glm/zcode.cjs`。发生在 Electron fork 之前；修正后状态往返成功。
@@ -85,10 +85,10 @@
 
 ## NOT_RUN 与后继条件
 
-- **NOT_RUN(cannot-enforce)**：实际 provider 请求级拦截/计数、真实模型请求、S04 硬顶。只交付未来 dispatch seam 的合成验证，不能当正式安装证据。
-- 登录状态翻转、OAuth start/poll/callback/refresh、外部浏览器/deep-link 登录、凭据材料解析成功：NOT_RUN；S03 仍需原门禁与真实落点证明。
-- 真实 Host runtime/session/command/stream/owner 执行，额外真实 attachment、跨 Main authority、共享真实库或 GUI 写：NOT_RUN；S06 正式协调前保持 NO-GO。
-- 新下载/重新安装 Electron：NOT_RUN；本节安装插件到干净 profile，复用 S01 已安装的只读 Electron 41.0.3 并在每次 Main 启动核对版本。非 macOS/sandbox-exec 环境拒绝启动。
+- **NOT_RUN(cannot-enforce)**：实际 provider 请求级拦截/计数、真实模型请求、minimal-turn-usage 硬顶。只交付未来 dispatch seam 的合成验证，不能当正式安装证据。
+- 登录状态翻转、OAuth start/poll/callback/refresh、外部浏览器/deep-link 登录、凭据材料解析成功：NOT_RUN；conversation-runtime 仍需原门禁与真实落点证明。
+- 真实 Host runtime/session/command/stream/owner 执行，额外真实 attachment、跨 Main authority、共享真实库或 GUI 写：NOT_RUN；queue-guide-goal 正式协调前保持 NO-GO。
+- 新下载/重新安装 Electron：NOT_RUN；本节安装插件到干净 profile，复用 official-runtime-install 已安装的只读 Electron 41.0.3 并在每次 Main 启动核对版本。非 macOS/sandbox-exec 环境拒绝启动。
 - 所有真实 credential/Keychain item 读取、导出、登录 Keychain 写、session close、自动标题、connectivity tester、warmup、流恢复、付费调用：未执行。早期用户可见错误框是明确记录的历史违反，修复后的三个错误路径测试通过。
 
 ## 提交与交接

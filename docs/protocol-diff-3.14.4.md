@@ -1,4 +1,4 @@
-# Installed ZCode 3.14.4 declaration diff — S07
+# Installed ZCode 3.14.4 declaration diff — protocol-audit
 
 Checked 2026-10-05 against bridge `91f0c92`, `reference/ZCode@29628c9`, and the read-only installed `/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs`. The rebound root ledger supplies the 150 declaration identities. No installed JS was evaluated, imported or executed; no official Host/helper was launched. Source is a reference, the installed artifact is the target.
 
@@ -26,11 +26,11 @@ Read-only rerun from the parent workspace (already installed TypeScript; no pack
 ```sh
 node scripts/inspect-protocol.cjs --source reference/ZCode \
   --runtime /Applications/ZCode.app/Contents/Resources/glm/zcode.cjs \
-  --out .agent-work/tmp/s07/static-report.json \
+  --out .agent-work/tmp/protocol-audit/static-report.json \
   --typescript .agent-work/tmp/dsh-official/node_modules/typescript/lib/typescript.js
 ```
 
-The inline shape comparison, dependency bindings and real metadata render are retained as `../.agent-work/tmp/s07/shapes.cjs`, `shapes.json`, `real-check.mjs`, `real-check.json`, and `real-settings.html`. The declaration inspector's `DECLARATION_TABLES_MATCH` verdict alone checks keys/literals, so the command shapes were separately inspected below.
+The inline shape comparison, dependency bindings and real metadata render are retained as `../.agent-work/tmp/protocol-audit/shapes.cjs`, `shapes.json`, `real-check.mjs`, `real-check.json`, and `real-settings.html`. The declaration inspector's `DECLARATION_TABLES_MATCH` verdict alone checks keys/literals, so the command shapes were separately inspected below.
 
 ## Per-row differences
 
@@ -458,7 +458,7 @@ let result=m.object({contextId:m.string().trim().min(1)}).strict();
 
 ## Bridge naming and implementation differences
 
-The absence of source/installed declaration differences does **not** mean every declaration is currently routed. Bridge facade aliases predate S07 and are intentional translation points, separate from the source/installed audit:
+The absence of source/installed declaration differences does **not** mean every declaration is currently routed. Bridge facade aliases predate protocol-audit and are intentional translation points, separate from the source/installed audit:
 
 | Declaration wire | Bridge peer alias → official Host facade |
 |---|---|
@@ -470,11 +470,11 @@ The absence of source/installed declaration differences does **not** mean every 
 
 Wire spellings above match source and installed. The ledger binds the string wire, while the **source property's symbolic name** may be different (for example `pluginsOverview`, `pluginsCancelOperation`, `pluginsResetConfig`). These are property versus value identities, not protocol renames. [Host parity routing](../packages/host/launcher/parity.mjs) is the authoritative bridge translation table.
 
-The current implementation ledger has **110 mandatory rows: 77 implemented, 31 partial, 2 unimplemented**, each with its approved owner and code/test evidence. Partial includes remaining old helpers whose current launcher carrier denies the request, not merely unfinished live verification. [Coverage status and evidence](../PROTOCOL-COVERAGE.md#s07-实现证据索引) records each gap. S07 made no feature, route, isolation, compatibility-policy or verified-tuple changes.
+The current implementation ledger has **110 mandatory rows: 77 implemented, 31 partial, 2 unimplemented**, each with its approved owner and code/test evidence. Partial includes remaining old helpers whose current launcher carrier denies the request, not merely unfinished live verification. [Coverage status and evidence](../PROTOCOL-COVERAGE.md#protocol-coverage-index) records each gap. protocol-audit made no feature, route, isolation, compatibility-policy or verified-tuple changes.
 
 ## Upgrade exercise and current installed check
 
-[Mock tests](../tests/s07-upgrade.test.mjs) pass **4/4** through production BridgeHost status projection and existing React components, with injected inspection and process fixtures:
+[Mock tests](../tests/protocol-upgrade.test.mjs) pass **4/4** through production BridgeHost status projection and existing React components, with injected inspection and process fixtures:
 
 1. Baseline 3.14.4 tuple → `verified`; version visible, no upgrade/identity/core warning, details not forced open.
 2. Same 3.14.4/build, simulated SHA-256 `000…000` → `identity-mismatch`, `verified=false`, `digestMatches=false`; the existing details open and show “unverified build or digest”. Digest drift alone does not fabricate core incompatibility.
@@ -483,10 +483,10 @@ The current implementation ledger has **110 mandatory rows: 77 implemented, 31 p
 
 Read-only real check: current installed plist/build/digest exactly matches `VERIFIED_VERSIONS`; `compatibilityProjection` returns **verified / exact-verified-tuple**, `digestMatches=true`, `highestVerified=3.14.4`, `bannerRequired=false`. Rendering the **production** version notice and settings components with this measured tuple displays 3.14.4 and no identity/upgrade warning. This is an offline render over real static installation facts: no connected browser/Host health or new live runtime acceptance is claimed. Calling `inspectInstallation` would launch the Helper probe, so the check read only plist + bundle bytes instead.
 
-S08 still owns npm-installed official DSH read-only browser acceptance, human write checklist, mandatory partial/unimplemented reconciliation, broader schemas/row variants outside this declaration comparison, and cross-process arbitration evidence. Approved D3/D5 deferrals remain unchanged; no delete entry was added. Real model calls, official commands and protected Host launches in S07: **0**.
+closure-acceptance still owns npm-installed official DSH read-only browser acceptance, human write checklist, mandatory partial/unimplemented reconciliation, broader schemas/row variants outside this declaration comparison, and cross-process arbitration evidence. Approved deletion/deferral decisions remain unchanged; no delete entry was added. Real model calls, official commands and protected Host launches in protocol-audit: **0**.
 
 ## Recorded suite and boundaries
 
-Final `npm test`: **444 tests / 444 pass / 0 fail / 0 skipped / 0 cancelled**, Node **v26.5.0**, npm **11.17.0** (`../.agent-work/tmp/s07/full-suite-final.log`). Initial full run: **444 tests / 443 pass / 1 fail / 0 skipped**; the existing S06 readPresentation ledger test required Owner to be the final Markdown column. It now asserts the same exposure/GUI/mandatory/owner values by column, retaining the OldOwner/no-deferral assertions while allowing S07's appended status/evidence columns. No production behavior changed.
+Final `npm test`: **444 tests / 444 pass / 0 fail / 0 skipped / 0 cancelled**, Node **v26.5.0**, npm **11.17.0** (`../.agent-work/tmp/protocol-audit/full-suite-final.log`). Initial full run: **444 tests / 443 pass / 1 fail / 0 skipped**; the existing settings-panel readPresentation ledger test required Owner to be the final Markdown column. It now asserts the same exposure/GUI/mandatory/owner values by column, retaining the OldOwner/no-deferral assertions while allowing protocol-audit's appended status/evidence columns. No production behavior changed.
 
 Both root/bridge coverage copies are byte-identical. All original 150 declaration/source-line/OldOwner/exposure/GUI/mandatory/newOwner tuples are unchanged; 110 mandatory statuses are annotated. Both reference repositories have empty porcelain. Sandbox/HOME/process/isolation owners and installed artifact remain untouched. No push.

@@ -2,12 +2,12 @@ Host 复用有界 LIVE 探测报告（2026-10-03，America/Edmonton）
 
 **Phase 1 结论：结构与无窗口启动可行；隔离环境明确没有账号来源；真实模型鉴权仍未验证。** 本报告只提供证据，不采纳路线、不宣告 R15 合规或 M0 解锁。付费模型调用 **0/1**，第 6 项 **NOT_RUN**。
 
-任务权威为 `.agent-work/tasks/HOST-REUSE-PROBE.md`；已读 AUTH-SOURCE-RESEARCH（E06/E09/E22/B02）、S01-PROBES、PLAN-FULL S01/B05。reference/ZCode 固定 HEAD `29628c9acdb81b703bbd4080c207a0e7ce5e276e`；使用安装包 3.14.4，不用 OSS Host 替代制品。工作产物全部留在本 scratch。
+任务权威为 `.agent-work/tasks/HOST-REUSE-PROBE.md`；已读 AUTH-SOURCE-RESEARCH（E06/E09/E22/B02）、official-runtime-install-PROBES、PLAN-FULL official-runtime-install/B05。reference/ZCode 固定 HEAD `29628c9acdb81b703bbd4080c207a0e7ce5e276e`；使用安装包 3.14.4，不用 OSS Host 替代制品。工作产物全部留在本 scratch。
 
 **执行环境与边界**
 
 - macOS 26.6.2 / 25G83 / arm64；App 3.14.4 / build 3.14.4.7912。
-- 自建 Main：npm `electron@41.0.3`，LIVE Electron 41.0.3 / Node 24.14.0 / arm64，与 S01 官方 helper 版本匹配。
+- 自建 Main：npm `electron@41.0.3`，LIVE Electron 41.0.3 / Node 24.14.0 / arm64，与 official-runtime-install 官方 helper 版本匹配。
 - ASAR SHA-256：`232e913ea13d60bd0ecc86bf9f2f145328809608fe4d48e76685d61a8076aef0`。
 - 官方 cjs SHA-256：`fad4c35c4c36ec210d8a06d3fa0e77de23c8545e2eb6ff90aea1eb38d1e6275f`。
 - 提取 Host 入口 SHA-256：`c143ce16c61ad1d01d8cbfca0a0e2f506aa5afa3858db3f088e69ecf11d588d3`，1,498,022 B。ASAR packed 文件逐一验证其内置 integrity；共提取 27,060 文件，320,109,886 B。未修改 Host/index/chunks，未写回 App。

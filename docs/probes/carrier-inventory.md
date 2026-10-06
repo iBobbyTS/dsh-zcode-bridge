@@ -1,4 +1,4 @@
-# S01 carrier inventory
+# official-runtime-install carrier inventory
 
 Source: ZCode 29628c9; official cjs digest matched fad4c35…6275f. This is carrier classification, not live coverage. CLI dispatch=server.ts:461–714; reverse consumers=zcodeAgentService.ts. Handler result schemas live beside each method in shared/zcode-protocol/index.ts or v4/transport.ts. GUI consumers use IZCodeAgentService/connection scope, not raw CLI names.
 
@@ -110,7 +110,7 @@ Source: ZCode 29628c9; official cjs digest matched fad4c35…6275f. This is carr
 | v4 | `v4/commands/query` | stdio (CLI dispatch, STATIC) |
 | v4 | `v4/command` | stdio (CLI dispatch, STATIC) |
 
-`helloConversationV4` / `initializeConversationV4`: host-only service RPC → zcodeAgentConnectionScope.ts:668–676 → ui/v4/agentV4ConnectionHandshake.ts:27–35. They are not CLI method names. Account login/logout/credential resolution are Host service capabilities, not inferred from provider/updateAccountConfig. The controller declarations have no CLI cases; -32601 probes recorded in S01-PROBES.
+`helloConversationV4` / `initializeConversationV4`: host-only service RPC → zcodeAgentConnectionScope.ts:668–676 → ui/v4/agentV4ConnectionHandshake.ts:27–35. They are not CLI method names. Account login/logout/credential resolution are Host service capabilities, not inferred from provider/updateAccountConfig. The controller declarations have no CLI cases; -32601 probes recorded in official-runtime-install-PROBES.
 
 ## Notification carriers
 

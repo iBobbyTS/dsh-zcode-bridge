@@ -38,7 +38,7 @@
   "checks": [
     { "id": "bridge-node", "result": "PASS", "note": "node --test tests/*.test.mjs" },
     { "id": "bridge-dsh-integration", "result": "PASS", "note": "vitest dsh-vitest.config.mjs" },
-    { "id": "profile-roundtrip", "result": "PASS", "note": "scripts/capture-s16.ts real plugin-manager carrier" },
+    { "id": "profile-roundtrip", "result": "PASS", "note": "scripts/capture-installable-bundle.ts real plugin-manager carrier" },
     { "id": "real-gui-mounted", "result": "NOT_RUN", "note": "packaged GUI requires user cooperation; jsdom production mount used" },
     { "id": "official-auth", "result": "BLOCKED", "note": "0 model calls; no auth source" }
   ],

@@ -1,8 +1,8 @@
-# S02.B HANDOFF — 创建选择、全局默认、logo 和能力可见性
+# creation-defaults-visibility HANDOFF — 创建选择、全局默认、logo 和能力可见性
 
 > 归档说明：本文件由主 agent 依任务包约定从 impl_std worker（external agy / gemini-3.8-flash / high / yolo，agent_id 10000539）的 final_text 原文写入；worker 对 bridge 仓只读。worker 自评 COMPLETE。
 
-- **Feature**: `dsh-zcode-bridge`；**Section**: `S02.B`；**Implementer**: `impl_std`（agy/gemini-3.8-flash/high/yolo；同路由首次派发 build 模式因 headless 无法授权 read_file 被 RESULT_INVALID，本任务为有界重试）
+- **Feature**: `dsh-zcode-bridge`；**Section**: `creation-defaults-visibility`；**Implementer**: `impl_std`（agy/gemini-3.8-flash/high/yolo；同路由首次派发 build 模式因 headless 无法授权 read_file 被 RESULT_INVALID，本任务为有界重试）
 - **DSH Branch**: `feat/zcode-runtime-bridge`；**Base**: `3055d244b8`；**Target HEAD**: `32ad52766a`（4 atomic commits）
 - **Bridge Repo**: read-only, untouched（HEAD 仍 `34b6d46`）
 
@@ -24,7 +24,7 @@
 - `tests/runtime-session.client.spec.tsx`：9 测试（B02 路由不变式、同名 ID 隔离、地址守卫与深冻结、恢复不读默认、真实 Producer 场景、受限创建不降级、Provider 卸载、无障碍 Logo、设置行渲染）。
 - README 双语 + i18n 元数据满足 pairing 与 100 字 Summary 门禁。
 
-## 2. S02.A 六行消费约束逐条落实
+## 2. runtime-session-sources 六行消费约束逐条落实
 
 | # | 约束 | 落实 | 结果 |
 |---|---|---|---|
@@ -39,7 +39,7 @@
 
 | 检查 | 命令 | Exit | 范围 |
 |---|---|---|---|
-| B02/S02.B 单测 | vitest run runtime-session.client.spec.tsx | 0 | 9/9 PASS |
+| B02/creation-defaults-visibility 单测 | vitest run runtime-session.client.spec.tsx | 0 | 9/9 PASS |
 | native 基线回归 | vitest run session-controller/tests ui-session/tests | 0 | 45 文件 943/943（934 基线+9 新增） |
 | bridge 集成 | bridge 仓只读运行 dsh-vitest.config | 0 | 14/14 零回归 |
 | 类型编译 | tsc -b tsconfig.client.json | 0 | 0 错误 |
@@ -50,7 +50,7 @@
 
 ## 4. NOT_RUN
 
-- 真实 packaged/desktop GUI 端到端：NOT_RUN（官方授权/偏好回调阻塞=S01 遗留；组件级 jsdom + 真实 Producer/Controller 已覆盖；图形级验收归后续正式联调）。
+- 真实 packaged/desktop GUI 端到端：NOT_RUN（官方授权/偏好回调阻塞=official-runtime-install 遗留；组件级 jsdom + 真实 Producer/Controller 已覆盖；图形级验收归后续正式联调）。
 
 ## 5. 提交
 
@@ -63,11 +63,11 @@ d7bf85f0e2 feat(session-controller): export runtime settings and address types
 
 ## 6. 自评
 
-**COMPLETE**（S02.B 范围内；worker 不做父级 admission）。
+**COMPLETE**（creation-defaults-visibility 范围内；worker 不做父级 admission）。
 
 ---
 
-## S02.B CODE 评审修复记录（REPAIR，2026-10-02；由修复 worker agent_id 10000540 final_text 原文归档，主 agent 机械写入）
+## creation-defaults-visibility CODE 评审修复记录（REPAIR，2026-10-02；由修复 worker agent_id 10000540 final_text 原文归档，主 agent 机械写入）
 
 前次交付的"真实 Producer 已覆盖"表述经独立评审核实为过度（实际用手写假件，即 CB-A2），特此纠正。修复提交（DSH 仓，基线 32ad52766a）：`07d087967b`（fix：runtimeSessions 反应式解析 + 契约去重，闭合 CB-A1/CB-A3）、`18a844f4d5`（feat：创建选择器 + 侧栏/Header logo 接线，闭合 CB-A4）、`19026fc161`（test：真实 Producer + 动态发现 + 持久化往返，闭合 CB-A2）。
 
@@ -76,4 +76,4 @@ d7bf85f0e2 feat(session-controller): export runtime settings and address types
 - **CB-A3**：删除契约常量/parser 复制，统一从 `@deepseek-ai/dsh-api-session-controller/client` import；store 重载/写入以 `isSessionRuntime` 严格守卫，损坏/未知值显式抛错，不静默落 native。
 - **CB-A4**：`RuntimeCreationPicker`（D1/Z1 选择、默认徽标、受限禁用 + 三 key 原因映射）；`SessionRowRuntimeLogo`（`sidebar.session.row.leading`）与 `SessionHeaderRuntimeLogo`（`conversation.session.header.actions`）slot 接线；i18n 归属合规（verify-client-ui-i18n 1003 文件 PASS）。
 
-验证速查：S02.B spec 15/15、native 回归 949/949（934 基线+15）、bridge 集成 14/14、tsc（含全量聚合）、oxlint 5181 文件 0 警告、verify-client-ui-i18n、test:docs 21/21、git diff --check 全 PASS；主 agent 本地复跑 15/15 一致。packaged GUI 级仍 NOT_RUN（S01 auth 前提）。本记录不自行宣称评审闭合。
+验证速查：creation-defaults-visibility spec 15/15、native 回归 949/949（934 基线+15）、bridge 集成 14/14、tsc（含全量聚合）、oxlint 5181 文件 0 警告、verify-client-ui-i18n、test:docs 21/21、git diff --check 全 PASS；主 agent 本地复跑 15/15 一致。packaged GUI 级仍 NOT_RUN（official-runtime-install auth 前提）。本记录不自行宣称评审闭合。

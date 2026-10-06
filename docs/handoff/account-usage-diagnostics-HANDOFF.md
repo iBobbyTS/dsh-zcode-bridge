@@ -1,8 +1,8 @@
-# S14 — 正式账号可用入口、usage/诊断与辅助生成
+# account-usage-diagnostics — 正式账号可用入口、usage/诊断与辅助生成
 
 ## 身份、范围与交付状态
 
-- TASK：`/Users/ibobby/Projects/dsh-zcode-acp/.agent-work/tasks/S14-TASK.md`，完整先读后执行；合同 PLAN-FULL S14 + R08/R14/R15/R18/R22。模式 EXECUTE_WITH_COMMIT。
+- TASK：`/Users/ibobby/Projects/dsh-zcode-acp/.agent-work/tasks/account-usage-diagnostics-TASK.md`，完整先读后执行；合同 PLAN-FULL account-usage-diagnostics + R08/R14/R15/R18/R22。模式 EXECUTE_WITH_COMMIT。
 - bridge 起点 `4c07dd8`，分支 `feat/zcode-runtime-bridge`；DSH 克隆 `/Users/ibobby/Projects/dsh-zcode-acp/dsh`（HEAD `21fb059`）**本期无任何改动**（消费点沿用 bridge 自带 client 插件与既有 session-area seam，未触及 DSH 产品/测试文件），故无 DSH 提交。reference/ZCode（`29628c9a`）与官方 App 只读。
 - 当前 worker 的 requested executor/model/effort 与 observed 记录在本会话不可见，记 UNKNOWN，由主调度保留真实 dispatch。未启动子代理；未执行独立 A/B 或父节 admission。
 - 自评 **COMPLETE（受限范围内）**：usage/session usage/process diagnostics 在真实 headless（0 模型调用）实测可达并真实往返；账号面经源码 + 真实 -32601 证实**无 app-server 载体**，如实呈现 UNKNOWN、不实现登录入口；辅助生成面按模型触发如实 gated、从不调用。fixtures 全覆盖、回归全绿。
@@ -10,7 +10,7 @@
 
 ## 首先执行的真实 headless 可达性检查（TASK 第 1 条）
 
-先执行 `node scripts/capture-s14.mjs /Applications/ZCode.app`（0 模型调用；隔离 HOME/workspace；官方 3.14.4.7912，cjs SHA-256 `fad4c35c…6275f`），再实现测试。原始证据 `tests/fixtures/s14/official.json`、[capture log](../probes/checks/s14-capture.log)；生产 `InsightsClient` / `V4Conversation.sessionUsage()` 走同一 peer 的 oracle 记在 `official.productionOracle`。
+先执行 `node scripts/capture-account-usage-diagnostics.mjs /Applications/ZCode.app`（0 模型调用；隔离 HOME/workspace；官方 3.14.4.7912，cjs SHA-256 `fad4c35c…6275f`），再实现测试。原始证据 `tests/fixtures/account-usage-diagnostics/official.json`、[capture log](../probes/checks/account-usage-diagnostics-capture.log)；生产 `InsightsClient` / `V4Conversation.sessionUsage()` 走同一 peer 的 oracle 记在 `official.productionOracle`。
 
 | 面 | 真实结果（0 模型调用） | 判定 |
 |---|---|---|
@@ -19,7 +19,7 @@
 | workspace usage `v4/usage/stats {range:'all'}` | 真实官方快照（全 0） | **可达**（v4 载体） |
 | session usage `v4/conversation/usage {sessionId}` | 真实官方 `zcodeTaskTokenUsageResult`（隔离 draft 全 0） | **可达**（scoped；v4 载体，legacy `session/usage` @deprecated） |
 | process 诊断 `process/childProcesses` | 真实 `{processes:[]}`（无 MCP 子进程） | **可达**（真实空态） |
-| 辅助生成取消 `workspace/cancelGenerateText {operationId:'s14-never-created'}` | 真实 `{operationId,cancelled:false}` | **可达**（纯 map miss，非模型） |
+| 辅助生成取消 `workspace/cancelGenerateText {operationId:'account-usage-diagnostics-never-created'}` | 真实 `{operationId,cancelled:false}` | **可达**（纯 map miss，非模型） |
 | 辅助生成 `workspace/generateText` | **未调用**（触发模型） | **gated**（红线 0 模型） |
 | 连通性测试 `provider/testModelConnectivity` | **未调用**（触发模型） | **gated** |
 | `process/resourceSample` 通知 | 采样器首周期只建基线、60s 后才发；本次 capture 收到 **0** 条 | 可达通知面，样本按时到达才有；无样本如实显示“尚未收到” |
@@ -51,13 +51,13 @@
 4. **Client `packages/client/insights.mjs`**：`InsightsStore` 仅作官方事实的显示镜像；refresh 逐节读 `usageStats`/`childProcesses`/`state`，单节失败只标该节不可用并保留其它节；分节错误映射；`setRange` 仅接受官方三档；连接代际重置清快照，迟到结果不复活。
 5. **Client 视图 `packages/client/insights-view.jsx`**：账号（UNKNOWN+原因+登录不可用+说明）、用量（三档区间、空态与数字/单位）、诊断（MCP 子进程列表/空态、最新进程样本）、辅助生成三面 gated 文本；`SessionUsage` 按需按钮触发（打开会话不发额外查询）。
 6. **入口 `client.jsx` / `directory-view.jsx` / `remote-conversation.mjs`**：新增 `zcode-insights` 主面板与侧栏入口、locale、`RemoteConversation.sessionUsage`。
-7. **回归/探测**：`scripts/capture-s14.mjs`、`scripts/make-s14-fixtures.mjs`、`tests/s14-insights.test.mjs`（9）、`tests/s14.dsh.spec.ts`（9）。
+7. **回归/探测**：`scripts/capture-account-usage-diagnostics.mjs`、`scripts/make-account-usage-diagnostics-fixtures.mjs`、`tests/account-usage-diagnostics.test.mjs`（9）、`tests/account-usage-diagnostics.dsh.spec.ts`（9）。
 
 ## Fixtures 与真实性
 
 | Fixture | 真实性 / 注入 |
 |---|---|
-| `tests/fixtures/s14/official.json` | 官方真实采集（隔离 HOME/workspace，paidModelCalls=0）；账号 -32601、usage/session-usage/child-processes/cancel-generate 真实往返。 |
+| `tests/fixtures/account-usage-diagnostics/official.json` | 官方真实采集（隔离 HOME/workspace，paidModelCalls=0）；账号 -32601、usage/session-usage/child-processes/cancel-generate 真实往返。 |
 | `usage.json` | `emptyUsage`/`emptySessionUsage`/`childProcesses` **真实空态**；`nonEmptyUsage`/`nonEmptySessionUsage`/`childProcessesNonEmpty`/`resourceSample` **注入并用官方 zod schema 校验**（隔离 0 模型只能观测空库），provenance 逐项标注。 |
 | `account.json` | 真实 `productionOracle.account`/`gated` + 真实 `account/status` -32601 记录。 |
 | `unknown.json` | 按官方 schema 注入未来账号状态/未知 kind，用于 fail-safe。 |
@@ -75,17 +75,17 @@
 
 | Check | 实跑结果 |
 |---|---|
-| `node scripts/capture-s14.mjs /Applications/ZCode.app` | **PASS**，0 models；account -32601、v4/usage/stats、v4/conversation/usage、child-processes、cancel-generate 真实；resourceSamples=0；[log](../probes/checks/s14-capture.log)。 |
-| CA14 修复复测：`node scripts/capture-s14.mjs /Applications/ZCode.app`（S14 CODE A 回归） | **PASS**，0 models；三处 method 均为 v4（`v4/usage/stats`×2、`v4/conversation/usage`），与 legacy 空态结果逐字段一致；[log](../probes/checks/s14-fix-capture.log)。 |
-| `node scripts/make-s14-fixtures.mjs` | **PASS**；注入值经官方 schema 校验；[log](../probes/checks/s14-fixtures.log)。 |
-| `node --test tests/s14-insights.test.mjs` | **9/9 PASS**。 |
-| `npm test` | **172/172 PASS**，基线 163；[log](../probes/checks/s14-node.log)。 |
-| bridge DSH Vitest 全套 `node ../dsh/node_modules/vitest/vitest.mjs run --config scripts/dsh-vitest.config.mjs` | **149/149 PASS**，14 文件，基线 140；[log](../probes/checks/s14-integration.log)。 |
-| DSH `pnpm_config_verify_deps_before_run=false pnpm exec vitest run packages/api/session-controller/tests packages/client/ui-session/tests packages/client/ui-workspace/tests` | **1373/1373 PASS**，60 文件；[log](../probes/checks/s14-native.log)。DSH 源码不变。 |
-| DSH `pnpm run typecheck:contracts-ready` | PASS（exit 0）；[log](../probes/checks/s14-types.log)。 |
-| DSH `pnpm run build` | PASS，355 client artifacts，既有 chunk-size warning；[log](../probes/checks/s14-dsh-build.log)。 |
-| bridge `npm run build` | PASS；[log](../probes/checks/s14-build.log)。 |
-| changed-file oxlint 1.76.0 / `git diff --check` | **0 warning 0 error / PASS**；[lint](../probes/checks/s14-lint.log)、[whitespace](../probes/checks/s14-whitespace.log)。 |
+| `node scripts/capture-account-usage-diagnostics.mjs /Applications/ZCode.app` | **PASS**，0 models；account -32601、v4/usage/stats、v4/conversation/usage、child-processes、cancel-generate 真实；resourceSamples=0；[log](../probes/checks/account-usage-diagnostics-capture.log)。 |
+| CA14 修复复测：`node scripts/capture-account-usage-diagnostics.mjs /Applications/ZCode.app`（account-usage-diagnostics CODE A 回归） | **PASS**，0 models；三处 method 均为 v4（`v4/usage/stats`×2、`v4/conversation/usage`），与 legacy 空态结果逐字段一致；[log](../probes/checks/account-usage-diagnostics-fix-capture.log)。 |
+| `node scripts/make-account-usage-diagnostics-fixtures.mjs` | **PASS**；注入值经官方 schema 校验；[log](../probes/checks/account-usage-diagnostics-fixtures.log)。 |
+| `node --test tests/account-usage-diagnostics.test.mjs` | **9/9 PASS**。 |
+| `npm test` | **172/172 PASS**，基线 163；[log](../probes/checks/account-usage-diagnostics-node.log)。 |
+| bridge DSH Vitest 全套 `node ../dsh/node_modules/vitest/vitest.mjs run --config scripts/dsh-vitest.config.mjs` | **149/149 PASS**，14 文件，基线 140；[log](../probes/checks/account-usage-diagnostics-integration.log)。 |
+| DSH `pnpm_config_verify_deps_before_run=false pnpm exec vitest run packages/api/session-controller/tests packages/client/ui-session/tests packages/client/ui-workspace/tests` | **1373/1373 PASS**，60 文件；[log](../probes/checks/account-usage-diagnostics-native.log)。DSH 源码不变。 |
+| DSH `pnpm run typecheck:contracts-ready` | PASS（exit 0）；[log](../probes/checks/account-usage-diagnostics-types.log)。 |
+| DSH `pnpm run build` | PASS，355 client artifacts，既有 chunk-size warning；[log](../probes/checks/account-usage-diagnostics-dsh-build.log)。 |
+| bridge `npm run build` | PASS；[log](../probes/checks/account-usage-diagnostics-build.log)。 |
+| changed-file oxlint 1.76.0 / `git diff --check` | **0 warning 0 error / PASS**；[lint](../probes/checks/account-usage-diagnostics-lint.log)、[whitespace](../probes/checks/account-usage-diagnostics-whitespace.log)。 |
 
 ## NOT_RUN、后续契约与自评
 

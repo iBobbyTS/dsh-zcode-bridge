@@ -1,9 +1,9 @@
 # 归档说明
 
-本文件为『正式 auth 来源有界研究』报告原文（研究 worker：external codex/gpt-6.1-sol/high，agent_id 10000544，session 01a10106-719f-7903-8ba9-be4e90fb1c71，2026-10-03 COMPLETED）。研究全程只读（未联网、未访问 ~/.zcode、未操作 GUI、未启动 runtime、0 模型调用），报告经 final_text 交付，由主 agent 机械归档。判定：**BLOCKED-NEEDS-DECISION**——S03/M0"可运行"部分的解锁路径需要用户决策（见 Q4 选项表）。
+本文件为『正式 auth 来源有界研究』报告原文（研究 worker：external codex/gpt-6.1-sol/high，agent_id 10000544，session 01a10106-719f-7903-8ba9-be4e90fb1c71，2026-10-03 COMPLETED）。研究全程只读（未联网、未访问 ~/.zcode、未操作 GUI、未启动 runtime、0 模型调用），报告经 final_text 交付，由主 agent 机械归档。判定：**BLOCKED-NEEDS-DECISION**——conversation-runtime/M0"可运行"部分的解锁路径需要用户决策（见问题四选项表）。
 
 
-# 正式 auth 来源有界研究报告：S03/M0 解锁判定
+# 正式 auth 来源有界研究报告：conversation-runtime/M0 解锁判定
 
 ## 执行摘要（8 行）
 
@@ -22,7 +22,7 @@
 |---|---|
 | `@29628c9` | reference/ZCode（29628c9acdb81b703bbd4080c207a0e7ce5e276e） |
 | `@662c30be` | 本地 origin/feat/ui-plugin（662c30bea4e833acaacbfb745a65eb09c23d55f8） |
-| `@722a8b5` | 读取 S01 文档时 bridge HEAD |
+| `@722a8b5` | 读取 official-runtime-install 文档时 bridge HEAD |
 | `B-CJS` | App 3.14.4 glm/zcode.cjs（sha256 fad4c35c…d1e6275f） |
 | `B-ASAR` | App 3.14.4 app.asar（sha256 232e913ea13d60bd0ecc86bf9f2f145328809608fe4d48e76685d61a8076aef0） |
 
@@ -52,11 +52,11 @@
 | E20 | plugin-ui-bridge/instanceAccounts.ts:5–38@662c30be；packages/services/src/node.ts:1682–1689@662c30be | accountContext 来自 Host 账号事实哈希，用于实例绑定及撤销 |
 | E21 | packages/ui/src/plugin-ui/domain/buildPluginUiHostCapabilities.ts:9–50@662c30be；…/methods/sample-model.ts:67–87@662c30be | 页面能力无账号解析器；sampling 继续调用原 runtime headers 刷新 |
 | E22 | packages/desktop/src/host/hostDatabaseStartup.ts:45–88@29628c9；host/index.ts:2780–2800,2824–2852@29628c9 | 自建 Host 包装会进入官方存储准备、服务装配及 settings migration 路径 |
-| E23 | dsh-zcode-bridge/docs/probes/S01-PROBES.md:23–35,53–55@722a8b5；S01-HANDOFF.md:30–36,60–70@722a8b5 | 既有 -32601 探测、auth source 未验证、模型 auth LIVE 未运行 |
+| E23 | dsh-zcode-bridge/docs/probes/official-runtime-install-probes.md:23–35,53–55@722a8b5；official-runtime-install-HANDOFF.md:30–36,60–70@722a8b5 | 既有 -32601 探测、auth source 未验证、模型 auth LIVE 未运行 |
 | B01 | B-CJS 静态字符串/代码位置 | 方法字符串偏移 787239；实际 auth requestClient 调用附近 14434416；反向请求准入错误附近 14667785 |
 | B02 | B-ASAR 文件表及 package.json | version 3.14.4、main out/main/index.js；存在 out/host/index.js（1,498,022B），未发现独立产品 server/core CLI 入口 |
 
-## Q1：auth 反向回调载体与注册者资格（结论）
+## 问题一：auth 反向回调载体与注册者资格（结论）
 
 **CLI stdio 可以由外部进程应答。源码推翻了"auth reverse callback 在 CLI stdio 不可达"的概括。**
 
@@ -74,25 +74,25 @@
 
 精确边界：应答=向管道写 {id,result|error}（不是调用同名 request method）；成功需 headersApplied:true+requestAuth 对象；180 秒时限；response 绕过普通请求队列防死锁；**requestAuth.apiKey 是官方 wire 字段（Start Plan JWT/Individual/Team 材料也装入该字段），不能因字段名判为 API-key fallback**。
 
-**对 S01 记录的修正**（研究建议，主 agent 已采纳为 PLAN 纠偏）：controller/hello 与账号示例 -32601 仍成立（只排除那些主动 request 方法）；应修正为——"CLI stdio 的 auth 反向请求与应答在源码及安装包中可达；现有 bridge 缺少符合合同的正式 auth 材料来源，真实模型鉴权尚未验证。"不改变 S01 PARTIAL / M0 未完成。
+**对 official-runtime-install 记录的修正**（研究建议，主 agent 已采纳为 PLAN 纠偏）：controller/hello 与账号示例 -32601 仍成立（只排除那些主动 request 方法）；应修正为——"CLI stdio 的 auth 反向请求与应答在源码及安装包中可达；现有 bridge 缺少符合合同的正式 auth 材料来源，真实模型鉴权尚未验证。"不改变 official-runtime-install PARTIAL / M0 未完成。
 
-## Q2：正式外部宿主路径（结论）
+## 问题二：正式外部宿主路径（结论）
 
-**Q2(a) 协议应答可行；正式官方账号来源未找到。** 账号解析器明确是 Local Host 进程内能力：getAccountRequestAuthService 从 WeakMap 取实例，注释明确"不随 ServiceCollection 暴露到通用 RPC Channel"（E06）；无远程注册/材料解析频道。资格边界来自装配与进程内持有，不是 GUI/签名身份检查——"代码可构造性"与"合同允许的产品接入"是两个结论。
+**问题二(a) 协议应答可行；正式官方账号来源未找到。** 账号解析器明确是 Local Host 进程内能力：getAccountRequestAuthService 从 WeakMap 取实例，注释明确"不随 ServiceCollection 暴露到通用 RPC Channel"（E06）；无远程注册/材料解析频道。资格边界来自装配与进程内持有，不是 GUI/签名身份检查——"代码可构造性"与"合同允许的产品接入"是两个结论。
 
-**Q2(b) 独立服务客户端路径存在；官方桌面 Host 的第三方附加入口未找到。** 桌面拓扑：Main → window-scoped Host utilityProcess → Main 转移 MessagePort → Host service → 自有 app-server NDJSON stdio（E08–E09）。ChannelServer 不做 TCP/Unix listen；桌面 reload/remote attachment 端口均由官方 Main 新建转移，非外部可连端点。独立服务入口正式条件：通用 HTTP server（默认 3030、可配 ZCODE_SERVER_AUTH_TOKEN）、Trusted Host WS（一次性 capability）、zcode-server-cli Core（loopback-only）、server stdio——这些客户端使用所在 server 的账号 authority，不向官方 GUI 请求 auth 材料。**安装包 ASAR 无独立 server-core/server-cli/zcode-server 启动制品（B02）**，不能把"源码有 HTTP server"当成"当前桌面 App 对外监听"。
+**问题二(b) 独立服务客户端路径存在；官方桌面 Host 的第三方附加入口未找到。** 桌面拓扑：Main → window-scoped Host utilityProcess → Main 转移 MessagePort → Host service → 自有 app-server NDJSON stdio（E08–E09）。ChannelServer 不做 TCP/Unix listen；桌面 reload/remote attachment 端口均由官方 Main 新建转移，非外部可连端点。独立服务入口正式条件：通用 HTTP server（默认 3030、可配 ZCODE_SERVER_AUTH_TOKEN）、Trusted Host WS（一次性 capability）、zcode-server-cli Core（loopback-only）、server stdio——这些客户端使用所在 server 的账号 authority，不向官方 GUI 请求 auth 材料。**安装包 ASAR 无独立 server-core/server-cli/zcode-server 启动制品（B02）**，不能把"源码有 HTTP server"当成"当前桌面 App 对外监听"。
 
-**Q2(c) 当前 app-server 无外部账号解析器声明接口。** Provider 路径 env 只定位配置；runtime config env 无账号解析器键；ZCODE_CREDENTIAL_SECRET 属官方凭据加密 adapter；provider schema access 仅 API-key 两种 + 固定 zhipu-account（无外部回调地址/模块/命令字段）；provider/updateAccountConfig 只同步 overlay/状态；CLI 参数无 auth-source/standalone 开关；RunZCodeProtocolAgentOptions 无账号 source；官方 standalone login/Prompt 不能让 app-server 自动消费其账号 store。
+**问题二(c) 当前 app-server 无外部账号解析器声明接口。** Provider 路径 env 只定位配置；runtime config env 无账号解析器键；ZCODE_CREDENTIAL_SECRET 属官方凭据加密 adapter；provider schema access 仅 API-key 两种 + 固定 zhipu-account（无外部回调地址/模块/命令字段）；provider/updateAccountConfig 只同步 overlay/状态；CLI 参数无 auth-source/standalone 开关；RunZCodeProtocolAgentOptions 无账号 source；官方 standalone login/Prompt 不能让 app-server 自动消费其账号 store。
 
-## Q3：feat/ui-plugin 官方方向（结论）
+## 问题三：feat/ui-plugin 官方方向（结论）
 
 新增宿主—插件接口（页面桥、sampling、沙箱、Gen UI），**没有新增插件模型账号 API、auth provider 注册器或外部宿主账号桥**；sampling 透传到已存在 Agent 并调用原 runtime headers 刷新——消费已有鉴权，不提供鉴权来源。instanceAccounts 的 accountContext 是 Host 账号事实哈希（实例绑定/撤销用），instance token 不能回应模型 auth challenge。核心 auth/server 路径 29628c9..662c30be diff 零修改。**单纯等待该分支发布不会消除 blocker。**
 
-## Q4：判定与人工选项（研究 worker 原文）
+## 问题四：判定与人工选项（研究 worker 原文）
 
 ### 判定：BLOCKED-NEEDS-DECISION
 
-对象是当前官方安装包、现有接入方向和 R01/R12/R15 合同下的 S03/M0 可运行部分。理由：双向协议已存在且外部 stdio 应答可行（阻塞不在 framing/carrier）；官方账号 producer 在 Host 内部未作通用 RPC source；当前 bootstrap 无 standalone/外部 auth provider 声明；独立 server/同进程 DI/安装包 Host 模块构成候选路线但不能直接归为已接纳路径；未发布 UI Plugin 不提供来源。**该判定不是"第三方技术上永远无法使用官方 runtime"。**
+对象是当前官方安装包、现有接入方向和 R01/R12/R15 合同下的 conversation-runtime/M0 可运行部分。理由：双向协议已存在且外部 stdio 应答可行（阻塞不在 framing/carrier）；官方账号 producer 在 Host 内部未作通用 RPC source；当前 bootstrap 无 standalone/外部 auth provider 声明；独立 server/同进程 DI/安装包 Host 模块构成候选路线但不能直接归为已接纳路径；未发布 UI Plugin 不提供来源。**该判定不是"第三方技术上永远无法使用官方 runtime"。**
 
 ### 候选选项与合同相容性
 
@@ -102,7 +102,7 @@
 | 自建 Electron 宿主仅包装官方 cjs | 符合来源要求 | **不自动获得账号来源**；仍缺 producer | 可无官方窗口 | 只加包装不解锁 auth |
 | **自建 Electron 宿主复用安装包 out/host/index.js** | 模型执行仍为未改动官方 cjs，可与"自己的 OSS runtime"区分 | 官方 Host 自己解析材料、bridge 不导出秘密，有相容解释空间；依赖内部初始化协议 | 可构造无窗口拓扑；须处理官方存储准备/并发 authority/Main 回调 | **有结构性候选证据（E06/E09/B02），未获合同接纳、未验证可运行** |
 | 使用另一个官方独立 Web/server 发行包 | 是否属 R01"官方安装包中的 runtime"需确认 | 服务自持账号 authority | 需确认正式制品 | 源码有正式拓扑；当前桌面安装包无对应入口 |
-| 缩小 S03 到协议层及受限状态 | 相容 | 相容 | 可推进 codec/失败/取消/恢复检查 | 部分交付；M0/M1 真实模型任务仍未完成 |
+| 缩小 conversation-runtime 到协议层及受限状态 | 相容 | 相容 | 可推进 codec/失败/取消/恢复检查 | 部分交付；M0/M1 真实模型任务仍未完成 |
 | 依赖官方 GUI 在线附加 | 可相容 | 可相容 | 当前无第三方入口证据；与 R12 冲突 | 非直接解锁路线 |
 | 等待 feat/ui-plugin 发布 | 仍需制品核验 | 当前 diff 无账号接口 | 限定桌面本地页面 | 当前证据不支持解锁 |
 

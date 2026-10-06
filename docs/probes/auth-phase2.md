@@ -1,12 +1,12 @@
-# AUTH Phase 2 S01 — 账号材料来源与拓扑判定
+# AUTH Phase 2 official-runtime-install — 账号材料来源与拓扑判定
 
-判定：**S02 可继续 scratch Host 产品化；当前隔离 profile 未登录，真实 HOME 准备与共享写均 NO-GO，登录解锁未验证。** 官方账号 producer 属于 Host 内的文件态凭据服务，现有证据不支持“OAuth 必须读取官方 Keychain item 才能运行”的说法。任何可能触及真实 Keychain/用户数据的后续路线仍须 S01 判定、PLAN delta 评审和用户原话确认三重门。
+判定：**session-create 可继续 scratch Host 产品化；当前隔离 profile 未登录，真实 HOME 准备与共享写均 NO-GO，登录解锁未验证。** 官方账号 producer 属于 Host 内的文件态凭据服务，现有证据不支持“OAuth 必须读取官方 Keychain item 才能运行”的说法。任何可能触及真实 Keychain/用户数据的后续路线仍须 official-runtime-install 判定、PLAN delta 评审和用户原话确认三重门。
 
-执行时间：2026-10-04 15:19 UTC 起；bridge `feat/zcode-runtime-bridge`，基线 `6e5c1be0b41ee59608042d4879104404ac6fbddd`。任务权威完整读取：`.agent-work/tasks/S01-P2-TASK.md`；计划权威：`PLAN-PHASE2.md` S01、需求修订记录、排除项与集成条件依赖。仅增加本文、checks 与 handoff；零产品改动、不 push。本文给出有界判定，不代表主 agent acceptance、双独立 review 或 M0 解锁。
+执行时间：2026-10-04 15:19 UTC 起；bridge `feat/zcode-runtime-bridge`，基线 `6e5c1be0b41ee59608042d4879104404ac6fbddd`。任务权威完整读取：`.agent-work/tasks/auth-phase2-TASK.md`；计划权威：`PLAN-PHASE2.md` official-runtime-install、需求修订记录、排除项与集成条件依赖。仅增加本文、checks 与 handoff；零产品改动、不 push。本文给出有界判定，不代表主 agent acceptance、双独立 review 或 M0 解锁。
 
 ## 证据索引与分级
 
-路径均相对 [checks/auth-phase2-s01/](checks/auth-phase2-s01/)。12 个证据组；文件数量及 SHA-256 以 `evidence-manifest.json` 为准。STATIC、LIVE、CONTRACT-HARNESS 和 NOT_RUN 分别标记，不互相替代。
+路径均相对 [checks/auth-phase2/](checks/auth-phase2/)。12 个证据组；文件数量及 SHA-256 以 `evidence-manifest.json` 为准。STATIC、LIVE、CONTRACT-HARNESS 和 NOT_RUN 分别标记，不互相替代。
 
 | ID | 文件 | 覆盖 |
 |---|---|---|
@@ -16,11 +16,11 @@
 | P04 | `packaged-anchors.json`, `packaged-flow-paths.json` | 官方安装包同类实现的静态锚点与字节偏移 |
 | P05 | `signing-metadata.json` | 官方 Developer ID / scratch Electron ad-hoc 签名和 entitlements 元数据 |
 | P06 | `keychain-sentinel.json` | 随机哨兵名称、无 `-w` 的存在性查找：exit 44 / item-not-found / stdout 0 B |
-| P07 | `s01-host-a/*` | Main 17559 / Host 17578 的真实隔离状态往返、进程与文件落点 |
-| P08 | `s01-host-b/*` | Main 17558 / Host 17579；与 A 时间重叠的另一真实隔离 Host |
-| P09 | `live-summary.json`, `probe-s01-main.cjs`, `run-s01.py`, `probe-s01.sb` | 白名单、sandbox、10 次状态 RPC、无窗、清理、GUI 清单一致 |
-| P10 | `reference-authority-s01.cjs`, `reference-authority-s01.json` | reference 原 bridge/bus/schema 的合成合同动态执行，66 个加载源码 hash |
-| P11 | `attempt-ledger.json`, `reference-authority-s01-attempt1-error.log` | 失败尝试、被禁网的后台配置刷新、警告与 NOT_RUN 入账 |
+| P07 | `host-a/*` | Main 17559 / Host 17578 的真实隔离状态往返、进程与文件落点 |
+| P08 | `host-b/*` | Main 17558 / Host 17579；与 A 时间重叠的另一真实隔离 Host |
+| P09 | `live-summary.json`, `probe-main.cjs`, `run.py`, `probe.sb` | 白名单、sandbox、10 次状态 RPC、无窗、清理、GUI 清单一致 |
+| P10 | `reference-authority.cjs`, `reference-authority.json` | reference 原 bridge/bus/schema 的合成合同动态执行，66 个加载源码 hash |
+| P11 | `attempt-ledger.json`, `reference-authority-attempt1-error.log` | 失败尝试、被禁网的后台配置刷新、警告与 NOT_RUN 入账 |
 | P12 | `verification.json`, `evidence-manifest.json` | 证据一致性、资源退出、docs-only 边界验证与归档清单 |
 
 P01：ASAR `232e913ea13d60bd0ecc86bf9f2f145328809608fe4d48e76685d61a8076aef0`；cjs `fad4c35c4c36ec210d8a06d3fa0e77de23c8545e2eb6ff90aea1eb38d1e6275f`；Host `c143ce16c61ad1d01d8cbfca0a0e2f506aa5afa3858db3f088e69ecf11d588d3`，与 Phase 1 相同。未写官方安装包、ASAR 或 reference。
@@ -44,7 +44,7 @@ P05 LIVE：官方 App 为 Developer ID（Team `8A5X4JJ39T`），自建 Electron 
 
 | 原证据 | 本次衔接 |
 |---|---|
-| E01–E04 | 保留 NDJSON 反向请求/应答结论；S02 应让 Host 拥有内层 CLI pipe，bridge 使用外层 Channel；未发起模型 challenge |
+| E01–E04 | 保留 NDJSON 反向请求/应答结论；session-create 应让 Host 拥有内层 CLI pipe，bridge 使用外层 Channel；未发起模型 challenge |
 | E05–E07 | P03/P04 固定 producer 与进程内 resolver；P07/P08 证明账号服务可装配并返回 signed-out，未证明材料解析成功 |
 | E08–E12 | utilityProcess + transferred MessagePort + Channel Initialize 实跑；与 server WS/SocketProtocol、CLI NDJSON 分层，未附加官方 GUI |
 | E13–E18 | standalone/overlay/env 不能给现有独立 app-server 自动增加 Host auth；不得复制 resolver/导入真实凭据来绕过边界 |
@@ -58,9 +58,9 @@ P05 LIVE：官方 App 为 Developer ID（Team `8A5X4JJ39T`），自建 Electron 
 复现入口（从 Phase 1 scratch 根目录运行，使用新 run 名避免覆盖原证据；归档脚本副本依赖该 scratch 的 Electron/official-extracted 布局）：
 
 ```sh
-python3 run-s01.py s01-replay-a
-python3 run-s01.py s01-replay-b
-node reference-authority-s01.cjs
+python3 run.py replay-a
+python3 run.py replay-b
+node reference-authority.cjs
 ```
 
 两次 replay 若验证同时并存须由调用者并发启动；本次原 run 已并发启动并在 P09 记录重叠时间。reference harness 使用既有 DSH TypeScript 和 zod 依赖，只读加载源码，未安装包/运行构建。
@@ -75,11 +75,11 @@ OAuth STATIC 形态：UI `useOAuth` → `oauth.startOAuthWithPolling(provider)` 
 
 ## 落点解析表
 
-`R` = `.agent-work/tmp/host-reuse-probe/runs/s01-host-a`（B 同构）。默认列是 STATIC 解析，不是启动默认 HOME 的结果；实际默认配置可覆盖路径，未经读取无法确定真实 GUI 的最终自定义落点。
+`R` = `.agent-work/tmp/host-reuse-probe/runs/host-a`（B 同构）。默认列是 STATIC 解析，不是启动默认 HOME 的结果；实际默认配置可覆盖路径，未经读取无法确定真实 GUI 的最终自定义落点。
 
 | 域 | 默认/解析优先级 | 本次实际隔离落点 | 默认触及真实数据 / 证据 |
 |---|---|---|---|
-| settings | `ZCODE_DESKTOP_HOME_DIR` > `HOME`/`USERPROFILE` > `homedir()` → `.zcode/v2/setting.json`；不跟随 DATA_BASE_DIR | `R/home/.zcode/v2/setting.json`（fresh 未产生文件）；setting.get LIVE；Phase 1 settings-live 合成迁移已证此位置 | 是；P03/P04。S01 不制造账号选择，不以选择证明 auth。**launcher 必须显式把 `ZCODE_DESKTOP_HOME_DIR` pin 到 scratch 或从启动 env scrub**：该变量是官方为隔离 dev 实例专设的最高优先级 home 覆盖，若继承用户已设值，settings 及其启动迁移写会落到该路径而非 scratch HOME |
+| settings | `ZCODE_DESKTOP_HOME_DIR` > `HOME`/`USERPROFILE` > `homedir()` → `.zcode/v2/setting.json`；不跟随 DATA_BASE_DIR | `R/home/.zcode/v2/setting.json`（fresh 未产生文件）；setting.get LIVE；Phase 1 settings-live 合成迁移已证此位置 | 是；P03/P04。official-runtime-install 不制造账号选择，不以选择证明 auth。**launcher 必须显式把 `ZCODE_DESKTOP_HOME_DIR` pin 到 scratch 或从启动 env scrub**：该变量是官方为隔离 dev 实例专设的最高优先级 home 覆盖，若继承用户已设值，settings 及其启动迁移写会落到该路径而非 scratch HOME |
 | tasks / provider / credentials / CA | setDataBaseDir > `ZCODE_DATA_BASE_DIR` > 启动 HOME/homedir → `.zcode/v2` | `R/data-base/.zcode/v2/{tasks-index.sqlite,provider_config.json,certs/...}` LIVE；`credentials.json` 在空账号分支未产生，路径 STATIC | 是；tasks 文件 147,456 B；provider 206 B；P03/P04/P07/P08。credential 写入尚未 LIVE |
 | session DB | storage config / `ZCODE_SESSION_DB_PATH`（也支持 SESSION_DB）；相对路径按 runtime cwd；默认 homedir `/.zcode/cli/db/db.sqlite` | 显式绝对 `R/session-db/db.sqlite`，LIVE 413,696 B；不与 tasks DB 合并 | 是；P03、env-config.adapter.ts:24–32、P07/P08。不把 DATA_BASE_DIR 当 session DB 隔离变量 |
 | CLI config/home | 默认 `~/.zcode/cli`，HOME 影响默认路径；`ZCODE_HOME` 并未找到这条链的可靠消费证据 | `HOME=R/home`；额外设 `ZCODE_HOME=R/runtime-home`，不以该变量作为隔离保证 | 默认是；文件配置与绝对 session env 必须分别验证 |
@@ -101,19 +101,19 @@ P10 CONTRACT-HARNESS 使用未修改 reference bridge/bus 和正式 shared schem
 | task-owner-command-request / deliver / result | 查 active owner、拒 stale run、仅收实际 owner 的结果、超时/owner exit 明确失败、不做隐式重试 |
 | task-realtime-publish / deliver | eventId 去重与有界缓存、workspace visibility、origin 收敛、不回环 |
 | task-stream-op-publish / stream mirror / replay | owner/run 验证、seq/watermark、batch、gap/owner-lost invalidation、desktop-continuous 与 web-remote-replayable 分别处理 |
-| session-route-announce / session-message 路由及结果 | 如接入该面，由同 Main 负责路由生命周期；不能冒充 task command pipe；可能触发任务的消息在 S01 全禁 |
+| session-route-announce / session-message 路由及结果 | 如接入该面，由同 Main 负责路由生命周期；不能冒充 task command pipe；可能触发任务的消息在 official-runtime-install 全禁 |
 | 其他 Main 平台回调 | database startup relay、attachment teardown、登录 state/deep-link/browser 入口、网络生命周期；按能力明确实现/禁用。不能通过读取秘密来补回调 |
 
-与运行中官方 Main **不能自动协调**：没有已验证第三方注册官方 bus 的公开 IPC/socket；MessagePort 由其 Main 创建转移，bus 为该进程内存；自行设相同 hostId、workspace、DB 路径不会加入它。官方 GUI 进程仅 ps 观察，没有信号或 IPC。**共享写维持 NO-GO**，即使后续 SQLite 同库读/锁测试成功；必须由 S06 证明正式协调路径。
+与运行中官方 Main **不能自动协调**：没有已验证第三方注册官方 bus 的公开 IPC/socket；MessagePort 由其 Main 创建转移，bus 为该进程内存；自行设相同 hostId、workspace、DB 路径不会加入它。官方 GUI 进程仅 ps 观察，没有信号或 IPC。**共享写维持 NO-GO**，即使后续 SQLite 同库读/锁测试成功；必须由 queue-guide-goal 证明正式协调路径。
 
 ## 路线判定及后继输入
 
-| 路线 | 当前判定 / LIVE 锚点 | 落点与门 | 对 S02–S06 的输入 |
+| 路线 | 当前判定 / LIVE 锚点 | 落点与门 | 对 session-create–queue-guide-goal 的输入 |
 |---|---|---|---|
-| 全隔离 profile 状态/宿主准备 | GO（有界）；P07/P08 signed-out、独立 DB、无窗 | 所有文件落点 scratch，Keychain/网络拒绝；仅 scratch 门；不是 auth GO | S02 可以产品化 launcher/Channel adapter、Main 回调、模型请求闸门；S05 隔离 GUI 不受本结果阻塞 |
-| 隔离 profile 官方登录流 | **当前 auth NO-GO / 完整登录 NOT_RUN**；P07/P08 无账号；P03/P04 提供 official polling/file producer 路线 | file landing 理论为 DATA_BASE/v2/credentials.json，但未写入验证；Keychain 系统域没有 HOME 隔离。若逐项证明仅 scratch 可继续 scratch 探测；凡可能触及真实 Keychain/browser profile/GUI 状态须 PLAN delta+用户原话确认 | S03 需用户完成官方登录、state 回跳/poll 路由、官方账号 active/connected 状态真实翻转；窗口需求仅静态。S04 请求级上限尚不能执行 |
-| 真实 HOME 有界准备 | **当前 NO-GO**；P02 真实凭据/settings/tasks 存在，P07/P08 启动即迁移写 scratch DB，P03 corrupted OAuth 会清 store | 默认真实 `.zcode`；session DB 独立；Keychain 仍真实系统域；必须三重门，启动前逐落点隔离证据或相应 S06 并存子集证明 | 不可直接改 env 启动，也不可复制真实 credential 文件到新 HOME：cipher fallback 与 HOME 绑定且错误恢复可能删除材料。S06 只允许获准 scratch 库，不写回 |
-| 共用真实 GUI session/tasks 写入 | **NO-GO**；P10 独立 Main bus 双 owner，P07/P08 未出现跨 Main 协调 | DB 与租约是两个 authority；无已验证共同 Main 协调入口 | S06 必须补真实双 Main/双 Host runtime租约/owner/events oracle；没有正式路径就维持共享写 NO-GO |
+| 全隔离 profile 状态/宿主准备 | GO（有界）；P07/P08 signed-out、独立 DB、无窗 | 所有文件落点 scratch，Keychain/网络拒绝；仅 scratch 门；不是 auth GO | session-create 可以产品化 launcher/Channel adapter、Main 回调、模型请求闸门；interaction-plan-review-trust 隔离 GUI 不受本结果阻塞 |
+| 隔离 profile 官方登录流 | **当前 auth NO-GO / 完整登录 NOT_RUN**；P07/P08 无账号；P03/P04 提供 official polling/file producer 路线 | file landing 理论为 DATA_BASE/v2/credentials.json，但未写入验证；Keychain 系统域没有 HOME 隔离。若逐项证明仅 scratch 可继续 scratch 探测；凡可能触及真实 Keychain/browser profile/GUI 状态须 PLAN delta+用户原话确认 | conversation-runtime 需用户完成官方登录、state 回跳/poll 路由、官方账号 active/connected 状态真实翻转；窗口需求仅静态。minimal-turn-usage 请求级上限尚不能执行 |
+| 真实 HOME 有界准备 | **当前 NO-GO**；P02 真实凭据/settings/tasks 存在，P07/P08 启动即迁移写 scratch DB，P03 corrupted OAuth 会清 store | 默认真实 `.zcode`；session DB 独立；Keychain 仍真实系统域；必须三重门，启动前逐落点隔离证据或相应 queue-guide-goal 并存子集证明 | 不可直接改 env 启动，也不可复制真实 credential 文件到新 HOME：cipher fallback 与 HOME 绑定且错误恢复可能删除材料。queue-guide-goal 只允许获准 scratch 库，不写回 |
+| 共用真实 GUI session/tasks 写入 | **NO-GO**；P10 独立 Main bus 双 owner，P07/P08 未出现跨 Main 协调 | DB 与租约是两个 authority；无已验证共同 Main 协调入口 | queue-guide-goal 必须补真实双 Main/双 Host runtime租约/owner/events oracle；没有正式路径就维持共享写 NO-GO |
 
 本次没有请求、假设或取得新用户权限。PLAN 已有“允许处理 auth”原话不等于允许触碰真实数据/Keychain，也不等于付费预算。
 
@@ -128,26 +128,26 @@ P10 CONTRACT-HARNESS 使用未修改 reference bridge/bus 和正式 shared schem
 | OAuth 与 Chrome Keychain | 账号文件实现不是 Chrome import secret；禁用后者。静态未见 safeStorage 不作为未来登录真实写入的豁免 |
 | 运行 authority | 双独立 Main 的内存租约互不协调；共用 DB 不足以证明同会话互斥 |
 | 网络初始化副作用 | 两个 Host 的 built-in config background refresh 失败/invalid response，真实失败入账；不是登录失败或模型请求。网络开放后的副作用未验证 |
-| 模型请求预算 | 发包白名单仅状态，模型任务/auto title/tester/warmup/recovery 0 次调用；无 workspace attach、无 prompt/session恢复/close。S02 请求级阻断钩子尚未落地，不能据此次 0 次证明 S04 硬顶可执行 |
+| 模型请求预算 | 发包白名单仅状态，模型任务/auto title/tester/warmup/recovery 0 次调用；无 workspace attach、无 prompt/session恢复/close。session-create 请求级阻断钩子尚未落地，不能据此次 0 次证明 minimal-turn-usage 硬顶可执行 |
 
-## S02 Host Channel 拓扑输入
+## session-create Host Channel 拓扑输入
 
 1. bridge Node/DSH 的既有专用接入 → bridge 拥有的 Electron Main（launcher）→ 官方 `utilityProcess.fork(out/host/index.js)` → InitLocal+transferred MessagePort → `MessagePortProtocol`/`ChannelServer`。Initialize=200、request=100、promise response=201 的二进制编码来自官方 Channel 层；不得把外层误用成 CLI NDJSON。生产还必须实现错误、取消、event listen/unlisten、端口退出的正式协议，probe codec 仅验证五个调用。
-2. Host `ServiceCollection` 公布 `oauth`、`provider-settings`、`setting` 和 `zcode-agent`、`zcode-session`、`zcode-task` 服务；每个 MessagePort 的 `createZCodeAgentConnectionScope` 注入独立 connectionId / desktop-continuous clientMode。材料 resolver 留在 Host 内部。P03/P07/P08；S02不得通过 credential RPC 导出值。
+2. Host `ServiceCollection` 公布 `oauth`、`provider-settings`、`setting` 和 `zcode-agent`、`zcode-session`、`zcode-task` 服务；每个 MessagePort 的 `createZCodeAgentConnectionScope` 注入独立 connectionId / desktop-continuous clientMode。材料 resolver 留在 Host 内部。P03/P07/P08；session-create不得通过 credential RPC 导出值。
 3. runtime 真实载体：`zcode-agent.initialize` / `getWorkspaceRuntimeIdentity` → Host 的 `ZCodeAgentProcessManager` 拥有官方 cjs app-server pipe，Host 自动处理 E01–E05 auth reverse requests。现有 BridgeHost 直接 app-server 连接应切换为 Host-backed execution authority，不能同时另起一个独立 CLI 当第二会话 owner。
 4. session 载体：`zcode-session.initializeWorkspace/createSession/listSessions/readSession/resumeSession` 对应 Host session 服务；workspacePath/identity/remoteSessionId 必须贯通。`session/close` 及 Host `closeSession/closeDeferredDraftSession` 同样禁止发出；不能以换外层方法名绕过。
 5. command/事件载体：`zcode-agent.sendConversationCommandV4`（command ack/query）、conversation subscribe/resync、`onDynamicConversationFrame`；sessions-index/workspace-config 各自 subscribe/frame。Host facade转发 CLI V4，保持 CommandInbox admission、run fencing、deliveryKind 与 client connection scope。Main parentPort realtime bus 是跨 Host authority 旁路，不是 renderer Channel RPC 的替代。
-6. 上述 runtime/session/command 挂接本次为 STATIC，不纳入 S01 白名单。S02 应先落实逐落点断言、Main callback owner、resource teardown、provider每次实际请求的发出前阻断/计数钩子；无法正式安装此机制，S04 必须 NOT_RUN(cannot-enforce)。仅取消顶层 prompt 或事后 usage 计数不合格。
+6. 上述 runtime/session/command 挂接本次为 STATIC，不纳入 official-runtime-install 白名单。session-create 应先落实逐落点断言、Main callback owner、resource teardown、provider每次实际请求的发出前阻断/计数钩子；无法正式安装此机制，minimal-turn-usage 必须 NOT_RUN(cannot-enforce)。仅取消顶层 prompt 或事后 usage 计数不合格。
 
 ## NOT_RUN 与失败入账
 
 - **NOT_RUN**：真实 OAuth start/poll/callback/refresh、登录状态翻转、登录凭据写入落点 LIVE、自建 Main 登录窗口/外部浏览器回跳；原因=状态白名单与真实系统域写入门禁，未伪造 callback/token/challenge。
 - **NOT_RUN**：任何官方 Keychain item 读取/解密/查询、哨兵创建/读回、真实签名 ACL；随机 missing lookup只证明自己的返回值。
 - **NOT_RUN**：真实 HOME Host 启动、真实 DB/credential复制、共享库写入、真实 GUI attach/关闭/信号。
-- **NOT_RUN**：真实官方 Host 任务租约/owner 命令/stream 收敛；状态双 Host没有这些消息。P10是合成合同执行，完整 runtime oracle交给 S06，不能记 LIVE PASS。
+- **NOT_RUN**：真实官方 Host 任务租约/owner 命令/stream 收敛；状态双 Host没有这些消息。P10是合成合同执行，完整 runtime oracle交给 queue-guide-goal，不能记 LIVE PASS。
 - **NOT_RUN**：runtime/session/command/usage RPC、session create/resume/close、模型 challenge/任务/测试器/自动标题/流恢复/Agent warmup、付费调用与请求级钩子证明；调用数均 0。
 - reference harness 初次 exit 1：缺少 `@zcode/model-option-map`。仅补充指向只读源码的 loader 映射后重跑 exit 0；失败原文保留 P11，第一次不记 PASS。
 - 静态定位中不存在的猜测路径与 zsh wildcard 导致的退出 1/2、过宽搜索截断记录为 discovery failure；改用确切路径读取，不把截断输出当完整覆盖。codesign entitlements 的 `:` deprecated 警告保留；未改变制品。
 - 2 次 Host background builtin config刷新失败如实保留。总体服务 ready / 状态 RPC成功，与刷新失败分别记账；不宣称联网可用或认证成功。
 
-**0 模型请求、0 付费调用声明**：本次网络被外层拒绝，10 个实际发出的 RPC 全在五项状态白名单，未启动任务执行/会话恢复/工作区 warmup，也未调用任何模型路径；证据在 P07–P09。此声明不是以“没有 usage”推断。没有执行 provider 请求级计数钩子，尚不能为未来 S04 提供硬顶验收证据。S01 交付的是上述有界路线判定与后继合同；登录与真实运行协调 oracle 的缺口保留，主 agent需独立 review/admission。
+**0 模型请求、0 付费调用声明**：本次网络被外层拒绝，10 个实际发出的 RPC 全在五项状态白名单，未启动任务执行/会话恢复/工作区 warmup，也未调用任何模型路径；证据在 P07–P09。此声明不是以“没有 usage”推断。没有执行 provider 请求级计数钩子，尚不能为未来 minimal-turn-usage 提供硬顶验收证据。official-runtime-install 交付的是上述有界路线判定与后继合同；登录与真实运行协调 oracle 的缺口保留，主 agent需独立 review/admission。

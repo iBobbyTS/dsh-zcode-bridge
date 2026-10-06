@@ -1,6 +1,6 @@
-# S01 — 有界探测记录
+# official-runtime-install — 有界探测记录
 
-时间：2026-10-02 America/Edmonton（部分日志 UTC 为 2026-10-03）。执行仓库 bridge@7bbfce8 起、DSH@da00f7f；分支均 feat/zcode-runtime-bridge。ZCode 源码 29628c9 / 3.14.3；实际 App 3.14.4。任务权威为 S01-TASK.md / PLAN-FULL S01。付费模型调用 **0**。下列 STATIC、LIVE、NOT_RUN 分开记账，未将协议可连当作账号已登录。
+时间：2026-10-02 America/Edmonton（部分日志 UTC 为 2026-10-03）。执行仓库 bridge@7bbfce8 起、DSH@da00f7f；分支均 feat/zcode-runtime-bridge。ZCode 源码 29628c9 / 3.14.3；实际 App 3.14.4。任务权威为 official-runtime-install-TASK.md / PLAN-FULL official-runtime-install。付费模型调用 **0**。下列 STATIC、LIVE、NOT_RUN 分开记账，未将协议可连当作账号已登录。
 
 ## A1 安装与真实执行身份
 
@@ -18,14 +18,14 @@
 
 ## A2 carrier 判定
 
-[逐项 carrier 表](S01-CARRIERS.md)覆盖 74 legacy + 31 V4 声明，以 shared schema → CLI server dispatch → zcodeAgentService Host consumer → GUI IZCodeAgentService consumer 路由分类。该表是静态 carrier 证据，不是全协议 LIVE 验收。
+[逐项 carrier 表](carrier-inventory.md)覆盖 74 legacy + 31 V4 声明，以 shared schema → CLI server dispatch → zcodeAgentService Host consumer → GUI IZCodeAgentService consumer 路由分类。该表是静态 carrier 证据，不是全协议 LIVE 验收。
 
 - LIVE stdio：runtime/capabilities→`{independentPlanState:true}`；session/list→`{sessions:[]}`；workspace/readPresentation→workspace/mode/slashCommands。请求包含正式 workspacePath 与 workspaceKey，session/list limit=5。
 - LIVE `v4/controller/subscribe`、resync、unsubscribe 均 -32601。CLI server.ts:461–714 无这三个 case；不从共享声明推定可调。
 - `controller/hello` 不是正式 CLI method，试探返回 -32601。真正 helloConversationV4 / initializeConversationV4 是 Host service RPC：zcodeAgentConnectionScope.ts:668–676 → GUI ui/v4/agentV4ConnectionHandshake.ts:27–35。packages/server 的 SocketProtocol/ChannelServer stdio 与 CLI NDJSON **是不同 carrier**；desktopHostProcess.ts:257 通过 Electron utilityProcess / MessagePort 装配本地 Host。没有据此构造外部 attach。
 - 账号示例 `account/status` 返回 -32601，单独这个结果不证明所有账号能力不存在。服务源码与 CLI dispatch 一并确认：app-server 的 provider/updateAccountConfig 是配置同步入口，不是登录、登出、凭据解析器；正式账号服务在 Host 装配（services/node.ts:1494 等）。没有已验证的外部正式账号来源。
 - reverse auth：interaction/requestProviderRuntimeHeaders → provider-runtime-headers.ts → Host zcodeAgentService.ts:2245–2295。缺 accountRequestAuthService/accountAccess 时官方 Host 立即回应 headersApplied:false。bridge 遵循同样的失败 response 形状，没有复制后台鉴权实现。
-- LIVE reverse session/requestRuntimePreferences 在受控 session/create 时出现；探测只返回禁用增强搜索/记忆/自动问答的正式偏好形状。生产 S01 bridge 不实现恢复/创建入口，对未支持 reverse callback 明确 -32601；未来 S02/S04 必须补正式偏好来源。
+- LIVE reverse session/requestRuntimePreferences 在受控 session/create 时出现；探测只返回禁用增强搜索/记忆/自动问答的正式偏好形状。生产 official-runtime-install bridge 不实现恢复/创建入口，对未支持 reverse callback 明确 -32601；未来 session-create/session-directory-lifecycle 必须补正式偏好来源。
 - LIVE 证据：[carrier-live.log](checks/carrier-live.log)，退出码 0；所有错误 id 均归属原请求。
 
 ## A3 配置、能力与鉴权前提
@@ -38,7 +38,7 @@ bridge 状态为 restricted / official-auth-source-missing；未提供“可运�
 
 ## A4 会话、锁、多客户端
 
-测试 workspace：/Users/ibobby/Projects/dsh-zcode-acp/.agent-work/tmp/s01-probe/zcode-test-workspace。GUI 打开态，通过 `ps -axo pid,ppid,comm` 仅观察到用户官方进程；没有向其发送控制信号。
+测试 workspace：/Users/ibobby/Projects/dsh-zcode-acp/.agent-work/tmp/official-runtime-install-probe/zcode-test-workspace。GUI 打开态，通过 `ps -axo pid,ppid,comm` 仅观察到用户官方进程；没有向其发送控制信号。
 
 - 受控官方 session/create（不指定 id；persistence=immediate；titleGenerationEnabled=false；mcpServers=[]；toolAllowlist=[]）成功，当前进程 session/list 能列出 1 个测试会话；未发送 prompt、未执行工具。最初两次 create 参数分别因 persistence='persistent' 与普通 create 显式 id 被 -32602 拒绝；没有把错误计为成功。
 - EOF 后按已保存的**自有测试 session id**冷恢复返回 -32004 Session not found，第二进程同 workspace list=0。只记录自有 id 的脱敏错误，无用户会话内容。[cold-resume.log](checks/cold-resume.log)，命令退出 0、业务恢复为拒绝。不得把该 oracle 写成恢复 PASS。
@@ -63,6 +63,6 @@ B01/B05/B06、EOF、parse、timeout、cancel、dispose 的 fake peer/自有 proc
 
 跨 checkout 测试使用 DSH 现有 aliases、standard decorator transform 和 vitestExecArgv。初始故障有：测试路径不在原 alias 范围、React 两份实例、keyed slot 漏 key、测试 context dispose API 用错、Node 26 webstorage masking jsdom、renderOpts 应使用 entryKey、locale face 未装配；均在对应边界修复并重跑原检查。没有为这些故障改 DSH seam。
 
-依赖安装第一次 exit 1：lefthook 包 postinstall 先写了全局 /Users/ibobby/.githooks，DSH 根保护脚本随后拒绝覆盖 user-owned core.hooksPath。根据安装日志和生成文件标记，将备份 pre-push.old 复原、移除此次生成的 pre-commit/pre-merge-commit；生成文件保留于 .agent-work/tmp/s01-probe/hook-install-side-effect。未改变全局 gitconfig。DSH tracked 文件无依赖变更；仅本任务的配置例子可提交。以后执行依赖安装应先防止 dependency postinstall 的全局 hooks 副作用，不能把 DSH 根保护脚本当作其前置防护。
+依赖安装第一次 exit 1：lefthook 包 postinstall 先写了全局 /Users/ibobby/.githooks，DSH 根保护脚本随后拒绝覆盖 user-owned core.hooksPath。根据安装日志和生成文件标记，将备份 pre-push.old 复原、移除此次生成的 pre-commit/pre-merge-commit；生成文件保留于 .agent-work/tmp/official-runtime-install-probe/hook-install-side-effect。未改变全局 gitconfig。DSH tracked 文件无依赖变更；仅本任务的配置例子可提交。以后执行依赖安装应先防止 dependency postinstall 的全局 hooks 副作用，不能把 DSH 根保护脚本当作其前置防护。
 
 `pnpm exec` 在 pin 检查时再次尝试 root install 而 exit 1；改为直接 node node_modules/vitest/vitest.mjs。直接 plugin-manager 安装先在 jsdom 下遇 ERR_INVALID_URL_SCHEME（测试环境 URL carrier），转为真实 tsx Node oracle；file: specs 避免 pnpm link peer 警告。最终隔离 profile pin pnpm 11.7.0，真实安装 exit 0、bundle 登记且两个 export 文件存在，结果见 [plugin-install.log](checks/plugin-install.log)。没有绕过 plugin-manager 拒绝、没有 patch 上游实现。

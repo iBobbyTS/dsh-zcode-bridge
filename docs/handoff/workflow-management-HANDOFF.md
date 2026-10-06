@@ -1,8 +1,8 @@
-# S12 — Workflow 管理、运行门禁、图与用户面产物
+# workflow-management — Workflow 管理、运行门禁、图与用户面产物
 
 ## 身份与边界
 
-- TASK：父工作区 `.agent-work/tasks/S12-TASK.md`，完整读取；合同 PLAN-FULL S12、R02/R08/R18/R22，沿用 S03A/S03B/S05/S09/S10/S11 的 command、投影、workAdmission、scoped handle 与宿主观察 seam。
+- TASK：父工作区 `.agent-work/tasks/workflow-management-TASK.md`，完整读取；合同 PLAN-FULL workflow-management、R02/R08/R18/R22，沿用 transport-v4-convergence/live-session-permission-stop/interaction-plan-review-trust/catalog-management/background-subagents/browser-computer-use 的 command、投影、workAdmission、scoped handle 与宿主观察 seam。
 - 执行模式 EXECUTE_WITH_COMMIT；bridge 基线 `14e3fea36d69bf6aa20780085318d2a66f7e04db`，`feat/zcode-runtime-bridge`；DSH 基线 `21fb059745ddc1b78e387c24f3987b68569de236`，未改动。现有 DSH session-area 消费 seam 足够，无需消费点补丁或空提交。
 - 本轮为实现 worker，未执行独立 A/B review、父节 admission、archive 或审计 pack。用户指定 external codex / gpt-6.1-sol / high / yolo；本会话没有独立可核验的 observed model/effort 或 external agent_id，记 UNKNOWN，由主控保留 dispatch 证据。未启动子代理。
 - reference `zai-org/ZCode@29628c9acdb81b703bbd4080c207a0e7ce5e276e` 与官方 App 只读。仅启动自有官方 stdio 子进程；隔离临时 HOME/workspace；未接触真实用户数据、凭据、GUI、TCC 或共享进程。没有 session/close。模型调用 **0**。
@@ -18,7 +18,7 @@
 5. raw `startSavedWorkflow/resumeWorkflowRun/amendWorkflowRunSettings/cancelBackgroundWork` 仅对专用环境不存在的名字/run 实测，均在 lookup 阶段官方 failed/not_found，未进入编译/submission/model。生产 `V4Conversation` 在同一真实 peer 实跑管理/查询和三项执行本地 gate，`productionOracle` 记录 `runtime-restricted`。
 6. `amendWorkflowRunSettings` 的仅并发变更在 live run 可由官方 retune 原地应用；not_live 会继续走创建后继路径（`dynamic-workflow-run-settings.ts:136`）。因此不能把整个设置命令当成安全非模型配置。当前统一 gated，UI 文案为“may start a successor”。元数据设置则走正式 updateMeta。
 
-证据：[official.json](../../tests/fixtures/s12/official.json)、[capture log](../probes/checks/s12-capture.log)。官方安装包 `3.14.4.7912`，cjs SHA-256 `fad4c35c4c36ec210d8a06d3fa0e77de23c8545e2eb6ff90aea1eb38d1e6275f`。最终 capture 只建一个无 firstInput 的专用 v4 draft；stdio EOF/owned-child 清理后删除临时 HOME/workspace，不需要 session/close。
+证据：[official.json](../../tests/fixtures/workflow-management/official.json)、[capture log](../probes/checks/workflow-management-capture.log)。官方安装包 `3.14.4.7912`，cjs SHA-256 `fad4c35c4c36ec210d8a06d3fa0e77de23c8545e2eb6ff90aea1eb38d1e6275f`。最终 capture 只建一个无 firstInput 的专用 v4 draft；stdio EOF/owned-child 清理后删除临时 HOME/workspace，不需要 session/close。
 
 ## Carrier 核实表（逐项）
 
@@ -39,7 +39,7 @@
 | 运行 | `v4/command startSavedWorkflow`；command.ts:236；bootstrap/.../commands/handlers/interaction-background.ts:250 | 真官方 failed `fault.command.savedWorkflowStartRejected.not_found`；生产本地 runtime-restricted。name+scope+args正式 shape，不合成提示词。 |
 | 恢复 | `v4/command resumeWorkflowRun`；command.ts:228；interaction-background.ts:213 | 真官方 failed `fault.command.workflowRunResumeRejected.not_found`；生产 gated；workId≡runId，resume 同 run 的新 incarnation 必须等待 journal 水位推进。 |
 | 运行设置 | `v4/command amendWorkflowRunSettings`；command.ts:243；workflow-run-settings-command.ts:17；interaction-background.ts:288 | 真官方 failed `fault.command.workflowRunSettingsRejected.not_found`；生产 gated；省略/null/value 三态及新 runId/toolCallId 原样保留。 |
-| 取消 | `v4/command cancelBackgroundWork`；沿 S10 | 真 failed `fault.command.backgroundWorkCancelRejected.not_found`；已存在工作可不经模型 admission 取消；ACK 后还看 workflow/background 投影，不能凭缺 backgroundWorks 把仍 running 的 workflow 标 completed。 |
+| 取消 | `v4/command cancelBackgroundWork`；沿 background-subagents | 真 failed `fault.command.backgroundWorkCancelRejected.not_found`；已存在工作可不经模型 admission 取消；ACK 后还看 workflow/background 投影，不能凭缺 backgroundWorks 把仍 running 的 workflow 标 completed。 |
 | 用户面产物清单 | `v4/conversation/workflowRunArtifacts`；workflow-artifacts.ts:145；v4-gateway.ts:1656 | 真空清单；fixtures 六种官方 kind/schema、版本、primary/sourcePath、itemCount；不把引擎返回值当产物。未知 kind fail closed。 |
 | 产物数据页 | `.../workflowRunArtifactData`；workflow-artifacts.ts:168；v4-gateway.ts:1676 | 真空页；artifactId/runId/sessionId绑定、limit/sequence/hasMore；WebUI 按数据列显示，复杂 spec 未复刻官方图表 renderer。 |
 | 产物内容块 | `.../workflowRunArtifactRead`；workflow-artifacts.ts:219；v4-gateway.ts:1720,1849 | 正确参数未知身份真 -32603；fixtures content/version/chunk；正式 session→run→artifact/version授权留给官方；不收 uri/path、不读磁盘。校验base64、chunk bytes、total/nextOffset；文本escaped，二进制preview不可用。 |
@@ -53,7 +53,7 @@
 - `V4Conversation` / scoped RPC / `RemoteConversation` / `ConversationController`：新增 workflowManage/workflowRead，RPC 只接受 handle+kind+params，source identity 沿 immutable owner；开关/释放/断线后拒绝旧结果。没有全局 workflow cache、第二目录或第二 journal。
 - command 白名单纳入 start/resume/amend；当前正式 BridgeHost 永远 restricted，因此三者不发给模型入口。成功 ACK fixtures 只关联 ACK runId/toolCallId；amend 的前驱不能结算后继；resume 不拿旧 stopped incarnation 的旧水位结算新命令。accepted/duplicate 不制造产物或进度。
 - B04/B05：已写出元数据/delete/move 请求的 abort/timeout/EOF 或错误响应 shape → workflow-outcome-unknown；未写出保留 not-sent/cancelled；读取消只结束等待，不叫运行取消。模型命令复用原 commandId 查询、不重发。晚到 stdout/通知/异步 UI 结果按 owner/订阅/代际丢弃。
-- WebUI 从 S03.B 现有 session area 展示目录、打开的 meta/script、metadata 保存、删除/移回、history、live run、图与产物查询。作用域切换 remount 目录；run 切换 remount 详情；控制器/读 admission 替换 abort与清旧页面。官方拒绝/read error 清旧显示；没有“已运行/已生成”占位。
+- WebUI 从 live-session-permission-stop 现有 session area 展示目录、打开的 meta/script、metadata 保存、删除/移回、history、live run、图与产物查询。作用域切换 remount 目录；run 切换 remount 详情；控制器/读 admission 替换 abort与清旧页面。官方拒绝/read error 清旧显示；没有“已运行/已生成”占位。
 - graph 仅采用官方 fields：SVG纵向节点 + 独立边线、完整关系文字；alongside 是并行事实，不冒充控制边；truncated 明示。此前横排跨节点连线被遮挡，已修正并重验。
 - 原始定义/产物成功、运行状态、branch/两 actor/后继生命周期均来自明确 synthetic fixtures；fixture内容从不进入正式存储或引擎。
 - 未根据独立 capabilities/query 或 entitlement unknown 标 available；未冒充账号许可或复刻 workflow 引擎。
@@ -62,24 +62,24 @@
 
 | Artifact | 来源 |
 |---|---|
-| tests/fixtures/s12/official.json | 真官方runtime capture + 生产协调层read/gate oracle；临时path/session别名化；stderr仅计字节。 |
+| tests/fixtures/workflow-management/official.json | 真官方runtime capture + 生产协调层read/gate oracle；临时path/session别名化；stderr仅计字节。 |
 | empty.json | official.json严格真实空态/拒绝投影；injectedFields=[]。 |
-| lifecycle.json | injected-semantic-fixture：真实S03A空snapshot envelope + 官方schemas；definitions、branch graph、两actor、run/节点/产物/数据/事件/后继均明确注入，非实际生成。 |
-| s12-wide/narrow.png | 隔离headless Chrome：真实空目录 + 注入生命周期/产物；不是官方GUI或实际运行oracle。 |
+| lifecycle.json | injected-semantic-fixture：真实transport-v4-convergence空snapshot envelope + 官方schemas；definitions、branch graph、两actor、run/节点/产物/数据/事件/后继均明确注入，非实际生成。 |
+| workflow-management-wide/narrow.png | 隔离headless Chrome：真实空目录 + 注入生命周期/产物；不是官方GUI或实际运行oracle。 |
 
 | Check | 实跑结果 |
 |---|---|
-| `node scripts/capture-s12.mjs /Applications/ZCode.app` | PASS，0models；[log](../probes/checks/s12-capture.log)。初次探测在实现前；最终capture使用一个空v4 draft与生产workflow read/gate路径。 |
-| `node scripts/make-s12-fixtures.mjs` | PASS；[log](../probes/checks/s12-fixtures.log)，graph/frame官方schema校验。 |
-| `node --test tests/s12-workflow.test.mjs` | **18/18 PASS**；[log](../probes/checks/s12-targeted-node.log)。 |
-| `npm test` | **159/159 PASS**，基线141；[log](../probes/checks/s12-node.log)。 |
-| DSH bridge Vitest 全套 `node ../dsh/node_modules/vitest/vitest.mjs run --config scripts/dsh-vitest.config.mjs` | **139/139 PASS**，13文件，基线124；[log](../probes/checks/s12-integration.log)。最终S12 UI **15/15 PASS**包含在该完整回归；此前graph布线变化的独立UI检查 **13/13 PASS**，[targeted log](../probes/checks/s12-targeted-integration.log)。 |
-| DSH `pnpm exec vitest run packages/api/session-controller/tests packages/client/ui-session/tests packages/client/ui-workspace/tests` | **1373/1373 PASS**，60文件；[log](../probes/checks/s12-native.log)。DSH源码不变，后续bridge-only语义与graph改动由bridge targeted/full覆盖，不重复native。 |
-| DSH `pnpm run typecheck:contracts-ready` | PASS；[log](../probes/checks/s12-types.log)。 |
-| DSH `pnpm run build` | PASS，355 client artifacts；[log](../probes/checks/s12-dsh-build.log)，既有chunk-size/plugin timing warnings。 |
-| bridge `npm run build` | PASS；[log](../probes/checks/s12-build.log)。 |
-| `node scripts/check-s12-visual.mjs` | PASS，1100px/390px，0 pageerror/水平溢出；[json](../probes/checks/s12-visual.json)，PNG目视。 |
-| changed-file oxlint / `git diff --check` | PASS，oxlint 1.76.0、无diagnostics；[lint](../probes/checks/s12-lint.log)、[whitespace](../probes/checks/s12-whitespace.log)。 |
+| `node scripts/capture-workflow-management.mjs /Applications/ZCode.app` | PASS，0models；[log](../probes/checks/workflow-management-capture.log)。初次探测在实现前；最终capture使用一个空v4 draft与生产workflow read/gate路径。 |
+| `node scripts/make-workflow-management-fixtures.mjs` | PASS；[log](../probes/checks/workflow-management-fixtures.log)，graph/frame官方schema校验。 |
+| `node --test tests/workflow-management.test.mjs` | **18/18 PASS**；[log](../probes/checks/workflow-management-targeted-node.log)。 |
+| `npm test` | **159/159 PASS**，基线141；[log](../probes/checks/workflow-management-node.log)。 |
+| DSH bridge Vitest 全套 `node ../dsh/node_modules/vitest/vitest.mjs run --config scripts/dsh-vitest.config.mjs` | **139/139 PASS**，13文件，基线124；[log](../probes/checks/workflow-management-integration.log)。最终workflow-management UI **15/15 PASS**包含在该完整回归；此前graph布线变化的独立UI检查 **13/13 PASS**，[targeted log](../probes/checks/workflow-management-targeted-integration.log)。 |
+| DSH `pnpm exec vitest run packages/api/session-controller/tests packages/client/ui-session/tests packages/client/ui-workspace/tests` | **1373/1373 PASS**，60文件；[log](../probes/checks/workflow-management-native.log)。DSH源码不变，后续bridge-only语义与graph改动由bridge targeted/full覆盖，不重复native。 |
+| DSH `pnpm run typecheck:contracts-ready` | PASS；[log](../probes/checks/workflow-management-types.log)。 |
+| DSH `pnpm run build` | PASS，355 client artifacts；[log](../probes/checks/workflow-management-dsh-build.log)，既有chunk-size/plugin timing warnings。 |
+| bridge `npm run build` | PASS；[log](../probes/checks/workflow-management-build.log)。 |
+| `node scripts/check-workflow-visual.mjs` | PASS，1100px/390px，0 pageerror/水平溢出；[json](../probes/checks/workflow-management-visual.json)，PNG目视。 |
+| changed-file oxlint / `git diff --check` | PASS，oxlint 1.76.0、无diagnostics；[lint](../probes/checks/workflow-management-lint.log)、[whitespace](../probes/checks/workflow-management-whitespace.log)。 |
 
 归档stdout日志仅剥除行尾空白与EOF多余空行，保持原检查内容与结果；staged diff whitespace检查也通过。DSH命令使用 `pnpm_config_verify_deps_before_run=false`，沿已有基线环境。最初UI检查用 `.ts` 文件承载JSX被Vite拒绝；已改为React.createElement后通过，不改变测试配置或产品schema。首次read probe遗漏read version/offset和node siteId/ordinal，属于无效入参探测，不作为目标拒绝证据；已按官方schema修正，最终正确请求仍真实 -32603。
 

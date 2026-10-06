@@ -21,5 +21,5 @@ createRoot(document.getElementById('root')).render(React.createElement(ZCodeHost
  const page=await browser.newPage({viewport:{width,height}}),errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto('file://'+join(dir,'render.html'));await page.locator('summary').click();await page.getByTestId('zcode-host-registration-refresh').click();await page.getByTestId('zcode-host-registration').waitFor();await page.screenshot({path:`docs/probes/checks/browser-computer-use-${name}.png`,fullPage:true});
  const dimensions=await page.evaluate(()=>({horizontalOverflow:document.documentElement.scrollWidth>innerWidth}));checks.push({name,width,errors,...dimensions});await page.close();
  }
- await writeFile('docs/probes/checks/browser-visual.json',JSON.stringify({kind:'injected-visual-fixture-with-real-registration',notLiveExecutor:true,checks},null,2)+'\n');console.log(JSON.stringify(checks));if(checks.some(c=>c.errors.length||c.horizontalOverflow))process.exitCode=1;
+ await writeFile('docs/probes/checks/browser-computer-use-visual.json',JSON.stringify({kind:'injected-visual-fixture-with-real-registration',notLiveExecutor:true,checks},null,2)+'\n');console.log(JSON.stringify(checks));if(checks.some(c=>c.errors.length||c.horizontalOverflow))process.exitCode=1;
 }finally{await browser?.close();await rm(dir,{recursive:true,force:true})}

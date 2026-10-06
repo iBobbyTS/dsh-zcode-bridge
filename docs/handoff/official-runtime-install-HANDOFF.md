@@ -1,8 +1,8 @@
-# S01 HANDOFF — M0 官方安装连接与执行前提
+# official-runtime-install HANDOFF — M0 官方安装连接与执行前提
 
-**自评：PARTIAL。M0 尚未完成，不请求把 S01 验收为 COMPLETE。**
+**自评：PARTIAL。M0 尚未完成，不请求把 official-runtime-install 验收为 COMPLETE。**
 
-任务：S01-TASK.md；EXECUTE_WITH_COMMIT。实现者为本次派发 worker；不自行执行 CODE A/B 或父计划 admission。需求合同未修改。付费模型调用 0/1。无 push、无主干 merge、无 reset/clean/pull。
+任务：official-runtime-install-TASK.md；EXECUTE_WITH_COMMIT。实现者为本次派发 worker；不自行执行 CODE A/B 或父计划 admission。需求合同未修改。付费模型调用 0/1。无 push、无主干 merge、无 reset/clean/pull。
 
 ## 候选与提交
 
@@ -25,7 +25,7 @@
 | GUI 关闭 | NOT_RUN / deferred LIVE_VERIFY | 必须用户配合；严禁 worker 自行关 GUI |
 | 清理 | EOF 正常 exit 0；fake failure/timeout/cancel/dispose 清空 pending | 不发送 session/close；只持有/回收自有 ChildProcess |
 
-完整记录：[S01-PROBES.md](../probes/S01-PROBES.md)；静态 carrier：[S01-CARRIERS.md](../probes/S01-CARRIERS.md)。74 legacy、31 V4、7+4 notifications 与 34 commands 的 carrier 层级有记录；该扫描不代表全部协议已 LIVE 通过。
+完整记录：[official-runtime-install-probes.md](../probes/official-runtime-install-probes.md)；静态 carrier：[carrier-inventory.md](../probes/carrier-inventory.md)。74 legacy、31 V4、7+4 notifications 与 34 commands 的 carrier 层级有记录；该扫描不代表全部协议已 LIVE 通过。
 
 ## attach / launch 决策
 
@@ -60,19 +60,19 @@
 | 正式 runtime reverse model auth failure | NOT_RUN | auth 不满足；不为触发 callback 擅自调用模型 |
 | 正式账号可用只读任务 | NOT_RUN | 无已验证正式 auth source；0 次模型调用 |
 | GUI 完全关闭、真实 DSH GUI/desktop packaged mount、登录/登出、同一 GUI 持久会话恢复与并发写 | NOT_RUN | GUI 红线、authority/auth 未确认；不能用 jsdom/安装成功抵消 |
-| CODE A / CODE B | NOT_RUN | 由主 agent 对冻结 S01 父边界独立评审；worker 不自评为 clean |
+| CODE A / CODE B | NOT_RUN | 由主 agent 对冻结 official-runtime-install 父边界独立评审；worker 不自评为 clean |
 
 每个 PASS 只覆盖表述的 oracle。此前 tool/build 配置失败、参数拒绝、依赖 hooks 副作用和修复均在 PROBES 中记录；不把失败尝试计为通过。
 
 ## Blockers / 待人工点 / PLAN 纠偏建议
 
 1. **正式账号请求 auth source 未验证**：app-server 依赖 Host reverse callback；现有客户端没有可用正式来源。不要把账号已登录或官方安装存在当作 M0 account-ready。需要正式、允许外部宿主使用的 Host/账号接口证据；禁止私有 token、API-key fallback 或复制账号服务。
-2. **共享持久会话 authority 未对齐**：当前空会话只证实驻留实例。CLI 默认数据库路径与 GUI authority 没有正式来源证明；冷恢复拒绝。S04 不应基于这次空列表/双进程只读 PASS 宣称共享世界可用。
+2. **共享持久会话 authority 未对齐**：当前空会话只证实驻留实例。CLI 默认数据库路径与 GUI authority 没有正式来源证明；冷恢复拒绝。session-directory-lifecycle 不应基于这次空列表/双进程只读 PASS 宣称共享世界可用。
 3. **GUI 关闭态需要用户配合**：记为 deferred LIVE_VERIFY。headless 自启本身已通过，但用户现有 GUI 全关闭场景未测，不请 worker 自行操作。
 4. **真实 DSH GUI/packaged oracle 未测**：插件实装、production slot renderer 与真实官方响应已覆盖；还需有隔离正式 DSH GUI 环境确认显示、人工入口与卸载，不用截图/HTTP 200 代替会话行为。
 5. **环境记录**：DSH 依赖 lefthook 包在根保护脚本之前改写全局 hooks；按日志恢复 pre-push backup 并移除该次生成 hooks，生成文件保留在任务 tmp。今后 source dependency install 应先约束 dependency lifecycle scripts。没有修改上游 protection 或全局 gitconfig。
 
-建议主 agent 在 PLAN 的 S01 状态记录 PARTIAL 与上述技术 blockers，保持 requirements 原合同；后继只允许独立测试/文档任务，**不把未证实的正式 auth/shared-session 路径作为 S02/S03 大规模 UI 铺设前提**。不是要求降低 R10/R11/R12/R15。没有证据证明整个正式路径永远不存在，因此没有宣告 requirements 被推翻。
+建议主 agent 在 PLAN 的 official-runtime-install 状态记录 PARTIAL 与上述技术 blockers，保持 requirements 原合同；后继只允许独立测试/文档任务，**不把未证实的正式 auth/shared-session 路径作为 session-create/conversation-runtime 大规模 UI 铺设前提**。不是要求降低 R10/R11/R12/R15。没有证据证明整个正式路径永远不存在，因此没有宣告 requirements 被推翻。
 
 ## AC 自评
 
@@ -81,4 +81,4 @@
 - headless 自启：COMPLETE；用户 GUI 关闭态：NOT_RUN。
 - 正式账号可运行/唯一只读模型任务：BLOCKED by auth source。
 - GUI 同一持久会话发现/恢复/并发写：PARTIAL / 未验证；已观察冷恢复拒绝。
-- S01/M0 总体：**PARTIAL**。提交可供上级独立 review；不代表 acceptance 或 A/B CLEAN。
+- official-runtime-install/M0 总体：**PARTIAL**。提交可供上级独立 review；不代表 acceptance 或 A/B CLEAN。

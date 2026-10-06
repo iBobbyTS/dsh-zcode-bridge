@@ -1,4 +1,4 @@
-# Isolated npm acceptance environment (S08 support)
+# Isolated npm acceptance environment (closure acceptance support)
 
 Run from this bridge checkout, with its dependencies already installed:
 
@@ -6,7 +6,7 @@ Run from this bridge checkout, with its dependencies already installed:
 node scripts/start-npm-acceptance.mjs --port 3208
 ```
 
-The builder creates a new temporary root, installs `@deepseek-ai/dsh@latest` with `npm install --prefix <root>/npm`, builds the bridge, and invokes that installed CLI's **real plugin manager** with `plugin --profile web add --ignore-scripts file:<bridge> file:<host> file:<client>`. It creates an isolated `DSH_HOME`, profile, workspace, npm/pnpm caches, then starts `dsh web --no-open`. There is no global installation, source-copy CLI fallback, reference/package modification, or official mutation/model request. `HOME` and the bridge's sandbox/Route-B landing rules are unchanged. Automatic native session-title generation is disabled in this isolated profile to preserve the zero-call boundary.
+The builder creates a new temporary root, installs `@deepseek-ai/dsh@latest` with `npm install --prefix <root>/npm`, builds the bridge, and invokes that installed CLI's **real plugin manager** with `plugin --profile web add --ignore-scripts file:<bridge> file:<host> file:<client>`. It creates an isolated `DSH_HOME`, profile, workspace, npm/pnpm caches, then starts `dsh web --no-open`. There is no global installation, source-copy CLI fallback, reference/package modification, or official mutation/model request. `HOME` and the bridge's sandbox/Live HTTP landing rules are unchanged. Automatic native session-title generation is disabled in this isolated profile to preserve the zero-call boundary.
 
 Options:
 
@@ -24,6 +24,6 @@ Launcher prerequisites reuse the previously prepared read-only official Host art
 
 Registry latest measured 2026-10-05 is **0.2.0-rc.2**. Development source copy is **0.2.1-alpha.1** (reference revision `5badb150`). `@dsh-zcode/host@0.1.0` declares optional peers `@deepseek-ai/dsh-scope` and `@deepseek-ai/dsh-agent` as `^0.2.1-alpha.1`. The npm release's real plugin manager rejects installation against `0.2.0-rc.2` and reports “nothing was installed.” This is a confirmed version-gate seam, not evidence that the underlying registration APIs are absent. No peer range was broadened and no reference/npm package was edited.
 
-Evidence from the initial default run is `/private/tmp/dsh-s08-npm-environment/{environment-result.json,plugin-install.log}`. Diagnostic runs and final HTTP/status outcome are recorded in [S08 worker handoff](s08-worker-handoff.md). The early diagnostic HTTP probes followed redirects without retaining the authentication cookie and incorrectly reported boot failure; the corrected probe performs the npm release's token → signed-cookie exchange explicitly. Those failures are preserved, not counted as successful acceptance or missing APIs.
+Evidence from the initial default run is `/private/tmp/dsh-closure-npm-environment/{environment-result.json,plugin-install.log}`. Diagnostic runs and final HTTP/status outcome are recorded in [closure worker handoff](closure-worker-handoff.md). The early diagnostic HTTP probes followed redirects without retaining the authentication cookie and incorrectly reported boot failure; the corrected probe performs the npm release's token → signed-cookie exchange explicitly. Those failures are preserved, not counted as successful acceptance or missing APIs.
 
 The parent owns read-only browser verification, the human write checklist, per-entry evidence, independent review, and final requirement-level disposition. A source-built instance or diagnostic version exemption must not silently replace npm acceptance. If the npm version gate or a required runtime seam remains unresolved, record the constraint and keep acceptance blocked rather than patching the official application.

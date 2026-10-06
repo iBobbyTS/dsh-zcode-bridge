@@ -1,8 +1,8 @@
-# S07 HANDOFF — 附件与正式共享上下文能安全进入正确会话
+# attachments-context HANDOFF — 附件与正式共享上下文能安全进入正确会话
 
 ## 1. 身份与边界
 
-- TASK：父工作区 `.agent-work/tasks/S07-TASK.md`，PLAN-FULL S07，R08/R17/R22；EXECUTE_WITH_COMMIT。
+- TASK：父工作区 `.agent-work/tasks/attachments-context-TASK.md`，PLAN-FULL attachments-context，R08/R17/R22；EXECUTE_WITH_COMMIT。
 - bridge 起点 `d8e8409`（`feat/zcode-runtime-bridge`）；DSH 起点 `76c5156`（同名分支，仅消费点/测试配置有界编辑并单独成组）。reference/ZCode 与官方 App 只读。
 - 本 worker 未启动子代理、未执行独立 A/B 评审或父节 admission；不宣称 CLEAN。
 - 红线遵守：0 模型调用（capture allowlist 只含 createSession/deleteSession/discardSharedContext 与 attachment 面，实测 `paidModelCalls=0`）；不碰官方 GUI/真实用户 Session/凭据；未调用 session/close；不造第二存储；不提供任意主机路径后门；移植保留来源（SOURCE/NOTICE/LICENSE + `scripts/vendor-v4.mjs` 可重建）；受限态不标 available。
@@ -33,7 +33,7 @@
 
 ### DSH 克隆（仅消费点测试，单独提交）
 
-9. `packages/client/ui-session/tests/zcode-attachment.client.spec.tsx`、`tests/bridge-ambient.client.ts` 声明、`vitest.config.ts` 新增 `@dsh-zcode/bridge-s07` / `@dsh-zcode/bridge-attachment` 别名。
+9. `packages/client/ui-session/tests/zcode-attachment.client.spec.tsx`、`tests/bridge-ambient.client.ts` 声明、`vitest.config.ts` 新增 `@dsh-zcode/bridge-attachments-context` / `@dsh-zcode/bridge-attachment` 别名。
 
 ---
 
@@ -68,10 +68,10 @@
 
 ## 4. Fixtures 与真实采集
 
-- `scripts/capture-s07.mjs`：真实 headless 采集（allowlist 无模型输入）。输出 `tests/fixtures/s07/official-attachment.json`（chunk 字节以 `<base64:N bytes>` 占位，保留 wire 语义）；证据见 [s07-capture.log](../probes/checks/s07-capture.log)（22 exchanges，`paidModelCalls=0`，真实 fault 原文含 `fault.attachment.uploadNotFound`/`chunkCountInsufficient`/`previewRefNotAuthorized`/`shareStatNotAuthorized`/`shareReadNotAuthorized`）。
-- `scripts/make-s07-fixtures.mjs`：以真实 s06 busy 快照为基派生 `success/attached/discarded/legacy.json`。userInput 行附件与 sharedContextImport 注入（无法在 0 模型下真实产生），每份 provenance 明列注入项。
-- `tests/fixtures/s07-runtime.mjs`：注入式服务端边界，Producer 为真实 `V4Conversation` + vendored schema；begin/chunk/commit/abort 按官方 `AttachmentUploadRegistry` 语义（重复片/冲突片/gap/incomplete/abort 后 notFound），支持 `failCommit`/`dropCommit`/commit 延迟。
-- `tests/s07-attachment.test.mjs`（12 项）、`tests/s07.dsh.spec.ts`（7 项）、DSH 侧 `zcode-attachment.client.spec.tsx`（2 项）。
+- `scripts/capture-attachments-context.mjs`：真实 headless 采集（allowlist 无模型输入）。输出 `tests/fixtures/attachments-context/official-attachment.json`（chunk 字节以 `<base64:N bytes>` 占位，保留 wire 语义）；证据见 [attachments-context-capture.log](../probes/checks/attachments-context-capture.log)（22 exchanges，`paidModelCalls=0`，真实 fault 原文含 `fault.attachment.uploadNotFound`/`chunkCountInsufficient`/`previewRefNotAuthorized`/`shareStatNotAuthorized`/`shareReadNotAuthorized`）。
+- `scripts/make-attachments-context-fixtures.mjs`：以真实 queue-guide-goal busy 快照为基派生 `success/attached/discarded/legacy.json`。userInput 行附件与 sharedContextImport 注入（无法在 0 模型下真实产生），每份 provenance 明列注入项。
+- `tests/fixtures/attachments-context-runtime.mjs`：注入式服务端边界，Producer 为真实 `V4Conversation` + vendored schema；begin/chunk/commit/abort 按官方 `AttachmentUploadRegistry` 语义（重复片/冲突片/gap/incomplete/abort 后 notFound），支持 `failCommit`/`dropCommit`/commit 延迟。
+- `tests/attachments-context.test.mjs`（12 项）、`tests/attachments-context.dsh.spec.ts`（7 项）、DSH 侧 `zcode-attachment.client.spec.tsx`（2 项）。
 
 ---
 
@@ -79,15 +79,15 @@
 
 | 检查项 | 命令 | 结果 | 证据 |
 |---|---|---|---|
-| Bridge Node 全量 | `npm test` | **82/82 PASS**（原 70 保留 + 12 S07） | [s07-node.log](../probes/checks/s07-node.log) |
-| DSH bridge 集成 | `node ../dsh/node_modules/vitest/vitest.mjs run --config scripts/dsh-vitest.config.mjs` | **73/73 PASS**（原 66 + 7） | [s07-integration.log](../probes/checks/s07-integration.log) |
-| DSH native 回归 | `pnpm_config_verify_deps_before_run=false pnpm vitest run packages/api/session-controller/tests packages/client/ui-session/tests packages/client/ui-workspace/tests` | **1371/1371 PASS**（原 1369 + 2） | [s07-native.log](../probes/checks/s07-native.log) |
-| DSH 消费点 | `... vitest run packages/client/ui-session/tests/zcode-attachment.client.spec.tsx` | **2/2 PASS** | [s07-dsh-consumer.log](../probes/checks/s07-dsh-consumer.log) |
-| DSH 类型 | `pnpm typecheck:contracts-ready` | **PASS** | [s07-types.log](../probes/checks/s07-types.log) |
-| Bridge build | `npm run build` | **PASS** | [s07-bridge-build.log](../probes/checks/s07-bridge-build.log) |
-| DSH full build | `pnpm_config_verify_deps_before_run=false pnpm build` | **PASS; 355 artifacts** | [s07-dsh-build.log](../probes/checks/s07-dsh-build.log) |
-| 真实非模型采集 | `node scripts/capture-s07.mjs` | **PASS; paidModelCalls=0** | [s07-capture.log](../probes/checks/s07-capture.log) |
-| oxlint（两仓 S07 触碰文件） | `oxlint [...]` | **0 warnings / 0 errors** | [bridge](../probes/checks/s07-lint.log) / [DSH](../probes/checks/s07-dsh-lint.log) |
+| Bridge Node 全量 | `npm test` | **82/82 PASS**（原 70 保留 + 12 attachments-context） | [attachments-context-node.log](../probes/checks/attachments-context-node.log) |
+| DSH bridge 集成 | `node ../dsh/node_modules/vitest/vitest.mjs run --config scripts/dsh-vitest.config.mjs` | **73/73 PASS**（原 66 + 7） | [attachments-context-integration.log](../probes/checks/attachments-context-integration.log) |
+| DSH native 回归 | `pnpm_config_verify_deps_before_run=false pnpm vitest run packages/api/session-controller/tests packages/client/ui-session/tests packages/client/ui-workspace/tests` | **1371/1371 PASS**（原 1369 + 2） | [attachments-context-native.log](../probes/checks/attachments-context-native.log) |
+| DSH 消费点 | `... vitest run packages/client/ui-session/tests/zcode-attachment.client.spec.tsx` | **2/2 PASS** | [attachments-context-dsh-consumer.log](../probes/checks/attachments-context-dsh-consumer.log) |
+| DSH 类型 | `pnpm typecheck:contracts-ready` | **PASS** | [attachments-context-types.log](../probes/checks/attachments-context-types.log) |
+| Bridge build | `npm run build` | **PASS** | [attachments-context-bridge-build.log](../probes/checks/attachments-context-bridge-build.log) |
+| DSH full build | `pnpm_config_verify_deps_before_run=false pnpm build` | **PASS; 355 artifacts** | [attachments-context-dsh-build.log](../probes/checks/attachments-context-dsh-build.log) |
+| 真实非模型采集 | `node scripts/capture-attachments-context.mjs` | **PASS; paidModelCalls=0** | [attachments-context-capture.log](../probes/checks/attachments-context-capture.log) |
+| oxlint（两仓 attachments-context 触碰文件） | `oxlint [...]` | **0 warnings / 0 errors** | [bridge](../probes/checks/attachments-context-lint.log) / [DSH](../probes/checks/attachments-context-dsh-lint.log) |
 | whitespace | `git diff --check`（两仓） | **PASS** | — |
 
 NOT_RUN（fixture PASS 不替代）：
@@ -101,7 +101,7 @@ NOT_RUN（fixture PASS 不替代）：
 - 附件一律走 `V4Conversation` 的同一 owner：`attachmentStart/Chunk/Commit/Abort/uploadAttachment` 与 read/stat；不得另建存储/注册表；host 生成 uploadId 与 connectionId，客户端不得提供 sessionId。
 - 资源面准入 `attachmentAdmission`（live+snapshot）与模型面 `admission`（runnable）分离；受限 host 可上传但永不发送。
 - ref 身份 = 本会话 committed 或当前投影行附件；发送/读取前必须经 `#boundAttachmentRef`；禁止任何主机路径读取入口。
-- `discardSharedContext` 只改本会话 import 状态（pending→discarded），**不是**删除源会话；S08 fork/历史不得把撤回当会话删除。
+- `discardSharedContext` 只改本会话 import 状态（pending→discarded），**不是**删除源会话；history-management fork/历史不得把撤回当会话删除。
 - shared context import 创建不可用（legacy session/create + 外部 share），后续若要补需先核实 carrier 与外部依赖。
 - 未来 auth owner 获得可信 runnable 后，先补真实 send-with-attachment 与成功 read/stat oracle，再谈把发送标 available；不得从 UI payload 开通。
 
@@ -109,6 +109,6 @@ NOT_RUN（fixture PASS 不替代）：
 
 ## 7. 提交与自评
 
-- bridge：`feat(host): vendor official attachment and shared-context protocol schemas`、`feat(attachment): add session-bound upload/read/stat and shared-context controls`、`test(attachment): cover official upload semantics, identity binding, and DSH seat`、`docs(handoff): record S07 carriers, real capture, and checks`。
+- bridge：`feat(host): vendor official attachment and shared-context protocol schemas`、`feat(attachment): add session-bound upload/read/stat and shared-context controls`、`test(attachment): cover official upload semantics, identity binding, and DSH seat`、`docs(handoff): record attachments-context carriers, real capture, and checks`。
 - DSH：`test(ui-session): cover official ZCode attachment upload through session seat`（消费点测试与别名，单独成组）。
 - 自评：**PARTIAL**。受限态实现与要求交付范围 6 项已交付；上传全链、权限/身份、共享上下文使用/撤回为真实/ fixture 证据；AC 的“发送后可用”与成功 read/stat 因 0 模型红线 gated，已如实记录且未标 available。需要主调度独立双覆盖与父节 admission；本 worker 不宣称 CLEAN 或整体 feature 完成。

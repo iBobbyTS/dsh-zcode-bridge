@@ -1,8 +1,8 @@
-# S09 HANDOFF — MCP、插件与 Skills 的目录和管理入口
+# catalog-management HANDOFF — MCP、插件与 Skills 的目录和管理入口
 
 ## 身份、范围与交付状态
 
-- TASK：`/Users/ibobby/Projects/dsh-zcode-acp/.agent-work/tasks/S09-TASK.md`；PLAN-FULL S09；R02/R07/R14/R18。完整 TASK 先读后执行；模式 EXECUTE_WITH_COMMIT。
+- TASK：`/Users/ibobby/Projects/dsh-zcode-acp/.agent-work/tasks/catalog-management-TASK.md`；PLAN-FULL catalog-management；R02/R07/R14/R18。完整 TASK 先读后执行；模式 EXECUTE_WITH_COMMIT。
 - bridge 起点 `4958d1e`，分支 `feat/zcode-runtime-bridge`；DSH 克隆 `/Users/ibobby/Projects/dsh-zcode-acp/dsh` HEAD `21fb059` **本期无任何改动**（本节的 consumer 是 bridge 自带 client 插件，未触及 DSH 产品/测试文件，故无 DSH 提交）。reference/ZCode 与官方 App 只读。
 - 当前 worker 的 requested executor/model/effort 与 observed 记录在本会话不可见，记 UNKNOWN，由主调度保留真实 dispatch。未启动子代理；未执行独立 A/B 或父节 admission。
 - 自评 **COMPLETE**（受限范围内）：目录读面与管理写面均在真实 headless 实测可达并真实往返，fixtures 全覆盖、回归全绿；真实账号 entitlement 门禁的非空 MCP 状态与网络市场拒绝无法在 0 模型/无真实账号条件下实测，已按 R18 以官方 schema 注入 fixture 并如实标注，未把注入当实测成功。
@@ -10,7 +10,7 @@
 
 ## 首先执行的真实 headless 可达性检查（TASK 第 1 条）
 
-先执行 `scripts/capture-s09.mjs`（产品 `CatalogClient` 走真实官方 carrier），再写测试。脚本启动已验证官方 Helper+cjs（App 3.14.4.7912，cjs SHA-256 `fad4c35c…6275f`），spawn env 用 `runtimeEnv` 并将 `HOME` 指向临时目录，workspace 为临时目录；不访问真实账号/凭据。结果在 `tests/fixtures/s09/official.json` 与 [capture log](../probes/checks/s09-capture.log)。
+先执行 `scripts/capture-catalog-management.mjs`（产品 `CatalogClient` 走真实官方 carrier），再写测试。脚本启动已验证官方 Helper+cjs（App 3.14.4.7912，cjs SHA-256 `fad4c35c…6275f`），spawn env 用 `runtimeEnv` 并将 `HOME` 指向临时目录，workspace 为临时目录；不访问真实账号/凭据。结果在 `tests/fixtures/catalog-management/official.json` 与 [capture log](../probes/checks/catalog-management-capture.log)。
 
 **读面可达性（真实到达官方、0 模型调用）**：
 
@@ -28,8 +28,8 @@
 
 | 写面 | 结果 |
 |---|---|
-| `plugins/marketplace/add`（dryRun / 本地 directory 源真实添加） | 真实往返；本地市场 `s09-local` 真实落盘到隔离存储 |
-| `plugins/install`（本地市场，隔离存储） | 真实安装成功：`installedPlugins[0].id=s09-demo@s09-local`，version 1.0.0 |
+| `plugins/marketplace/add`（dryRun / 本地 directory 源真实添加） | 真实往返；本地市场 `catalog-managed-local` 真实落盘到隔离存储 |
+| `plugins/install`（本地市场，隔离存储） | 真实安装成功：`installedPlugins[0].id=catalog-managed-demo@catalog-managed-local`，version 1.0.0 |
 | `plugins/install`（不存在的插件） | RPC 成功但官方 **diagnostics `plugin_dependency_missing`（severity error）、installedPlugins 空**——必须呈现为失败，不能当作新版本 |
 | `plugins/setEnabled`（disable→enable） | 真实往返；返回官方 `plugin.enabled` 与 `enabledSource:"workspace"` |
 | `plugins/configure` / `plugins/resetConfig` | 真实往返（隔离存储） |
@@ -38,18 +38,18 @@
 | `plugins/restoreBuiltin` | 真实往返 |
 | `plugins/marketplace/remove` | 真实往返 |
 | `plugins/cancelOperation`（未知 operationId） | 真实 `{cancelled:false}`（不假报已取消） |
-| 安装后 `plugins/overview` 复读 | 真实出现 installed 记录 `s09-demo@s09-local:1.0.0:enabled`；DSH 侧无乐观版本 |
+| 安装后 `plugins/overview` 复读 | 真实出现 installed 记录 `catalog-managed-demo@catalog-managed-local:1.0.0:enabled`；DSH 侧无乐观版本 |
 
 **目录/操作面判定**：读面与写面在真实 headless（0 模型调用）**均可达**，因此实现为真实往返，而不是标 gated。未核实项按 R16 列在 carrier 表。MCP 工具（tools/call 等）从未调用——本节只做目录读与管理，符合红线“不在 DSH 重跑 ZCode 的 MCP 工具”。
 
 ## Carrier 核实表（逐项）
 
-路径相对只读 `reference/ZCode`；CLI 分发 `apps/zcode-cli/packages/bootstrap/src/zcode-protocol/server.ts:644–709`（legacy stdio，S01-CARRIERS 已分类）。结果 schema 在 `packages/shared/src/zcode-protocol/index.ts`。
+路径相对只读 `reference/ZCode`；CLI 分发 `apps/zcode-cli/packages/bootstrap/src/zcode-protocol/server.ts:644–709`（legacy stdio，official-runtime-install-CARRIERS 已分类）。结果 schema 在 `packages/shared/src/zcode-protocol/index.ts`。
 
 | 项目 | 正式 carrier / 生效 owner | 实现、真实结果与限制 |
 |---|---|---|
 | MCP 列表 | `mcp/list` → `server.ts:644` `mcp.ts:30` `listMcpServers`；`mcp.ts:78` mode=status、`:94` mode=connect | 实现 `mcpList`（默认 status，可 connect）。官方 `McpServerStatusSnapshot`：status/toolCount/failureKind/authorization/protocolEra。真实空配置返回空；凭据/`mcpServers` 参数不从 UI 透传（见安全）。 |
-| 插件目录 | `plugins/list` → `server.ts:646` `plugins.ts:201` | 实现 `pluginsList`（host carrier）；官方 source=official/cache/missing、enabled、components、declaredMcpServerNames；缺配置插件以 `source:"missing"` 回传。该读面**未接入 S09 面板**（无渲染点），故面板刷新不 eager 读取以避免死往返；host 侧仍保留，供后续有界消费者按需读取并呈现 source:missing。 |
+| 插件目录 | `plugins/list` → `server.ts:646` `plugins.ts:201` | 实现 `pluginsList`（host carrier）；官方 source=official/cache/missing、enabled、components、declaredMcpServerNames；缺配置插件以 `source:"missing"` 回传。该读面**未接入 catalog-management 面板**（无渲染点），故面板刷新不 eager 读取以避免死往返；host 侧仍保留，供后续有界消费者按需读取并呈现 source:missing。 |
 | 插件引用目录 | `plugins/referenceCatalog` → `server.ts:650` `plugin-reference-catalog.ts:30`；`plugins/referenceCatalogWithCategory` → `server.ts:648` | 实现 `pluginReference`（无 category）。withCategory 为**已核实但未接线**（category 仅展示性）；未标不可用。 |
 | Skill 引用目录 | `skills/referenceCatalog` → `server.ts:652` `skill-reference-catalog.ts:16` | 实现 `skillReference`；workspace authority（无 sessionId）；带 sessionId 时官方要求 resident session，本节不伪造 session authority。 |
 | 总览 | `plugins/overview` → `server.ts:674` `plugins.ts:254` | 实现 `pluginsOverview`；marketplaces/available/installed/restorable/diagnostics/capability。 |
@@ -62,7 +62,7 @@
 | 配置/reset | `plugins/configure` `plugins/resetConfig` → `server.ts:702–705` `plugins.ts:430/447` | 实现二者；真实往返。 |
 | 启停 | `plugins/setEnabled` → `server.ts:670` `plugins.ts:229` | 实现 `setEnabled`；官方返回 `plugin.enabled`+`enabledSource`。 |
 | 进度通知 | `plugins/operationProgress` → `plugin-reference-catalog.ts:144`；`server.ts:728` `withPluginOperationSignal` 按 operationId 建 AbortController | 实现按 operationId 关联；controller 只在 `request.params.operationId` 存在时注册（bridge 已按 carrier 合并 UI id）；official schema 仅 `state:"refreshing"`，且仅 suggested-reference 流程发出。本节按事实只呈现“等待期 pending + 可选 refreshing”，**不虚造百分比/阶段**。 |
-| 建议引用 | `plugins/resolveSuggestedReference` → `server.ts:666` `plugin-reference-catalog.ts:66` | 已核实，但不在 S09 交付清单（属于另一操作入口）；未接线，也不标不可用。 |
+| 建议引用 | `plugins/resolveSuggestedReference` → `server.ts:666` `plugin-reference-catalog.ts:66` | 已核实，但不在 catalog-management 交付清单（属于另一操作入口）；未接线，也不标不可用。 |
 | 入口安全 | — | 只经官方 app-server stdio；无第二目录、无本地持久、无 MCP 工具、无密钥日志。 |
 
 ## 实现清单
@@ -71,8 +71,8 @@
 2. **Host 接线 `runtime.mjs` / `index.mjs`**：`#connect` 成功后建 `CatalogClient`（`managementAllowed = installation.verified`），连接重置/失败/dispose 时释放；新增 `catalogRead`/`catalogOperate`/`catalogState`；`handleCatalog` 端点只允许 `read|operate|state` 且拒绝多余 payload key（不能经 UI 携带 workspace/runtime/密钥）。
 3. **Client 镜像 `packages/client/catalog.mjs`**：`CatalogStore` 仅作官方事实的显示镜像 + 等待期 pending；回调 refresh 逐节读官方（`CATALOG_READ_KINDS` 仅含面板实际渲染的 mcp/overview/reference/skills 四节；`pluginsList` 未渲染故不 eager 读取），单节被拒只标该节不可用不造行；`operate` 成功后 refresh 复读官方；`cancel` 仅在官方 `cancelled:true` 时落 cancelled，`cancelled:false` 保持 pending 不假报完成；refresh 带 connection generation 守卫，重置后迟到结果不得覆盖重置快照；`operationOutcome` 把官方 error 诊断判为失败。
 4. **Client 视图 `packages/client/catalog-view.jsx`**：MCP/市场/已装/可装/插件引用/Skill 引用分区；启停/安装/卸载/更新/配置/reset/marketplace 增删刷/validate/describe/cancel；admission 拒绝时隐藏管理动作只留读面；账号未知与 entitlement 失败原因如实展示；未知状态/条目有界降级不崩。
-5. **入口 `client.jsx`**：`main` slot 新增 `zcode-catalog` 面板；目录侧栏新增入口按钮（`onOpenCatalog`）。StatusCard 保持单一 `role="status"`，避免与既有 S01 渲染断言冲突。
-6. **回归测试**：`tests/s09-catalog.test.mjs`（17 项）、`tests/s09.dsh.spec.ts`（13 项）、`tests/fixtures/s09-store.mjs`、派生 fixtures。
+5. **入口 `client.jsx`**：`main` slot 新增 `zcode-catalog` 面板；目录侧栏新增入口按钮（`onOpenCatalog`）。StatusCard 保持单一 `role="status"`，避免与既有 official-runtime-install 渲染断言冲突。
+6. **回归测试**：`tests/catalog-management.test.mjs`（17 项）、`tests/catalog-management.dsh.spec.ts`（13 项）、`tests/fixtures/catalog-management-store.mjs`、派生 fixtures。
 
 ## 不变量与安全中间态
 
@@ -87,17 +87,17 @@
 
 ## Fixtures 与实跑检查
 
-- `scripts/capture-s09.mjs`：真实采集（读+写，隔离 HOME/workspace），断言的本地市场/插件均为合成测试内容，非用户数据；tmp 路径别名化；stderr 只计字节。
-- `scripts/make-s09-fixtures.mjs` 从 official.json 派生 `directory.json`（真实目录投影，含安装后 overview）、`operations.json`（真实管理结果，含真实失败诊断）、`entitlement.json`/`unknown.json`/`progress.json`（**按官方 schema 注入**，provenance 逐项标注；因无真实账号/无配置 MCP，不能充当实测成功）。
-- 测试用 `tests/fixtures/s09-store.mjs` 为受控官方 stdio 假官方端口，无产品存储。
+- `scripts/capture-catalog-management.mjs`：真实采集（读+写，隔离 HOME/workspace），断言的本地市场/插件均为合成测试内容，非用户数据；tmp 路径别名化；stderr 只计字节。
+- `scripts/make-catalog-management-fixtures.mjs` 从 official.json 派生 `directory.json`（真实目录投影，含安装后 overview）、`operations.json`（真实管理结果，含真实失败诊断）、`entitlement.json`/`unknown.json`/`progress.json`（**按官方 schema 注入**，provenance 逐项标注；因无真实账号/无配置 MCP，不能充当实测成功）。
+- 测试用 `tests/fixtures/catalog-management-store.mjs` 为受控官方 stdio 假官方端口，无产品存储。
 
 | 检查 | 实跑结果 / 证据 |
 |---|---|
-| `npm test`（CA10 修复后重跑） | **115/115 PASS**（新增 4 项；修复前基线 111），0 skip；[node](../probes/checks/s09-fix-node.log)。 |
-| bridge DSH 全集成（CA10 修复后重跑） | **103/103 PASS**（新增 2 项；修复前基线 101），0 skip；[integration](../probes/checks/s09-fix-integration.log)。 |
-| bridge build（CA10 修复后重跑） | **PASS**；[bridge build](../probes/checks/s09-fix-bridge-build.log)。 |
-| touched-file oxlint / `git diff --check`（修复后重跑） | **0 error 0 warning / PASS**；[lint](../probes/checks/s09-fix-lint.log)、[whitespace](../probes/checks/s09-fix-whitespace.log)。 |
-| DSH native 指定回归 / `typecheck:contracts-ready` / DSH full build / 真实 headless capture | 修复前基线证据，未重跑（本修复仅动 bridge 文件，未碰 DSH 仓/官方 carrier/capture 脚本）；[native](../probes/checks/s09-native.log)、[types](../probes/checks/s09-types.log)、[DSH build](../probes/checks/s09-dsh-build.log)、[capture](../probes/checks/s09-capture.log)。 |
+| `npm test`（CA10 修复后重跑） | **115/115 PASS**（新增 4 项；修复前基线 111），0 skip；[node](../probes/checks/catalog-management-fix-node.log)。 |
+| bridge DSH 全集成（CA10 修复后重跑） | **103/103 PASS**（新增 2 项；修复前基线 101），0 skip；[integration](../probes/checks/catalog-management-fix-integration.log)。 |
+| bridge build（CA10 修复后重跑） | **PASS**；[bridge build](../probes/checks/catalog-management-fix-bridge-build.log)。 |
+| touched-file oxlint / `git diff --check`（修复后重跑） | **0 error 0 warning / PASS**；[lint](../probes/checks/catalog-management-fix-lint.log)、[whitespace](../probes/checks/catalog-management-fix-whitespace.log)。 |
+| DSH native 指定回归 / `typecheck:contracts-ready` / DSH full build / 真实 headless capture | 修复前基线证据，未重跑（本修复仅动 bridge 文件，未碰 DSH 仓/官方 carrier/capture 脚本）；[native](../probes/checks/catalog-management-native.log)、[types](../probes/checks/catalog-management-types.log)、[DSH build](../probes/checks/catalog-management-dsh-build.log)、[capture](../probes/checks/catalog-management-capture.log)。 |
 | DSH 仓改动 | **无**（无 DSH commit）。 |
 
 ## NOT_RUN

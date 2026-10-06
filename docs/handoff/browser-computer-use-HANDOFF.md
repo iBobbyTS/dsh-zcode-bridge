@@ -1,16 +1,16 @@
-# S11 HANDOFF — Browser / Computer Use 正式宿主回调与可见交互
+# browser-computer-use HANDOFF — Browser / Computer Use 正式宿主回调与可见交互
 
 ## 身份、边界与状态
 
-- 权威：`../.agent-work/tasks/S11-TASK.md` 完整任务包、PLAN-FULL S11、REQUIREMENTS R02/R08/R09/R21/R22；执行模式 **EXECUTE_WITH_COMMIT**。
-- bridge 基线 `4ff84e3`，分支 `feat/zcode-runtime-bridge`；DSH 基线 `21fb059`，本节 **无 DSH 仓改动/提交**：webui 消费沿用 S03.B `renderSessionArea`，具体视图仍由 bridge Client bundle 提供。没有为“两仓”形式要求制造无必要改动。
+- 权威：`../.agent-work/tasks/browser-computer-use-TASK.md` 完整任务包、PLAN-FULL browser-computer-use、REQUIREMENTS R02/R08/R09/R21/R22；执行模式 **EXECUTE_WITH_COMMIT**。
+- bridge 基线 `4ff84e3`，分支 `feat/zcode-runtime-bridge`；DSH 基线 `21fb059`，本节 **无 DSH 仓改动/提交**：webui 消费沿用 live-session-permission-stop `renderSessionArea`，具体视图仍由 bridge Client bundle 提供。没有为“两仓”形式要求制造无必要改动。
 - reference/ZCode `29628c9acdb81b703bbd4080c207a0e7ce5e276e` 与官方 App 只读。实际 executor/model/effort 的调度证据由父节保存；本会话不自行推测 observed 身份。未启动子代理，未执行独立 A/B 或 admission。
 - 自评：**COMPLETE（TASK 已接受受限范围）**。正式 browser reverse responder、注册观察、Computer Use 事件/权限/图片呈现已实现；**真实 browser/CUA 动作成功仍 NOT_RUN，执行能力 gated**。本节不能据此宣布原 PLAN 的真实动作 AC 完成或模型鉴权解锁。
 - 红线：0 模型调用；临时 HOME/workspace；无官方 GUI/用户数据/凭据读取；无 Desktop 外壳、CUA helper 启动、TCC 授权、安全机制绕过或 `session/close`；未接 DSH/Chrome MCP 替代执行器；无第二持久存储。
 
 ## 核心探测报告与正式路径判定
 
-探测顺序：先完整读 TASK、S01 auth Q1、S09/S10 基座与 reference 宿主链；先真实 headless 注册/空态采集，再实现 responder。后续补采安装包 SDK 自检与物理 helper 制品，最终证据为 [official.json](../../tests/fixtures/s11/official.json)、[capture log](../probes/checks/s11-capture.log)。
+探测顺序：先完整读 TASK、official-runtime-install auth 问题一、catalog-management/background-subagents 基座与 reference 宿主链；先真实 headless 注册/空态采集，再实现 responder。后续补采安装包 SDK 自检与物理 helper 制品，最终证据为 [official.json](../../tests/fixtures/browser-computer-use/official.json)、[capture log](../probes/checks/browser-computer-use-capture.log)。
 
 正式 App 3.14.4 / build 3.14.4.7912，官方 cjs SHA-256 `fad4c35c4c36ec210d8a06d3fa0e77de23c8545e2eb6ff90aea1eb38d1e6275f`。仅 App-owned Electron **Node 模式**运行 `app-server --stdio`，不启动 Desktop。所有源代码锚点下文相对只读 `reference/ZCode@29628c9`；安装包锚点明确另列，避免把开源占位包当成产品实现。
 
@@ -34,7 +34,7 @@
 |---|---|---|---|
 | (a) app-server stdio reverse 回调 | **carrier 可承载**；bridge 已作为正式请求应答器/观察者接线；没有正式 executor 时回空 discovery / backend_unavailable | **执行不走同类 stdio reverse**；操作与权限通知、v4 图片投影可以观察 | `browser-control-broker.ts:54,87,120` 调用 context.requestClient；`server.ts:406,805,855,893` 同管道 result/error 结算与 schema 校验；`transport.ts:74,156` NDJSON 与 response 绕队列。真实 prefs reverse + create 成功、cjs 字符串及源码；browser-specific 帧仍 NOT_RUN。不能从 auth 回调类推 browser executor 已就绪。 |
 | (b) Host / Main / helper 执行面 | 官方 GUI Host 注入 Main bridge → Electron parentPort → WebContentsView/CDP；当前 headless bridge 无该 executor，**gated** | shared node_repl → CUA runtime → helper socket；当前无已核实 socket/宿主资格，**gated** | `zcodeAgentService.ts:2402,2432`、`desktop/host/browserControlMainBridge.ts:11,56,116`、`desktop/host/index.ts:233,2432,2877`；`node-repl-host/src/server.ts:372`、`node.ts:1194,1850,1876`。真实目录/空状态与 SDK unavailable；物理 helper 存在。**不将所有 helper 路径笼统判成 GUI-only/永不可达**，只判当前 bridge 无正式连接。 |
-| (c) DSH webui 宿主呈现面 | **可达（观察侧）**：注册、请求/响应/错误、精确 browserId/generation/tab、图片 | **可达（观察侧）**：官方事件 envelope、权限 owner/accessibility/screenRecording、node_repl app/image 与 CUA 输出卡 | 已复用 S03.B session area、衔接 S10 面板；真实空态/注册实跑+注入生命周期检查、宽窄 Chrome 隔离截图。webui 呈现不成为 browser backend，不产生假的可执行能力。 |
+| (c) DSH webui 宿主呈现面 | **可达（观察侧）**：注册、请求/响应/错误、精确 browserId/generation/tab、图片 | **可达（观察侧）**：官方事件 envelope、权限 owner/accessibility/screenRecording、node_repl app/image 与 CUA 输出卡 | 已复用 live-session-permission-stop session area、衔接 background-subagents 面板；真实空态/注册实跑+注入生命周期检查、宽窄 Chrome 隔离截图。webui 呈现不成为 browser backend，不产生假的可执行能力。 |
 
 **R09 判断**：browser reverse responder 是 agent 所需正式桥接，不能借 Desktop 外壳排除；因此已经实现。Main/CDP executor 与 CUA helper 当前未获连接，保持 gated；没有为了纳入而启动外壳/签名绕过/自建替代 executor。
 
@@ -58,8 +58,8 @@
 | CUA operation | `computer-use/operation-event`；index.ts:1049,1091；server-operations.ts:2994；computer-use-operation-event.ts:28,43；zcodeAgentService.ts:1951 | 校验、按 sessionId 过滤、eventId 去重。有 computerUse:true 才显示明确 CUA marker；turn/tool-started 未标记不猜动作名。真实流事件 NOT_RUN；fixtures。 |
 | CUA permissions | `v4/cua/permission-observation`；transport.ts:414；v4-gateway.ts:801；v4-bridge.ts:1492；cua-permission-observation.ts:17；shared/cuaPermission.ts:37 | 显示历史观察中的 grantOwner/accessibility/stale/denied/screenRecording；不查询真实 TCC，不恢复历史为授权副作用，不开系统设置/自动授予。真实权限 UNKNOWN；fixtures。 |
 | CUA/node_repl 图片与应用 | v4 toolCall.display node_repl_images / output.display cua；rows.ts:191；toolDisplay.ts:67,167,185；官方 UI cua-permission/CuaPermissionObservationAttachment.tsx:118 | 原会话行呈现 inline PNG/JPEG/WebP、app/target、errorCode/suggestedAction/permissionStatus/truncated。artifactUri-only 图片入口明确 gated（R16），不绕过官方 attachment carrier。fixture v4 schema完整校验。 |
-| 插件/宿主注册 | `plugins/list` / `mcp/list`，沿用 S09 CatalogClient | 每次用户读取都真往返，不缓存目录为第二权威，不 enable/connect/运行工具（产品读 mode=status）。enabled 不解锁 execution；具体 tool list unverified。 |
-| webui 呈现 | S03.B renderSessionArea → ZCodeConversationView → HostToolsPanel / ToolResult | 真实受限实例已渲染并读取目录；fixtures覆盖错误/图片/权限；无 client-side executor/成功按钮。 |
+| 插件/宿主注册 | `plugins/list` / `mcp/list`，沿用 catalog-management CatalogClient | 每次用户读取都真往返，不缓存目录为第二权威，不 enable/connect/运行工具（产品读 mode=status）。enabled 不解锁 execution；具体 tool list unverified。 |
+| webui 呈现 | live-session-permission-stop renderSessionArea → ZCodeConversationView → HostToolsPanel / ToolResult | 真实受限实例已渲染并读取目录；fixtures覆盖错误/图片/权限；无 client-side executor/成功按钮。 |
 
 ## 实现清单与不变量
 
@@ -67,29 +67,29 @@
 - `HostTools`：绑定本 process 的 workspace；严格官方 schemas；foreign workspace/remote identity拒绝，不把外来失败归到本地会话。合法请求与本地 schema拒绝可见；无 executor 的官方 fallback；32条瞬时观察上限、256 eventId 去重上限，图片预览256KiB上限；不持久化官方事实、工具目录、截图或目标资源。
 - B05/R22：callback 超时/断连或 response 仍在背压队列便丢失 → **outcome-unknown/uncertain**；signal abort，晚到 result 丢弃，不自动再发/再执行。reply 的 responded 只表示写给 runtime，绝不叫动作 completed。输出背压下，未实际 write 的 reply 不先标 responded。未知/非法结果与官方结构化拒绝都可见。
 - `V4Conversation`：注入 HostTools、state内提供本 session records；listener随 conversation关闭释放。`hostRegistration` 只需 live projection/workAdmission，不要求模型 runnable；endpoint只接受 operation+handle；无 caller workspace/session/executor字段。RemoteConversation走同一scoped RPC。
-- UI：HostToolsPanel 放在 ControlBar 后、S10 WorkPanel 前；按完整会话身份 remount。按需新鲜注册读，失败清旧值；departing/controller替换 abort并fence迟到结果；始终 gated，权限未观察保持 unknown。ToolResult 消费官方 v4 visual metadata；普通 unknown display维持原fallback。
+- UI：HostToolsPanel 放在 ControlBar 后、background-subagents WorkPanel 前；按完整会话身份 remount。按需新鲜注册读，失败清旧值；departing/controller替换 abort并fence迟到结果；始终 gated，权限未观察保持 unknown。ToolResult 消费官方 v4 visual metadata；普通 unknown display维持原fallback。
 - `browserExecutor` 是 **仅同进程 provider seam**，生产 BridgeHost从未注入；fixtures用它注入成功/拒绝/延迟，仍标 executor-verification-required，不能作为正式executor已核实证据，也无RPC安装入口。
 
 ## Fixtures 与检查
 
 | Artifact | 真实性 |
 |---|---|
-| tests/fixtures/s11/official.json | 官方实时capture；注册、空态、prefs reverse、正向拒绝、SDK self-check真实；0models，未注入 browser/CUA动作。 |
+| tests/fixtures/browser-computer-use/official.json | 官方实时capture；注册、空态、prefs reverse、正向拒绝、SDK self-check真实；0models，未注入 browser/CUA动作。 |
 | empty.json | official.json的严格真实投影，injectedFields=[]。 |
-| lifecycle.json | **明确 injected**：schema同源 browser请求/回答、图片/target拒绝/取消、CUA事件/权限；两条synthetic toolCall rows放入真实S03A空投影envelope。没有冒充真实执行或权限检查。 |
-| s11-wide.png / s11-narrow.png | 隔离Chrome渲染：真实目录元数据 + 注入 reply/timeout/permission；观察侧视觉检查，**不是官方动作oracle**。 |
+| lifecycle.json | **明确 injected**：schema同源 browser请求/回答、图片/target拒绝/取消、CUA事件/权限；两条synthetic toolCall rows放入真实transport-v4-convergence空投影envelope。没有冒充真实执行或权限检查。 |
+| browser-computer-use-wide.png / browser-computer-use-narrow.png | 隔离Chrome渲染：真实目录元数据 + 注入 reply/timeout/permission；观察侧视觉检查，**不是官方动作oracle**。 |
 
 | 检查 | 实跑结果 / 证据 |
 |---|---|
-| `node scripts/capture-s11.mjs /Applications/ZCode.app`、make-s11-fixtures | **PASS**，0models；[capture](../probes/checks/s11-capture.log)、[fixtures](../probes/checks/s11-fixtures.log)。 |
-| `npm test` | **141/141 PASS**，基线124；[log](../probes/checks/s11-node.log)。 |
-| `node ../dsh/node_modules/vitest/vitest.mjs run --config scripts/dsh-vitest.config.mjs` | **124/124 PASS**，基线111；[log](../probes/checks/s11-integration.log)。 |
-| DSH `pnpm … vitest run packages/api/session-controller/tests packages/client/ui-session/tests packages/client/ui-workspace/tests` | **1373/1373 PASS**，60文件；[log](../probes/checks/s11-native.log)。 |
-| DSH `pnpm … typecheck:contracts-ready` | **PASS**；[log](../probes/checks/s11-types.log)。 |
-| DSH `pnpm … build` | **PASS**，355 client artifacts；[log](../probes/checks/s11-dsh-build.log)。DSH命令统一 `pnpm_config_verify_deps_before_run=false`，沿基线环境。 |
-| bridge `npm run build` | **PASS**；[log](../probes/checks/s11-build.log)。 |
-| `node scripts/check-s11-visual.mjs` | **PASS**，1100px/390px、0 pageerror、0水平溢出；两张PNG已目视；[json](../probes/checks/s11-visual.json)。 |
-| changed-file oxlint / git diff --check | **PASS**，oxlint 1.76.0、0 diagnostics；[lint](../probes/checks/s11-lint.log)、[whitespace](../probes/checks/s11-whitespace.log)。 |
+| `node scripts/capture-browser-computer-use.mjs /Applications/ZCode.app`、make-browser-computer-use-fixtures | **PASS**，0models；[capture](../probes/checks/browser-computer-use-capture.log)、[fixtures](../probes/checks/browser-computer-use-fixtures.log)。 |
+| `npm test` | **141/141 PASS**，基线124；[log](../probes/checks/browser-computer-use-node.log)。 |
+| `node ../dsh/node_modules/vitest/vitest.mjs run --config scripts/dsh-vitest.config.mjs` | **124/124 PASS**，基线111；[log](../probes/checks/browser-computer-use-integration.log)。 |
+| DSH `pnpm … vitest run packages/api/session-controller/tests packages/client/ui-session/tests packages/client/ui-workspace/tests` | **1373/1373 PASS**，60文件；[log](../probes/checks/browser-computer-use-native.log)。 |
+| DSH `pnpm … typecheck:contracts-ready` | **PASS**；[log](../probes/checks/browser-computer-use-types.log)。 |
+| DSH `pnpm … build` | **PASS**，355 client artifacts；[log](../probes/checks/browser-computer-use-dsh-build.log)。DSH命令统一 `pnpm_config_verify_deps_before_run=false`，沿基线环境。 |
+| bridge `npm run build` | **PASS**；[log](../probes/checks/browser-computer-use-build.log)。 |
+| `node scripts/check-browser-visual.mjs` | **PASS**，1100px/390px、0 pageerror、0水平溢出；两张PNG已目视；[json](../probes/checks/browser-computer-use-visual.json)。 |
+| changed-file oxlint / git diff --check | **PASS**，oxlint 1.76.0、0 diagnostics；[lint](../probes/checks/browser-computer-use-lint.log)、[whitespace](../probes/checks/browser-computer-use-whitespace.log)。 |
 
 覆盖：真实注册/缺executor、same-wire-id reply/forward collision/auth fallback、invalid/foreign params、schema错误可见、失效 target/generation、权限拒绝/取消错误、超时/迟到/断连/背压、替代owner隔离、观察释放/有界去重、图片/应用/权限/未知入口、fresh目录与view替换、真实headless webui呈现。
 

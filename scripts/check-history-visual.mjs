@@ -24,6 +24,6 @@ createRoot(document.getElementById('root')).render(React.createElement(ZCodeConv
     const dimensions=await page.evaluate(()=>({horizontalOverflow:document.documentElement.scrollWidth>innerWidth,bodyOverflow:document.documentElement.scrollHeight>innerHeight,historyScrollable:(()=>{const e=document.querySelector('[data-testid="zcode-history-controls"]');return e.scrollHeight>e.clientHeight})()}));
     checks.push({name,width,errors,...dimensions});await page.close();
   }
-  await writeFile('docs/probes/checks/history-visual.json',JSON.stringify({kind:'injected-visual-fixture',notLiveRuntime:true,checks},null,2)+'\n');
+  await writeFile('docs/probes/checks/history-management-visual.json',JSON.stringify({kind:'injected-visual-fixture',notLiveRuntime:true,checks},null,2)+'\n');
   console.log(JSON.stringify(checks));if(checks.some(c=>c.errors.length||c.horizontalOverflow||c.bodyOverflow))process.exitCode=1;
 }finally{await browser?.close();await rm(dir,{recursive:true,force:true});}

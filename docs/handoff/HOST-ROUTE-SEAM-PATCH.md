@@ -1,6 +1,6 @@
 # Host route seam patch worker handoff
 
-已按主 agent 的 S02 有界 seam 授权准备 DSH 修正：`4eea594840bd89b5a49367aa17c0b4c33556b72e`（`fix(connection): retain caller context for host route registries`）。`connection.rpc` 与 `connection.fetch` getter 通过 Cordis 的 `getTraceable(this.ctx, this.ctx)` 保留调用方 Context；只修正注册 owner，不改变认证、RPC envelope、路由选择或 body/response 处理。双语记录位于 DSH `docs/seam/connection-route-owner.md`，上游身份为 `dsh-v0.2.0-rc.2`。
+已按主 agent 的 session-create 有界 seam 授权准备 DSH 修正：`4eea594840bd89b5a49367aa17c0b4c33556b72e`（`fix(connection): retain caller context for host route registries`）。`connection.rpc` 与 `connection.fetch` getter 通过 Cordis 的 `getTraceable(this.ctx, this.ctx)` 保留调用方 Context；只修正注册 owner，不改变认证、RPC envelope、路由选择或 body/response 处理。双语记录位于 DSH `docs/seam/connection-route-owner.md`，上游身份为 `dsh-v0.2.0-rc.2`。
 
 此提交位于 `/private/tmp/dsh-getter-seam-work/dsh`，直接基于指定 DSH 工作克隆的 `0f2509d325ab58941352354d3497474e5d2a7dc3`。当前会话的写权限不包含原 DSH 仓，也不包含原 bridge 的 `.git`；直接 DSH 编辑被拒绝，未绕过限制。原工作克隆未应用该提交。
 

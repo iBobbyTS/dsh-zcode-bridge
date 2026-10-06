@@ -1,8 +1,8 @@
-# S03.B HANDOFF — 实时会话、基本 permission/ask-user 与停止 UI
+# live-session-permission-stop HANDOFF — 实时会话、基本 permission/ask-user 与停止 UI
 
 ## 1. 边界与身份
 
-- **Feature**: `dsh-zcode-bridge`；**Section**: `S03.B`（S03.A 之上）；**Implementer**: `impl_std`（external agy / gemini-3.8-flash / high / yolo）。
+- **Feature**: `dsh-zcode-bridge`；**Section**: `live-session-permission-stop`（transport-v4-convergence 之上）；**Implementer**: `impl_std`（external agy / gemini-3.8-flash / high / yolo）。
 - **执行模式**: EXECUTE_WITH_COMMIT；主写域为 bridge 仓（`feat/zcode-runtime-bridge`，基线 `a2af134`）；DSH 克隆（`/Users/ibobby/Projects/dsh-zcode-acp/dsh`，基线 `6df8848d1`，分支 `feat/zcode-runtime-bridge`）仅限挂载消费点有界编辑并单独提交。
 - **现实边界**: 0 模型调用；不接触任何账号凭据；不碰官方 GUI 进程；遵守 session/close 禁令；受限态（auth gated）如实展示，绝不标为 available。
 - **方向裁定**: DSH 侧以 Web UI 为呈现目标；真实浏览器 oracle 由主 agent 执行。
@@ -41,8 +41,8 @@
    - 导出 `ZCodeConversationView` 与 `ConversationController`。
    - `npm run build` 生成 `packages/client/lib/client.js` 与 `packages/client/lib/client-test.mjs` 产物。
 
-5. **`tests/s03.dsh.spec.ts`**:
-   - 新增 8 项针对 S03.B 的完整真实 DOM / jsdom 测试，全面覆盖各生命周期状态、独立思考块、命令台账、交互审批与重复响应、B04 停止语义、断线缺口与重连、DSH seam 挂载，以及**官方 headless 真实 draft 会话往返渲染（0 模型调用、restricted 校验）**。
+5. **`tests/conversation-runtime.dsh.spec.ts`**:
+   - 新增 8 项针对 live-session-permission-stop 的完整真实 DOM / jsdom 测试，全面覆盖各生命周期状态、独立思考块、命令台账、交互审批与重复响应、B04 停止语义、断线缺口与重连、DSH seam 挂载，以及**官方 headless 真实 draft 会话往返渲染（0 模型调用、restricted 校验）**。
 
 ### DSH 克隆 (`dsh`)
 
@@ -50,7 +50,7 @@
    - `ZCodeSourceReference` 契约添加可选属性 `readonly renderSessionArea?: () => unknown;`（仅加法式契约扩展）。
 
 2. **`packages/client/ui-session/src/client/session-provider.tsx`**:
-   - 挂载点 seam 支持：在 `binding.key === undefined` 分支中，当 session 为 ZCode 引用且具备 `renderSessionArea` 时，直接渲染其返回的会话区域视图；若未提供则保持返回 empty fallback（完全保留 S02.B 的空态卸载回退行为）。
+   - 挂载点 seam 支持：在 `binding.key === undefined` 分支中，当 session 为 ZCode 引用且具备 `renderSessionArea` 时，直接渲染其返回的会话区域视图；若未提供则保持返回 empty fallback（完全保留 creation-defaults-visibility 的空态卸载回退行为）。
 
 ---
 
@@ -58,11 +58,11 @@
 
 | Fixture 文件 | 消费场景与断言 | 真实性保证 |
 |---|---|---|
-| `tests/fixtures/s03a/success.json` | 1. 测试 1：驱动 `initial` 快照与芯片元数据渲染（Epoch/Seq/Rev/Profile）；<br>2. 测试 2：驱动 `online` delta 行追加（turnHeader、userInput、reasoning、toolCall、assistantText）；<br>3. 测试 3：提供 accepted 命令响应；<br>4. 测试 5：驱动 activeWorks 停止目标。 | 官方真实采集，无人工伪造。 |
-| `tests/fixtures/s03a/gap.json` | 测试 6：驱动序列步进（`advance`）与序列空洞（`gap`，从 12 跳至 14），断言 `zcode-gap-alert` 与 `zcode-resyncing-alert`。 | 真实空 delta/snapshot 水位修改派生。 |
-| `tests/fixtures/s03a/failure.json` | 测试 3：消费 `failureFixture.commands[0].result`，驱动被拒绝命令（`proto.invalidPayload`）在台账中的错误呈现。 | 官方真实 rejected ACK 采集。 |
-| `tests/fixtures/s03a/lateframe.json` | 测试 6：注入过期订阅帧（`old-subscription`），断言 live 会话正确丢弃该帧而不被污染或异常触发 resync。 | 官方 online delta 故障注入派生。 |
-| `tests/fixtures/s03a/official.json` | 测试 8：校验已验证安装的官方 runtime 校验和与 `officialFixture.provenance.sha256`（`fad4c35c4c36ec210d8a06d3fa0e77de23c8545e2eb6ff90aea1eb38d1e6275f`）完全一致。 | 官方原生运行时 capture。 |
+| `tests/fixtures/transport-v4/success.json` | 1. 测试 1：驱动 `initial` 快照与芯片元数据渲染（Epoch/Seq/Rev/Profile）；<br>2. 测试 2：驱动 `online` delta 行追加（turnHeader、userInput、reasoning、toolCall、assistantText）；<br>3. 测试 3：提供 accepted 命令响应；<br>4. 测试 5：驱动 activeWorks 停止目标。 | 官方真实采集，无人工伪造。 |
+| `tests/fixtures/transport-v4/gap.json` | 测试 6：驱动序列步进（`advance`）与序列空洞（`gap`，从 12 跳至 14），断言 `zcode-gap-alert` 与 `zcode-resyncing-alert`。 | 真实空 delta/snapshot 水位修改派生。 |
+| `tests/fixtures/transport-v4/failure.json` | 测试 3：消费 `failureFixture.commands[0].result`，驱动被拒绝命令（`proto.invalidPayload`）在台账中的错误呈现。 | 官方真实 rejected ACK 采集。 |
+| `tests/fixtures/transport-v4/lateframe.json` | 测试 6：注入过期订阅帧（`old-subscription`），断言 live 会话正确丢弃该帧而不被污染或异常触发 resync。 | 官方 online delta 故障注入派生。 |
+| `tests/fixtures/transport-v4/official.json` | 测试 8：校验已验证安装的官方 runtime 校验和与 `officialFixture.provenance.sha256`（`fad4c35c4c36ec210d8a06d3fa0e77de23c8545e2eb6ff90aea1eb38d1e6275f`）完全一致。 | 官方原生运行时 capture。 |
 
 ---
 
@@ -71,7 +71,7 @@
 | 检查项 | 命令 | 结果 | 耗时 |
 |---|---|---|---|
 | Bridge 单元测试 | `npm test` | **45/45 PASS** (0 fail, 0 skip) | 304ms |
-| Bridge DSH 规范单测 | `node ../dsh/node_modules/vitest/vitest.mjs run --config scripts/dsh-vitest.config.mjs` | **22/22 PASS** (s01: 6, s02: 8, s03: 8) | 6.31s |
+| Bridge DSH 规范单测 | `node ../dsh/node_modules/vitest/vitest.mjs run --config scripts/dsh-vitest.config.mjs` | **22/22 PASS** (6 + 8 + 8 across three suites) | 6.31s |
 | DSH 原生 vitest 回归 | `pnpm_config_verify_deps_before_run=false pnpm vitest run packages/api/session-controller/tests packages/client/ui-session/tests` | **952/952 PASS** (45 文件，0 fail) | 7.08s |
 | DSH 类型检查 | `pnpm_config_verify_deps_before_run=false pnpm typecheck:contracts-ready` | **PASS** (0 errors) | 2.5s |
 | DSH oxlint 代码门禁 | `./node_modules/.bin/oxlint <modified-files>` | **0 warnings, 0 errors** | 1.5s |
@@ -113,7 +113,7 @@
 
 ## 6. NOT_RUN 说明
 
-- **真实付费模型调用**: NOT_RUN。依据项目红线与 S03.B 现实边界，绝不触发模型输入或消耗额度。
+- **真实付费模型调用**: NOT_RUN。依据项目红线与 live-session-permission-stop 现实边界，绝不触发模型输入或消耗额度。
 - **官方 GUI 进程端到端**: NOT_RUN。受限态（auth-gated）不伪造可用性，所有协议交互走官方无模型 draft 子进程验证。
 - **真实浏览器界面交互**: 由本任务规范交接给主 Agent 执行验证，本 worker 提供就绪代码与步骤。
 
@@ -121,10 +121,10 @@
 
 ## 7. 自评与提交组织
 
-本节交付物已完整满足 TASK-S03.B 全部 6 项交付标准、红线约束与回归底线。
+本节交付物已完整满足实时会话、permission 与 stop 范围的全部 6 项交付标准、红线约束与回归底线。
 两仓提交组织如下：
-- **DSH 仓**: `feat(client/ui-session): mount ZCode session area renderer through SessionProvider seam (S03.B)`
+- **DSH 仓**: `feat(client/ui-session): mount ZCode session area renderer through SessionProvider seam (live-session-permission-stop)`
 - **Bridge 仓**:
   - `feat(client): implement ZCodeConversationView, pending controls, and stop UI`
-  - `test(client): add S03.B DSH integration and official runtime checks`
-  - `docs(handoff): record S03.B implementation, checks, and webui steps`
+  - `test(client): add live-session-permission-stop DSH integration and official runtime checks`
+  - `docs(handoff): record live-session-permission-stop implementation, checks, and webui steps`

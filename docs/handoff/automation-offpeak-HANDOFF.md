@@ -1,8 +1,8 @@
-# S13 — Automation / Off-Peak 正式操作与门禁行为
+# automation-offpeak — Automation / Off-Peak 正式操作与门禁行为
 
 ## 身份、范围与交付状态
 
-- TASK：`/Users/ibobby/Projects/dsh-zcode-acp/.agent-work/tasks/S13-TASK.md`，完整先读后执行；合同 PLAN-FULL S13 + R02/R08/R18/R22，沿用 S01 carrier 分类、S09/S10 目录与观察、S12 运行门禁、S14 账号 UNKNOWN 与 v4 优先级。模式 EXECUTE_WITH_COMMIT。
+- TASK：`/Users/ibobby/Projects/dsh-zcode-acp/.agent-work/tasks/automation-offpeak-TASK.md`，完整先读后执行；合同 PLAN-FULL automation-offpeak + R02/R08/R18/R22，沿用 official-runtime-install carrier 分类、catalog-management/background-subagents 目录与观察、workflow-management 运行门禁、account-usage-diagnostics 账号 UNKNOWN 与 v4 优先级。模式 EXECUTE_WITH_COMMIT。
 - bridge 起点 `d36077d`，分支 `feat/zcode-runtime-bridge`；DSH 克隆 `/Users/ibobby/Projects/dsh-zcode-acp/dsh`（HEAD `21fb059`）**本期无任何改动**（消费点沿用 bridge 自带 client 插件与既有 session-area/sidebar seam），故无 DSH 提交。reference/ZCode（`29628c9a`）与官方 App 只读。
 - 当前 worker 的 requested executor/model/effort 与 observed 记录在本会话不可见，记 UNKNOWN，由主调度保留真实 dispatch。未启动子代理；未执行独立 A/B 或父节 admission。
 - 自评 **COMPLETE（受限范围内）**：可达性真实探测（0 模型调用）证明 automation/offPeak 全部管理载体是 **Host 消费的反向方法**，app-server 无请求面（每个都真实 -32601）；据此不实现第二存储/调度器，而是如实呈现不可用与 UNKNOWN、对反向回调 fail-closed，并以官方 schema 注入 fixtures 覆盖生命周期/受限/未知语义。回归全绿。
@@ -10,7 +10,7 @@
 
 ## 首先执行的真实 headless 可达性检查（TASK 第 1 条）
 
-先执行 `node scripts/capture-s13.mjs /Applications/ZCode.app`（0 模型调用；隔离 HOME/workspace；官方 3.14.4.7912，cjs SHA-256 `fad4c35c…6275f`），再实现。原始证据 `tests/fixtures/s13/official.json`、[capture log](../probes/checks/s13-capture.log)；生产 `AutomationClient.state()` 走同一 peer 的 oracle 记在 `official.productionOracle`。
+先执行 `node scripts/capture-automation-offpeak.mjs /Applications/ZCode.app`（0 模型调用；隔离 HOME/workspace；官方 3.14.4.7912，cjs SHA-256 `fad4c35c…6275f`），再实现。原始证据 `tests/fixtures/automation-offpeak/official.json`、[capture log](../probes/checks/automation-offpeak-capture.log)；生产 `AutomationClient.state()` 走同一 peer 的 oracle 记在 `official.productionOracle`。
 
 | 面 | 真实结果（0 模型调用） | 判定 |
 |---|---|---|
@@ -43,7 +43,7 @@
 | v4 派发标记 | v4 `sendText` payload `automationId`/`offPeakTaskId`/`offPeakRunType`；`zcode-protocol-v4/command.ts:104–124` | v4 | 是运行派发标记，**非管理/反馈**；本节不接线 |
 | v4 工具注册 flag | v4 `createSession` payload `offPeakToolEnabled`；`command.ts:63` | v4 | 灰度工具注册，非任务状态；不接线 |
 | 运行/最近运行反馈 | **无 app-server 投影**：v4 snapshot / sessions-index 均无 automation/offPeak 字段；`automationService.listRuns`、`offPeakTaskService.list` 均为 Host 进程内服务（GUI 走 `IZCodeAgentService` IPC） | 无 legacy 亦无 v4 请求面 | 不可用 + 原因；不伪造状态/进度/产物 |
-| 账号/资格 | 无 app-server RPC（S14 / AUTH-SOURCE-RESEARCH E06；off-peak entitlement 走 Host `getCodingPlanSupport()`） | 无 | account **UNKNOWN**；off-peak entitlement **UNKNOWN**；不猜 |
+| 账号/资格 | 无 app-server RPC（account-usage-diagnostics / AUTH-SOURCE-RESEARCH E06；off-peak entitlement 走 Host `getCodingPlanSupport()`） | 无 | account **UNKNOWN**；off-peak entitlement **UNKNOWN**；不猜 |
 
 ## 实现清单
 
@@ -68,7 +68,7 @@
 
 | Fixture | 真实性 / 注入 |
 |---|---|
-| `tests/fixtures/s13/official.json` | 官方真实采集（隔离 HOME/workspace，paidModelCalls=0）：7 个管理载体真实 -32601；`workspace/updateOffPeakToolPolicy` 真实往返。 |
+| `tests/fixtures/automation-offpeak/official.json` | 官方真实采集（隔离 HOME/workspace，paidModelCalls=0）：7 个管理载体真实 -32601；`workspace/updateOffPeakToolPolicy` 真实往返。 |
 | `empty.json` | 从 official.json 严格投影，`injectedFields:[]`；真实拒绝与 policy 结果。 |
 | `projection.json` | **injected-semantic-fixture**：automation list/create/update/delete/checkTaskBinding + off-peak list/create(ok/failure) 帧，逐项经 vendored 官方 schema 校验；非实际生成，不冒充运行。 |
 | `restricted.json` | **injected-semantic-fixture**：account/entitlement UNKNOWN、官方形态 off-peak 不支持原因、反向回调观察记录；UNKNOWN 不由猜测消解。 |
@@ -78,17 +78,17 @@
 
 | Check | 实跑结果 |
 |---|---|
-| `node scripts/capture-s13.mjs /Applications/ZCode.app` | **PASS**，0 models；7 管理载体 -32601、policy 往返；[log](../probes/checks/s13-capture.log)。 |
-| `node scripts/make-s13-fixtures.mjs` | **PASS**；注入帧经官方 schema 校验；[log](../probes/checks/s13-fixtures.log)。 |
-| `node --test tests/s13-automation.test.mjs` | **8/8 PASS**；[log](../probes/checks/s13-targeted-node.log)。 |
-| bridge DSH Vitest `tests/s13.dsh.spec.ts` | **6/6 PASS**；[log](../probes/checks/s13-targeted-integration.log)。 |
-| `npm test` | **182/182 PASS**，基线 174；[log](../probes/checks/s13-node.log)。 |
-| bridge DSH Vitest 全套 `node ../dsh/node_modules/vitest/vitest.mjs run --config scripts/dsh-vitest.config.mjs` | **157/157 PASS**，15 文件，基线 151；[log](../probes/checks/s13-integration.log)。 |
-| DSH `pnpm_config_verify_deps_before_run=false pnpm exec vitest run packages/api/session-controller/tests packages/client/ui-session/tests packages/client/ui-workspace/tests` | **1373/1373 PASS**，60 文件；[log](../probes/checks/s13-native.log)。DSH 源码不变。 |
-| DSH `pnpm run typecheck:contracts-ready` | PASS（exit 0）；[log](../probes/checks/s13-types.log)。 |
-| DSH `pnpm run build` | PASS（exit 0，355 client artifacts）；[log](../probes/checks/s13-dsh-build.log)。 |
-| bridge `npm run build` | PASS；[log](../probes/checks/s13-build.log)。 |
-| changed-file oxlint 1.76.0 / `git diff --check` | **0 warning 0 error / PASS**；[lint](../probes/checks/s13-lint.log)、[whitespace](../probes/checks/s13-whitespace.log)。 |
+| `node scripts/capture-automation-offpeak.mjs /Applications/ZCode.app` | **PASS**，0 models；7 管理载体 -32601、policy 往返；[log](../probes/checks/automation-offpeak-capture.log)。 |
+| `node scripts/make-automation-offpeak-fixtures.mjs` | **PASS**；注入帧经官方 schema 校验；[log](../probes/checks/automation-offpeak-fixtures.log)。 |
+| `node --test tests/automation-offpeak.test.mjs` | **8/8 PASS**；[log](../probes/checks/automation-offpeak-targeted-node.log)。 |
+| bridge DSH Vitest `tests/automation-offpeak.dsh.spec.ts` | **6/6 PASS**；[log](../probes/checks/automation-offpeak-targeted-integration.log)。 |
+| `npm test` | **182/182 PASS**，基线 174；[log](../probes/checks/automation-offpeak-node.log)。 |
+| bridge DSH Vitest 全套 `node ../dsh/node_modules/vitest/vitest.mjs run --config scripts/dsh-vitest.config.mjs` | **157/157 PASS**，15 文件，基线 151；[log](../probes/checks/automation-offpeak-integration.log)。 |
+| DSH `pnpm_config_verify_deps_before_run=false pnpm exec vitest run packages/api/session-controller/tests packages/client/ui-session/tests packages/client/ui-workspace/tests` | **1373/1373 PASS**，60 文件；[log](../probes/checks/automation-offpeak-native.log)。DSH 源码不变。 |
+| DSH `pnpm run typecheck:contracts-ready` | PASS（exit 0）；[log](../probes/checks/automation-offpeak-types.log)。 |
+| DSH `pnpm run build` | PASS（exit 0，355 client artifacts）；[log](../probes/checks/automation-offpeak-dsh-build.log)。 |
+| bridge `npm run build` | PASS；[log](../probes/checks/automation-offpeak-build.log)。 |
+| changed-file oxlint 1.76.0 / `git diff --check` | **0 warning 0 error / PASS**；[lint](../probes/checks/automation-offpeak-lint.log)、[whitespace](../probes/checks/automation-offpeak-whitespace.log)。 |
 
 DSH 命令使用 `pnpm_config_verify_deps_before_run=false`，沿既有基线环境。
 
@@ -107,5 +107,5 @@ DSH 命令使用 `pnpm_config_verify_deps_before_run=false`，沿既有基线环
 - `chore(protocol): vendor official automation and off-peak schemas`。
 - `feat(automation): expose official automation and off-peak honesty with fail-closed reverse callbacks`。
 - `test(automation): probe official reachability and cover reverse fail-closed semantics`。
-- `docs(handoff): record S13 carrier verification, reachability probe and checks`。
+- `docs(handoff): record automation-offpeak carrier verification, reachability probe and checks`。
 - DSH 无文件改动、无提交；reference/官方 App 未改；无 push、merge、reset、clean 或历史改写。

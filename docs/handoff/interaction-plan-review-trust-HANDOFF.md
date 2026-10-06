@@ -1,8 +1,8 @@
-# S05 交付清单与实现备忘：用户交互、计划审核与 Hook Trust 完整可操作
+# interaction-plan-review-trust 交付清单与实现备忘：用户交互、计划审核与 Hook Trust 完整可操作
 
 ## 1. 任务背景与执行模式
 
-- **任务定位**：SFD `dsh-zcode-bridge` 之 S05 交付（用户交互、计划审核与 Hook trust 完整可操作）。
+- **任务定位**：SFD `dsh-zcode-bridge` 之 interaction-plan-review-trust 交付（用户交互、计划审核与 Hook trust 完整可操作）。
 - **执行角色**：`impl_std` 实现 worker（external agy / gemini-3.8-flash / high / yolo），模式 `EXECUTE_WITH_COMMIT`。
 - **主写域**：`dsh-zcode-bridge`（分支 `feat/zcode-runtime-bridge`，起点 HEAD `656f64d`）。
 - **DSH 克隆**：`/Users/ibobby/Projects/dsh-zcode-acp/dsh`（分支 `feat/zcode-runtime-bridge`，HEAD `cf7893e40f`，保持纯只读，本次无变更）。
@@ -19,7 +19,7 @@
    - `paidModelCalls = 0`，全流程 0 次真实模型计费调用。
    - 不伪造官方未返回的成功状态，网络/服务回包严格回显官方 `status` 与 `reasonCode`。
 3. **单个权威 Pending Registry**：
-   - 完全复用 S03.B 的 authoritative pending 机制，基于 `snapshot.pendingInteractions`，不另起前端第二缓存/状态注册表。
+   - 完全复用 live-session-permission-stop 的 authoritative pending 机制，基于 `snapshot.pendingInteractions`，不另起前端第二缓存/状态注册表。
 4. **Fail-safe 未知类型防护**：
    - 遇到未识别的交互类型（如 `unrecognizedAutonomousTelemetryGate`），按有界结构安全降级呈现，不妄猜字段语义，保障 UI 与进程永不崩溃。
 5. **不 YOLO 默认值**：
@@ -59,18 +59,18 @@
      - Hook 安全审核卡片：展示危险告警、工作区标识、Hook 计数、来源文件列表、条目启闭 toggle、单项/批量 trust、已信任项 revoke。
      - 官方结果回显：完整保留并回显官方 `status` 与 `reasonCode`（如 `proto.alreadyResolved` 来自 `command.ts:175` / `interaction-registry.ts:158`，`workspace_hooks_require_trust_capable_host` 来自 `workspaceHookReviewCommands.ts:115`，`workspace_hooks_snapshot_mismatch` 来自 `workspaceHookReviewCommands.ts:82` 等），不造假。倒计时过期由官方 `autoResolution` 状态机与 snapshot 权威同步，不编造非官方 RPC 错误码。
      - 未知交互 Fail-safe：渲染有界摘要，不崩不猜。
-3. **测试夹具 (`tests/fixtures/s05/`)**:
+3. **测试夹具 (`tests/fixtures/interaction-plan-review-trust/`)**:
    - `questionnaire.json`: 多题问卷（单选、多选、文本、草稿、autoResolution 倒计时）。
    - `plan-review.json`: 计划审批（ExitPlanMode、条目列表、Goal 状态）。
    - `hook-review.json`: Hook 安全审核与软准入横幅。
    - `expired-late-other.json`: 官方错误/幂等原因码（`proto.alreadyResolved`, `workspace_hooks_require_trust_capable_host`, `workspace_hooks_snapshot_mismatch`）。
    - `reconnect-recovery.json`: 断线重连与待处理交互恢复。
    - `unknown-interaction.json`: 未知交互类型容错。
-   - 夹具生成脚本 `scripts/make-s05-fixtures.mjs`。
+   - 夹具生成脚本 `scripts/make-interaction-plan-review-trust-fixtures.mjs`。
 4. **自动化测试套件**:
-   - `tests/s05-commands.test.mjs`: 5 个 Node 单元测试，验证命令交互防护、wire payload 构造、snooze 确认与拒绝流转、计划审核审批与带反馈驳回契约。
-   - `tests/s05-cb6-state-regression.test.mjs`: 2 个 Node 单元测试（源自审查复现脚本 `CB6-S05-state-repro.mjs`），覆盖 CB6-1 自由文本草稿回填/修改替换不混入/数字键支持，以及 CB6-2 排队项不虚标/就绪自动触发延期/官方状态权威。
-   - `tests/s05.dsh.spec.ts`: 16 个 DSH Vitest 集成测试，覆盖问卷答题、拒绝保留草稿、取消、计划通过、计划带反馈驳回、计划无反馈 decline、Hook 审核启闭/信任/撤销、官方原因回显 (alreadyResolved / hookHostUnsupported / hookMismatch)、自动倒计时过期状态机下线、snooze 拒绝回滚告警、缺工作区标识 R16 禁用、重连恢复、未知类型 Fail-safe、DSH `renderSessionArea` 挂载槽，以及 CB6-1/CB6-2 真实链路集成。
+   - `tests/interaction-commands.test.mjs`: 5 个 Node 单元测试，验证命令交互防护、wire payload 构造、snooze 确认与拒绝流转、计划审核审批与带反馈驳回契约。
+   - `tests/interaction-state-regression.test.mjs`: 2 个 Node 单元测试（源自审查复现脚本 `interaction-state-repro.mjs`），覆盖 CB6-1 自由文本草稿回填/修改替换不混入/数字键支持，以及 CB6-2 排队项不虚标/就绪自动触发延期/官方状态权威。
+   - `tests/interaction-plan-review-trust.dsh.spec.ts`: 16 个 DSH Vitest 集成测试，覆盖问卷答题、拒绝保留草稿、取消、计划通过、计划带反馈驳回、计划无反馈 decline、Hook 审核启闭/信任/撤销、官方原因回显 (alreadyResolved / hookHostUnsupported / hookMismatch)、自动倒计时过期状态机下线、snooze 拒绝回滚告警、缺工作区标识 R16 禁用、重连恢复、未知类型 Fail-safe、DSH `renderSessionArea` 挂载槽，以及 CB6-1/CB6-2 真实链路集成。
 
 ---
 
@@ -85,7 +85,7 @@
 | DSH 文档门禁 | `pnpm_config_verify_deps_before_run=false pnpm test:docs` | **21/21 PASS** (0 failed) | 43.17s |
 | DSH 全量构建 | `pnpm_config_verify_deps_before_run=false pnpm build` | **PASS** (355 client artifacts) | 2.48s |
 | Bridge 源码构建 | `npm run build` | **PASS** (生成 client.js) | 120ms |
-| 代码 Linter (oxlint) | `oxlint packages/client/conversation-view.jsx packages/host/conversation.mjs tests/s05*` | **0 errors, 0 warnings** | 29ms |
+| 代码 Linter (oxlint) | `oxlint packages/client/conversation-view.jsx packages/host/conversation.mjs tests/interaction-*` | **0 errors, 0 warnings** | 29ms |
 | Git Diff 空白检查 | `git diff --check` | **PASS** (0 warnings) | — |
 
 ---
@@ -97,8 +97,8 @@
 
 ---
 
-## 7. 给 S06 的契约与建议
+## 7. 给 queue-guide-goal 的契约与建议
 
-1. **交互与审核闭环完成**：S05 已经实现了所有用户交互卡片族的权威收口、多题草稿持久性、审批理由输入和 Hook 审核 wire 命令。S06 若进入长会话/高级工作流，可直接依赖 `ZCodePendingInteractions` 与 `ConversationController` 交互方法。
-2. **官方结果码协议遵循**：S06 继续使用 `status` 与 `reasonCode` 进行精确呈现，不可为了所谓“平滑体验”伪造 `success` 或省略 `alreadyResolved` / `expired` 状态。
+1. **交互与审核闭环完成**：interaction-plan-review-trust 已经实现了所有用户交互卡片族的权威收口、多题草稿持久性、审批理由输入和 Hook 审核 wire 命令。queue-guide-goal 若进入长会话/高级工作流，可直接依赖 `ZCodePendingInteractions` 与 `ConversationController` 交互方法。
+2. **官方结果码协议遵循**：queue-guide-goal 继续使用 `status` 与 `reasonCode` 进行精确呈现，不可为了所谓“平滑体验”伪造 `success` 或省略 `alreadyResolved` / `expired` 状态。
 3. **Fail-safe 机制延续**：任何新产生的 interaction kind 必须保留默认 fallback 分支，保证在未知扩展协议到达时不崩毁主会话视图。
