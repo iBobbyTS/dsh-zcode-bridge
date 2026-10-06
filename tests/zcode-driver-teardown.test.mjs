@@ -69,3 +69,44 @@ test('real rc.2 Cordis releases the factory after JSONL close fails, then report
     }
   }
 });
+
+test('real Cordis parks input behind maintenance, persists clear, and aborts pending approval on unload',{
+  skip:available?false:'requires rc.2 npm artifacts; set DSH_DRIVER_NPM_NODE_MODULES',
+},async()=>{
+  const [{Context},{AgentRegistry,agentEvents},{SessionStore},{default:SessionProjections},
+    {default:JsonlPersistence},{createScope}]=await Promise.all(packages.map(load));
+  const [{V4Conversation},{MockPeer,tick}]=await Promise.all([
+    import('../packages/host/conversation.mjs'),import('./helpers/zcode-runtime-fixture.mjs'),
+  ]);
+  const root=await mkdtemp(join(tmpdir(),'zcode-driver-commands-'));
+  const ctx=new Context();new AgentRegistry(ctx);new SessionStore(ctx);new SessionProjections(ctx);new JsonlPersistence(ctx,{root,compression:'none'});
+  const peer=new MockPeer();peer.snapshot.control.canStop=false;peer.snapshot.control.activeWorks=[];peer.snapshot.rows.window=[];
+  const transport={create:async()=>peer.snapshot.sessionId,dispose(){peer.close()},conversation:()=>new V4Conversation(peer,{
+    address:{runtime:'zcode',authority:'official-host',workspace:'/workspace',sessionId:peer.snapshot.sessionId},
+    workspace:{workspacePath:'/workspace',workspaceKey:'/workspace'},connectionId:peer.connectionId,clientId:'real-cordis',clientMode:'desktop-continuous',runnable:true,managementAllowed:true,reconnectable:true,
+  })};
+  const driver=installDriver(ctx,{transport,createScope,agentEvents});
+  let finish;
+  try{
+    const {agent}=await ctx.agents.create({sessionId:'command-effects'});await agent.ready();await tick();
+    assert.equal(peer.calls.filter(call=>call.method==='v4/conversation/subscribe').length,1);
+    let maintenanceSignal;const maintenance=agent.runMaintenance(signal=>{maintenanceSignal=signal;return new Promise(resolve=>{finish=resolve})});
+    agent.followup({id:'parked',role:'user',source:{kind:'user',rpcId:'parked'},content:[{type:'text',text:'parked'}]});
+    assert.equal(agent.inbox.nextTurn.length,1);assert.equal(peer.calls.some(call=>call.method==='v4/command'),false);
+    let idle=false;const waiting=agent.whenIdle().then(()=>{idle=true});await tick();assert.equal(idle,false);
+    agent.cancel({kind:'user'});assert.equal(maintenanceSignal.aborted,true);assert.deepEqual(agent.inbox.nextTurn,[]);
+    finish(42);assert.equal(await maintenance,42);await waiting;assert.equal(peer.calls.some(call=>call.method==='v4/command'),false);
+    const requestSeen=Promise.withResolvers();let permissionSignal;
+    ctx.on('approval/request',request=>{permissionSignal=request.signal;requestSeen.resolve();return new Promise(()=>{})});
+    const snapshot=structuredClone(peer.snapshot);snapshot.seq++;snapshot.revision++;snapshot.pendingInteractions=[{interactionId:'permission',kind:'permission',anchorRowId:null,createdAt:0,payload:{kind:'permission',toolCallId:'call-1',toolName:'Bash',summary:'Run?',detail:{},options:[]}}];
+    peer.publish(snapshot);await requestSeen.promise;
+    await driver.dispose();assert.equal(permissionSignal.aborted,true);assert.equal(ctx.agents.get(agent.id),undefined);assert.equal(ctx.sessions.get(agent.id),undefined);
+    const reader=await ctx.sessionPersistence.open(agent.id,'write');
+    try{
+      const {events}=await reader.read(0);
+      const splices=events.filter(event=>event.type==='agent/inbox/spliced');assert.equal(splices.length,2);
+      assert.equal(splices[0].data.inserted[0].id,'parked');assert.equal(splices[1].data.outcome,'canceled');assert.equal(splices[1].data.removedCount,1);
+      assert.equal(events.some(event=>event.type==='approval/decided'),false,'unload cannot answer a stale permission');
+    }finally{await reader.close()}
+  }finally{finish?.();await driver.dispose();await ctx.fiber.dispose();await rm(root,{recursive:true,force:true})}
+});

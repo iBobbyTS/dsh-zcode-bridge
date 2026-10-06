@@ -63,7 +63,8 @@ export class DriverFactory {
         session=this.ctx.sessions.prepare(id,{seed:options.seed,meta:options.meta,inheritedEventCount:options.inheritedEventCount});
         // Fork/history adaptation is a later task; never pretend an independent draft inherited it.
         if(options.meta?.isSeeded||options.seed?.length)throw new Error('ZCode driver history creation is not available');
-        zcodeConversationId=await cancellable(()=>this.transport.create({cwd:session.header.cwd,signal}),signal);
+        zcodeConversationId=await cancellable(()=>this.transport.create({cwd:session.header.cwd,signal,firstInput:options.firstInput,
+          modelSelection:options.modelSelection??options.agentOptions?.modelSelection,mode:options.mode??options.agentOptions?.mode}),signal);
         const binding={type:BINDING_EVENT,seq:session.seq,time:Date.now(),ignorable:true,data:{sessionId:id,zcodeConversationId}};
         // append() cannot set ignorable. Re-prepare the still-detached log with the binding envelope.
         session=this.ctx.sessions.prepare(id,{seed:[...readEvents(session),binding],meta:session.header,inheritedEventCount:session.inheritedEventCount});
@@ -80,7 +81,8 @@ export class DriverFactory {
       signal.throwIfAborted();
       // Exact scope disposer is nested under the owner, behind the lifecycle drain.
       const releaseScopeOwner=ownerCtx.effect(function*(){
-        agent=new DriverAgent(this.ctx,session,options.agentOptions??{},zcodeConversationId,{...this,parentAgent:options.parentAgent});
+        agent=new DriverAgent(this.ctx,session,{...options.agentOptions,
+          ...(options.modelSelection?{modelSelection:options.modelSelection}:{}),...(options.mode?{mode:options.mode}:{})},zcodeConversationId,{...this,parentAgent:options.parentAgent});
         yield agent.scope.rawDispose;
         yield ()=>disposal?undefined:dispose(true);
       }.bind(this),`zcode-driver.scope(${id})`);
@@ -106,6 +108,8 @@ export class DriverFactory {
         await this.ctx.agents.announce(agent,source,signal);
         signal.throwIfAborted();
       }finally{finish();publication=undefined}
+      // A confirmed create stays confirmed even if subsequent observation is unavailable.
+      if(agent.conversation)agent.track(agent.ready());
       options.signal?.removeEventListener('abort',callerAbort);
       return {agent,dispose};
     }catch(error){await dispose().catch(()=>{});throw error}

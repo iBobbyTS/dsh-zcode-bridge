@@ -1,7 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {LauncherPeer} from '../host/launcher/execution.mjs';
-import {negotiatedClientHello} from '../host/conversation.mjs';
-import {commandAckSchema} from '../host/vendor/zcode/v4.mjs';
+import {V4Conversation,negotiatedClientHello} from '../host/conversation.mjs';
+import {commandAckSchema,parseCommandEnvelope} from '../host/vendor/zcode/v4.mjs';
 
 const fault=code=>Object.assign(new Error(code),{code});
 /** Reuses the host-owned launcher. It owns only its protocol listeners, never the host. */
@@ -26,15 +26,31 @@ export class DriverTransport {
     signal.throwIfAborted();
     return state.executionWorkspace;
   }
-  async create({cwd,signal}){
+  async create({cwd,signal,firstInput,modelSelection,mode}){
     const workspace=await this.ready(cwd,signal),commandId=randomUUID();
-    const ack=commandAckSchema.parse(await this.peer.request('v4/command',{
+    const envelope={
       commandId,clientId:'dsh-zcode-driver',sessionId:null,type:'createSession',issuedAt:Date.now(),
-      workspace:{workspacePath:workspace,workspaceKey:workspace},payload:{workspaceId:workspace},
-    },{signal}));
-    if(ack.commandId!==commandId)throw fault('command-receipt-mismatch');
-    if(!['accepted','duplicate'].includes(ack.status)||ack.result?.type!=='createSession'||!ack.result.sessionId)throw fault('driver-create-unconfirmed');
+      payload:{workspaceId:workspace,...(firstInput?{firstInput:{...firstInput,...(modelSelection?{modelSelection}:{}),...(mode?{mode}:{})}}:{}),
+        ...(!firstInput&&(modelSelection||mode)?{config:{...(modelSelection?{modelSelection}:{}),...(mode?{mode}:{})}}:{})},
+    };
+    const parsed=parseCommandEnvelope(envelope);
+    if(!parsed.ok)throw fault('command-invalid');
+    let ack;
+    try{ack=commandAckSchema.parse(await this.peer.request('v4/command',{...parsed.envelope,workspace:{workspacePath:workspace,workspaceKey:workspace}},{signal}))}
+    catch(error){throw Object.assign(error,{commandId,state:error.sent===false?'not-sent':'outcome-unknown'})}
+    if(ack.commandId!==commandId)throw Object.assign(fault('command-receipt-mismatch'),{commandId,state:'outcome-unknown'});
+    if(!['accepted','duplicate'].includes(ack.status))throw Object.assign(fault(ack.reasonCode??'driver-create-unconfirmed'),{commandId,ack,state:ack.status});
+    if(ack.result?.type!=='createSession'||!ack.result.sessionId)throw Object.assign(fault('driver-create-unconfirmed'),{commandId,ack,state:'outcome-unknown'});
     return ack.result.sessionId;
+  }
+  conversation({zcodeConversationId,cwd}){
+    if(!this.peer)throw fault('execution-unavailable');
+    const workspace=cwd??this.host.launcher.state.executionWorkspace;
+    return new V4Conversation(this.peer,{
+      address:{runtime:'zcode',authority:this.host.status?.sessionAuthority??'official-host',workspace,sessionId:zcodeConversationId},
+      workspace:{workspacePath:workspace,workspaceKey:workspace},connectionId:this.peer.connectionId,
+      clientId:'dsh-zcode-driver',clientMode:'desktop-continuous',runnable:true,managementAllowed:true,reconnectable:true,
+    });
   }
   async resume({zcodeConversationId,cwd,signal}){await this.ready(cwd,signal);return zcodeConversationId}
   dispose(){this.offRecovery?.();this.peer?.close()}
