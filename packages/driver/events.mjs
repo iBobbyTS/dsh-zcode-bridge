@@ -92,10 +92,17 @@ export class ConversationEventTranslator {
       if(turn.openStep!==null)this.append('step/end',{turn:turn.turn,step:turn.openStep});
       const step=turn.nextStep++;
       this.append('step/start',{turn:turn.turn,step,zcode:{responseKey:key,...(pending?{pending:true}:{})}});turn.steps.set(key,step);turn.openStep=step;if(pending)turn.pendingKey=key;
-      const model=rows.find(row=>row.model)?.model;
-      // Execution metadata only. Session-selection/picker translation belongs to S03.
-      if(model)this.append('request/header',{header:{config:{provider:'zcode',model}},reason:this.headerEmitted?'change':this.hasHeader?'resume':'initial'});
-      if(model){this.hasHeader=true;this.headerEmitted=true}
+      const rowModel=rows.find(row=>row.model)?.model;
+      // Execution metadata, not the mirror display route: the header carries the session's real
+      // provider/model/effort so the official modelSelection fold does not read a `zcode` placeholder.
+      if(rowModel){
+        const selection=snapshot?.config?.modelSelection;
+        const provider=selection?.providerId??snapshot?.config?.provider;
+        const model=selection?.modelId??rowModel;
+        const reasoningEffort=selection?.options?.reasoningLevel??snapshot?.config?.thought;
+        this.append('request/header',{header:{config:{provider:provider??'zcode',model,...(reasoningEffort?{reasoningEffort}:{})}},reason:this.headerEmitted?'change':this.hasHeader?'resume':'initial'});
+        this.hasHeader=true;this.headerEmitted=true;
+      }
     }
     return turn.steps.get(key);
   }

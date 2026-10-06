@@ -69,6 +69,10 @@ export function selectionOutcome(record){
   if(ack.status==='stale')return {outcome:'stale',ack};
   return {outcome:'failed',ack};
 }
+/** Whether an official switch outcome may release the durable selection write.
+ * `confirmed` (accepted/duplicate) and `unchanged` (config.unchanged noop) are the only
+ * outcomes the existing mirror contract commits; refused, stale and outcome-unknown never do. */
+export function selectionConfirmed(outcome){return outcome?.outcome==='confirmed'||outcome?.outcome==='unchanged'}
 /** Convert a non-confirmed outcome into the failure the picker must see. */
 export function selectionFailure(outcome){
   const ack=outcome?.ack;const reasonCode=ack?.reasonCode;

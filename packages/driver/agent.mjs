@@ -1,4 +1,5 @@
 import {approvalAnswer} from '../host/zcode-agent.mjs';
+import {selectionOutcome} from '../host/model-selection.mjs';
 import {DriverInbox} from './inbox.mjs';
 import {commandFault,inputCommandId,ROUTED_COMMANDS,rejectOperation,validateMessage,promptPayload,requestedDelivery} from './commands.mjs';
 import {queueSteerTransfer,requireAcceptedCommand} from './queue-steer.mjs';
@@ -90,7 +91,10 @@ export class DriverAgent {
     const run=async()=>{
       if(!ready)await this.ready();
       if(!this.inbox.locate(input.message.id))throw commandFault('input-canceled');
-      const payload=await promptPayload(input.message,this.conversation,this.ctx.get?.('attachments')??this.ctx.attachments,{modelSelection:this.options.modelSelection,mode:this.options.mode});
+      // The create/firstInput selection is the session's initial route only. A later message
+      // must not re-assert it: an explicit switch belongs to the official selectModel entry,
+      // and re-sending would overwrite a confirmed selection with the stale creation option.
+      const payload=await promptPayload(input.message,this.conversation,this.ctx.get?.('attachments')??this.ctx.attachments);
       this.assertAvailable();
       const state=this.conversation.state;
       const pending=state.commands.some(command=>command.type==='sendText'&&['sent-unconfirmed','accepted-awaiting-terminal','running','waiting'].includes(command.state));
@@ -126,10 +130,22 @@ export class DriverAgent {
       const snapshot=this.conversation.state.snapshot;
       if(baseRevision!==snapshot.revision||baseLogEpoch!==snapshot.logEpoch)throw commandFault('held-queue-confirmation-stale');
       if(!this.inbox.locate(messageId)||snapshot.inputRouting.mode!=='choice')throw commandFault('held-input-unconfirmed');
-      const payload=await promptPayload(input.message,this.conversation,this.ctx.get?.('attachments')??this.ctx.attachments,{modelSelection:this.options.modelSelection,mode:this.options.mode});
+      const payload=await promptPayload(input.message,this.conversation,this.ctx.get?.('attachments')??this.ctx.attachments);
       return this.conversation.submit({type:'sendText',commandId:input.commandId,baseRevision,baseLogEpoch,
         payload:{...payload,requestedDelivery:'startNow',heldQueueDisposition:disposition,expectedHeldQueueItemIds:expectedQueueItemIds}});
     })());
+  }
+  /** Dispatch one OFFICIAL-identity model switch through ZCode and classify its receipt. This
+   * installs nothing durable: the official command entry persists only after the returned outcome
+   * is confirmed/unchanged (see the driver model-selection seam). A refused, stale or
+   * outcome-unknown receipt is classified, never presented as success. */
+  async selectModel(official){
+    this.assertAvailable();
+    await this.ready();
+    let result;
+    try{result=await this.conversation.submit({type:'switchModelConfig',payload:{provider:official.providerId,model:official.modelId,thought:official.options?.reasoningLevel??''}})}
+    catch(error){return {outcome:error?.state==='outcome-unknown'?'outcome-unknown':'failed',ack:{reasonCode:error?.code??'selection-failed'}}}
+    return selectionOutcome(result);
   }
   submitControl(command){
     this.assertAvailable();if(!ROUTED_COMMANDS.has(command.type))rejectOperation(command.type);
