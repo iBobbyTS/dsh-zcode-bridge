@@ -112,13 +112,14 @@ test('bundle install metadata is internally consistent with both plugin packages
   const root = await readJson('../package.json');
   const host = await readJson('../packages/host/package.json');
   const client = await readJson('../packages/client/package.json');
+  const driver = await readJson('../packages/driver/package.json');
   const bundle = await readJson('../bridge-bundle.json');
   assert.equal(bundle.bundleId, root.name);
   assert.equal(bundle.version, root.version);
   assert.equal(bundle.version, BRIDGE_VERSION);
   assert.equal(host.version, BRIDGE_PLUGIN_VERSIONS.host);
   assert.equal(client.version, BRIDGE_PLUGIN_VERSIONS.client);
-  assert.deepEqual(bundle.plugins.map(plugin => plugin.package).sort(), [host.name, client.name].sort());
+  assert.deepEqual(bundle.plugins.map(plugin => plugin.package).sort(), [host.name, driver.name, client.name].sort());
   for (const plugin of bundle.plugins) {
     assert.equal(plugin.version, plugin.kind === 'host' ? host.version : client.version);
   }

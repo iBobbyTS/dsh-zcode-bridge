@@ -5,6 +5,7 @@
   "patch": "./cordis.patch.yml",
   "plugins": [
     { "id": "zcode-bridge-host", "package": "@dsh-zcode/host", "kind": "host", "version": "0.1.0" },
+    { "id": "zcode-driver", "package": "@dsh-zcode/driver", "kind": "host", "version": "0.1.0" },
     { "id": "zcode-bridge-client", "package": "@dsh-zcode/bridge-client", "kind": "client", "version": "0.1.0" }
   ],
   "compatibility": {

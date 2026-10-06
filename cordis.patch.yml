@@ -1,6 +1,8 @@
-# Loaded as one bundle; registered ZCode Agents coexist with the unchanged native factory.
+# Driver activation is interlocked with the official factory; disable the official loop manually.
 - insert:
     - id: zcode-bridge-host
       name: '@dsh-zcode/host'
+    - id: zcode-driver
+      name: '@dsh-zcode/driver'
     - id: zcode-bridge-client
       name: '@dsh-zcode/bridge-client'

@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@dsh-zcode/bridge-client": "file:./packages/client",
+    "@dsh-zcode/driver": "file:./packages/driver",
     "@dsh-zcode/host": "file:./packages/host",
     "zod": "4.6.5"
   },
@@ -33,6 +34,8 @@
     "packages/host/*.mjs",
     "packages/host/launcher",
     "packages/host/vendor",
+    "packages/driver/package.json",
+    "packages/driver/*.mjs",
     "packages/client/package.json",
     "packages/client/index.mjs",
     "packages/client/lib/client.js",

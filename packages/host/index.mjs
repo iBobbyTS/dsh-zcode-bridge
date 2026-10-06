@@ -73,6 +73,8 @@ export async function handleRemote(host,payload,signal){
 export function apply(ctx,config={}) {
   const launcher=config.launcher?new HostLauncher(config.launcher):undefined;
   const host=new BridgeHost({appPath:config.appPath,workspacePath:config.workspacePath,catalogLimit:config.catalogLimit,authorityMode:config.authorityMode,launcher});
+  // Shared carrier and status only: the driver owns factory occupation and its listeners.
+  ctx.provide('zcodeBridgeHost',host);
   ctx.effect(()=>()=>host.dispose(),'zcode-bridge: owned runtime');
   let runtime;
   ctx.inject(['agents','sessions','workspaceRegistry'],async runtimeCtx=>{
@@ -133,7 +135,7 @@ export function apply(ctx,config={}) {
       if(endpoint!=='status'&&endpoint!=='connect')return {ok:false,error:{code:'not-found',message:`Endpoint ${endpoint} not found`,details:{}}};
       if(payload!==null&&payload!==undefined&&!(typeof payload==='object'&&!Array.isArray(payload)&&Object.keys(payload).length===0))return {ok:false,error:{code:'invalid-payload',message:'This endpoint accepts no runtime commands',details:{}}};
       if(signal.aborted)return {ok:false,error:{code:'cancelled',message:'Cancelled',details:{}}};
-      return {ok:true,value:endpoint==='connect'?await host.connect():host.status};
+      return {ok:true,value:{...(endpoint==='connect'?await host.connect():host.status),driverState:host.driverState??{state:'unavailable',reason:'driver-not-loaded'}}};
     });
   });
 }
