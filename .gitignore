@@ -2,3 +2,11 @@ node_modules/
 packages/client/lib/
 *.tgz
 *.DS_Store
+
+# AI Agent
+.codegraph
+.zcodeignore
+.agent-work
+
+# IDE
+.vscode
