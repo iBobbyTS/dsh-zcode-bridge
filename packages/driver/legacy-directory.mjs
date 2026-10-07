@@ -79,6 +79,15 @@ export class LegacyDirectory {
     Object.assign(this,{store,persistence,listCatalog,listPersistedHeaders,request,attachments,sessions,workspaceRegistry,intervalMs,onError});
   }
   status(sessionId){return this.store.value.legacy[sessionId]??null}
+  /** True when the follow's opening observation must be routed through the resume gate.
+   * Either the content is not synced yet, or a synced row's placeholder is still the announced
+   * live source: observing it would anchor the client's cursor on the 3-event placeholder and
+   * the factory's later announce would replay the whole transcript past that cursor as live
+   * appends. Once the id is handed over (or a live agent owns it) the observation passes
+   * through untouched. */
+  requiresHandover(sessionId){
+    return this.rows.has(sessionId)&&(this.store.value.legacy[sessionId]?.state!=='readable'||this.announced.has(sessionId));
+  }
   /** List import only: ensure a persisted placeholder per catalog row. No history IO here. */
   async sync({signal}={}){
     if(this.disposed)throw fault('legacy-directory-disposed');
@@ -114,41 +123,42 @@ export class LegacyDirectory {
    * caller gets an explicit failure; once a sync has populated the row, the re-entrant backfill
    * completes and the next call resolves readable. */
   ensureReadable(sessionId,{signal}={}){
-    // The resume write gate runs before the factory prepares the session id; our announced
-    // placeholder entry holds that id in the session store, so release it here or the factory's
-    // prepare would collide with "session already exists". A poll announce in flight for the same
-    // id must land first: releasing mid-announce would let the announce's enter collide with the
-    // factory's prepare (or vice versa) and fail the open.
-    const announcing=this.announcing.get(sessionId);
+    // The resume write gate runs before the factory prepares the session id, so the gate must
+    // hand the id over — but ONLY once the content sync is done. The announced placeholder's
+    // live-only marker turn is the sole non-blank observation while the persisted copy is still
+    // title-only, and 0.2.1 blank-hides such sessions from every list surface: releasing before
+    // the sync would drop the sidebar row for the whole (multi-second) backfill. A poll announce
+    // in flight for the same id must land before the dispatch AND before the release: a late
+    // enter would collide with the factory's prepare (or vice versa) and fail the open.
     const gate=(async()=>{
+      const announcing=this.announcing.get(sessionId);
       if(announcing)await announcing.catch(()=>{});
-      this.#release(sessionId);
       const state=this.store.value.legacy[sessionId];
       let task;
       if(state?.state==='readable')task=this.#probeFresh(sessionId,{signal});
       else{
         const inflight=this.inflight.get(sessionId);
-        if(inflight)return inflight;
-        const row=this.rows.get(sessionId);
-        if(!row){
-          if(state)return Promise.reject(fault('legacy-backfill-unavailable',`the ZCode history for "${sessionId}" is not readable yet and its catalog row is unavailable`));
-          return Promise.resolve(undefined);
+        if(inflight)task=inflight;
+        else{
+          const row=this.rows.get(sessionId);
+          if(!row){
+            if(state)return Promise.reject(fault('legacy-backfill-unavailable',`the ZCode history for "${sessionId}" is not readable yet and its catalog row is unavailable`));
+            return undefined;
+          }
+          task=this.#ensure(row,{signal});
         }
-        task=this.#ensure(row,{signal});
       }
-    // A failed gate must not leave the row invisible: the release above already withdrew the
-    // announced placeholder, and the factory only re-enters the id when the gate resolves. On
-    // rejection the announcement is restored so list surfaces keep showing the session and the
-    // next open retries the sync.
-      if(task&&typeof task.then==='function')return await task.catch(error=>{this.#restore(sessionId);throw error});
-      return task;
+      const result=await task;
+      // The transcript is current and its persisted copy is non-blank, so withdrawing the live
+      // placeholder can no longer blank-hide the row before the factory's announce lands. A
+      // failed gate keeps the announcement untouched — the row stays listed and the next open
+      // retries the sync.
+      const late=this.announcing.get(sessionId);
+      if(late)await late.catch(()=>{});
+      this.#release(sessionId);
+      return result;
     })();
     return gate;
-  }
-  #restore(sessionId){
-    this.opened.delete(sessionId);
-    const row=this.rows.get(sessionId);
-    if(row&&!this.disposed)void this.#announce(row).catch(()=>{});
   }
   /** One tail-page read decides whether the persisted history is already current. Fresh → cheap
    * return; newer rows → idempotent resync appends just the delta. A changed log epoch means the
@@ -326,7 +336,12 @@ export class LegacyDirectory {
     const handle=await this.persistence.open(id,'write',{signal});
     try{
       const existing=(await handle.read(0,undefined,{signal})).events;
-      const session=this.sessions.prepare(id,{meta:{cwd:row.cwd??row.workspacePath},seed:existing});
+      // Fold engine only: the translator needs a prepared Session to replay rows through the
+      // projections, but the announced placeholder still holds the real id until the gate's
+      // final release hands it to the factory — preparing with that id would collide with
+      // "session already exists". A store-minted scratch id folds identically and is never
+      // entered, announced or persisted; events carry no session identity of their own.
+      const session=this.sessions.prepare(undefined,{meta:{cwd:row.cwd??row.workspacePath},seed:existing});
       const translator=new ConversationEventTranslator({
         session,dispatch:{emit(){}},conversation:historyAttachmentReader(this.request,id),
         attachments:this.attachments,input:()=>undefined,claim:()=>{},syncInbox:()=>{},history:true,

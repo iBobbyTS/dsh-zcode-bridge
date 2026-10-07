@@ -10,6 +10,7 @@ import {installDefaultModelCover,installModelSeat} from './model-seat.mjs';
 import {DriverStateStore} from './driver-state.mjs';
 import {runNativeArchive} from './legacy-archive.mjs';
 import {installLegacyDirectory} from './legacy-directory.mjs';
+import {installObservationGate} from './observation-gate.mjs';
 export {DriverFactory,installDriver,BINDING_EVENT,boundConversationId} from './factory.mjs';
 export {DriverAgent} from './agent.mjs';
 export {DriverTransport} from './transport.mjs';
@@ -146,6 +147,9 @@ export async function apply(ctx){
         });
         clearTimeout(gateTimeout);
         driver.factory.setWriteGate((id,signal)=>directory.ensureReadable(id,{signal}));
+        // The follow observation gate must live exactly as long as the directory: it routes the
+        // chat's opening snapshot through ensureReadable, so an unload restores the raw service.
+        legacyCtx.effect(()=>installObservationGate({sessionQuery,directory}),'zcode-driver: legacy observation gate');
         host.legacyState={state:'ready'};
       });
       void legacy.await?.().catch(error=>{host.legacyState={state:'error',error:error?.code??String(error)}});

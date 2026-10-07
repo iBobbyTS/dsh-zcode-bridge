@@ -16,6 +16,7 @@ import {ConversationEventTranslator} from '../packages/driver/events.mjs';
 import {driverFixture} from './helpers/zcode-driver-fixture.mjs';
 import {collectHistoryPages,historySnapshots,historyAttachmentReader,HISTORY_PAGE_LIMIT} from '../packages/driver/history-backfill.mjs';
 import {LegacyDirectory,installLegacyDirectory} from '../packages/driver/legacy-directory.mjs';
+import {installObservationGate} from '../packages/driver/observation-gate.mjs';
 import {runNativeArchive} from '../packages/driver/legacy-archive.mjs';
 import {DriverStateStore} from '../packages/driver/driver-state.mjs';
 import {BINDING_EVENT} from '../packages/driver/factory.mjs';
@@ -249,6 +250,129 @@ test('listed placeholders are announced with their catalog title and workspace g
     assert.deepEqual([...sessions.state.detached],['zcode-old']);
     await directory.sync({});
     assert.deepEqual([...sessions.state.announced],[],'an opened id is never re-announced');
+  }finally{await directory.dispose()}
+});
+
+test('the write gate keeps the placeholder announced for the whole content sync and through a failed sync',async()=>{
+  const store=memoryStore(),persistence=fakePersistence();
+  const sessions=announcingSessions();
+  const entered=Promise.withResolvers(),release=Promise.withResolvers();
+  const request=rowsRangeRequest(historyRows(2),{gate:{onEnter:entered.resolve,release}});
+  const directory=new LegacyDirectory({store,persistence,sessions,workspaceRegistry:trackingWorkspaceRegistry(),request,
+    listCatalog:async()=>[{sessionId:'zcode-old',workspacePath:'/ws/one',title:'t'}],
+    listPersistedHeaders:async()=>[...persistence.records.values()].map(r=>r.header),
+  });
+  try{
+    await directory.sync({});
+    const syncing=directory.ensureReadable('zcode-old');
+    await entered.promise;
+    // 0.2.1 blank-hides a session whose only non-blank observation is the live placeholder
+    // (persisted copy still title-only): withdrawing it before the transcript is current would
+    // drop the sidebar row for the whole multi-second backfill.
+    assert.ok(sessions.state.announced.has('zcode-old'),'the row stays visible while the backfill runs');
+    assert.equal(sessions.state.detached.size,0,'nothing is handed over mid-sync');
+    release.resolve();
+    await syncing;
+    assert.deepEqual([...sessions.state.detached],['zcode-old'],'the id is released to the factory only after the sync resolves');
+
+    const failingPersistence=fakePersistence(),failingSessions=announcingSessions();
+    const failing=new LegacyDirectory({store:memoryStore(),persistence:failingPersistence,sessions:failingSessions,
+      workspaceRegistry:trackingWorkspaceRegistry(),
+      request:async()=>{throw Object.assign(new Error('offline'),{code:'execution-unavailable'})},
+      listCatalog:async()=>[{sessionId:'zcode-bad',workspacePath:'/ws/one',title:'bad'}],
+      listPersistedHeaders:async()=>[...failingPersistence.records.values()].map(r=>r.header),
+    });
+    try{
+      await failing.sync({});
+      await assert.rejects(failing.ensureReadable('zcode-bad'),error=>error.code==='execution-unavailable');
+      assert.ok(failingSessions.state.announced.has('zcode-bad'),'a failed gate keeps the announcement — the row stays listed');
+      assert.equal(failingSessions.state.detached.size,0,'no handover happened, so no restore round-trip is needed');
+    }finally{await failing.dispose()}
+  }finally{await directory.dispose()}
+});
+
+test('the follow observation gate holds the chat snapshot until the content sync resolves',async()=>{
+  const store=memoryStore(),persistence=fakePersistence(),sessions=fakeSessions();
+  const entered=Promise.withResolvers(),release=Promise.withResolvers();
+  const request=rowsRangeRequest(historyRows(1),{gate:{onEnter:entered.resolve,release}});
+  const directory=new LegacyDirectory({store,persistence,sessions,request,
+    listCatalog:async()=>[{sessionId:'zcode-old',workspacePath:'/workspace',title:'t'}],
+    listPersistedHeaders:async()=>[...persistence.records.values()].map(r=>r.header),
+  });
+  await directory.sync({});
+  assert.equal(directory.requiresHandover('zcode-old'),true,'a listed row is pending');
+  const order=[];
+  const service={async observeSession(id,options){order.push('observe');return {observed:id,options}}};
+  const restore=installObservationGate({sessionQuery:service,directory});
+  try{
+    const follow=service.observeSession('zcode-old',{projectionMode:'all'});
+    await entered.promise;
+    await Promise.resolve();
+    assert.deepEqual(order,[],'the snapshot waits for the backfill — the client never anchors its cursor on the 3-event placeholder');
+    release.resolve();
+    const settled=await follow;
+    assert.deepEqual(order,['observe'],'exactly one underlying observation, after the sync');
+    assert.equal(settled.observed,'zcode-old');
+    assert.equal(directory.requiresHandover('zcode-old'),false,'a handed-over row passes straight through');
+    // Non-follow shapes and foreign ids never wait.
+    await service.observeSession('zcode-old',{projectionMode:'none'});
+    await service.observeSession('driver-session',{projectionMode:'all'});
+    assert.deepEqual(order,['observe','observe','observe']);
+  }finally{
+    restore();
+    await directory.dispose();
+  }
+});
+
+test('a failing content sync fails the follow observation; the patch restores the service cleanly',async()=>{
+  const failingPersistence=fakePersistence();
+  const failing=new LegacyDirectory({store:memoryStore(),persistence:failingPersistence,sessions:fakeSessions(),
+    request:async()=>{throw Object.assign(new Error('offline'),{code:'execution-unavailable'})},
+    listCatalog:async()=>[{sessionId:'zcode-bad',workspacePath:'/workspace',title:'bad'}],
+    listPersistedHeaders:async()=>[...failingPersistence.records.values()].map(r=>r.header),
+  });
+  await failing.sync({});
+  const original=async()=>({ok:true});
+  const service={observeSession:original};
+  const restore=installObservationGate({sessionQuery:service,directory:failing});
+  const second=installObservationGate({sessionQuery:service,directory:failing});
+  try{
+    await assert.rejects(service.observeSession('zcode-bad',{projectionMode:'all'}),error=>error.code==='execution-unavailable');
+    assert.deepEqual(await service.observeSession('zcode-bad',{projectionMode:'none'}),{ok:true},'non-follow shapes never wait');
+  }finally{
+    restore();second();
+    await failing.dispose();
+  }
+  assert.equal(service.observeSession,original,'unload restores the raw service method');
+});
+
+test('a readable row whose placeholder was re-announced after a restart is handed over before the snapshot',async()=>{
+  const store=memoryStore(),persistence=fakePersistence(),sessions=announcingSessions();
+  const request=rowsRangeRequest(historyRows(1));
+  const directory=new LegacyDirectory({store,persistence,sessions,workspaceRegistry:trackingWorkspaceRegistry(),request,
+    listCatalog:async()=>[{sessionId:'zcode-old',workspacePath:'/ws/one',title:'t'}],
+    listPersistedHeaders:async()=>[...persistence.records.values()].map(r=>r.header),
+  });
+  try{
+    await directory.sync({});
+    await directory.ensureReadable('zcode-old');
+    assert.equal(directory.requiresHandover('zcode-old'),false);
+    // A process restart rebuilds the in-memory catalog and re-announces every placeholder
+    // while the transcript stays readable: observing that 3-event live source would
+    // re-anchor the client and replay the whole history as appends, so the follow must
+    // still go through the gate.
+    directory.opened.clear();directory.rows.clear();
+    await directory.sync({});
+    assert.equal(directory.requiresHandover('zcode-old'),true,'an announced placeholder needs the handover even when readable');
+    const before=request.calls.length;
+    const service={async observeSession(id){return {observed:id}}};
+    const restore=installObservationGate({sessionQuery:service,directory});
+    const observation=await service.observeSession('zcode-old',{projectionMode:'all'});
+    assert.deepEqual(observation,{observed:'zcode-old'});
+    assert.equal(directory.requiresHandover('zcode-old'),false,'the gate handed the id over');
+    const probes=request.calls.slice(before).filter(call=>call.params.limit===1);
+    assert.ok(probes.length>=1,'readable rows hand over through the cheap tail probe, not a resync');
+    restore();
   }finally{await directory.dispose()}
 });
 
