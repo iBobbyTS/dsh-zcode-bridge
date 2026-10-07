@@ -27,7 +27,7 @@ function transcriptRows(rows){
 }
 // Identity/action/timing fields are projection-local. Conversation content and tool
 // associations must agree; an unrelated or empty child cannot pass this proof.
-const content=row=>Object.fromEntries(['kind','text','origin','guided','state','model','toolCallId','toolName','inputText','status','output','error','attachments'].filter(field=>row[field]!==undefined).map(field=>[field,row[field]]));
+const content=row=>Object.fromEntries(['kind','text','origin','guided','state','model','toolName','inputText','status','output','error','attachments'].filter(field=>row[field]!==undefined).map(field=>[field,row[field]]));
 function lineage(events){
   const checkpoints=events.filter(event=>event.type===FORK_PROJECTION_EVENT).map(event=>event.data);
   return (kind,original,rows)=>{
@@ -74,13 +74,21 @@ export function forkProjection(binding,sourceRows,branchRows,branchSnapshot){
   const expected=transcriptRows(sourceRows.filter(row=>turnIds.has(row.turnId)));
   branchRows=transcriptRows(branchRows);
   if(expected.length!==branchRows.length||!isDeepStrictEqual(expected.map(content),branchRows.map(content)))throw deny('guard.forkTargetAmbiguous','ZCode branch history differs from DSH prefix');
-  const turns=new Map(),owners=new Map();
+  const turns=new Map(),owners=new Map(),callIds=new Map(),callOwners=new Set();
   for(const [index,row] of expected.entries()){
     const childTurn=branchRows[index].turnId;
     if((turns.has(row.turnId)&&turns.get(row.turnId)!==childTurn)||(owners.has(childTurn)&&owners.get(childTurn)!==row.turnId))throw deny('guard.forkTargetAmbiguous','branch turn associations differ');
     turns.set(row.turnId,childTurn);owners.set(childTurn,row.turnId);
+    // session-fork.ts:248 / steering.ts:315 allocate child-local call IDs.
+    // Prove a bijection separately; dropping identity from content comparison
+    // must not allow two calls to collapse onto the same child call/result.
+    if(row.kind==='toolCall'){
+      const childId=branchRows[index].toolCallId;
+      if(typeof row.toolCallId!=='string'||!row.toolCallId||typeof childId!=='string'||!childId||callIds.has(row.toolCallId)||callOwners.has(childId))throw deny('guard.forkTargetAmbiguous','tool call identities are not bijective');
+      callIds.set(row.toolCallId,childId);callOwners.add(childId);
+    }
   }
-  const paired=new Map(expected.map((row,index)=>[row.rowId,branchRows[index]])),checkpoint={turns:[],users:[],responses:[],calls:[],results:[],cumulative:branchSnapshot.usage?.cumulative};
+  const paired=new Map(expected.map((row,index)=>[row.rowId,branchRows[index]])),checkpoint={turns:[],users:[],responses:[],calls:[],results:[],toolCallIds:[],cumulative:branchSnapshot.usage?.cumulative},recordedCalls=new Map();
   const add=(kind,raw,resolved,to,extra={})=>{for(const from of new Set([raw,resolved]))checkpoint[kind].push({from,to,...extra})};
   for(const event of binding.prefix){
     const meta=event.data.zcode;
@@ -94,15 +102,35 @@ export function forkProjection(binding,sourceRows,branchRows,branchSnapshot){
       if(!meta?.rowKey)throw deny('guard.forkTargetAmbiguous','unmapped inherited message');
       const current=binding.resolve(kind,meta.rowKey).key,rowId=identity(current)[1],child=paired.get(rowId),original=expected.find(row=>row.rowId===rowId);
       if(!child||!original||event.type==='user/message'&&event.data.content.filter(part=>part.type==='text').map(part=>part.text).join('\n')!==original.text)throw deny('guard.forkTargetAmbiguous');
+      if(event.type==='tool/call'||event.type==='tool/result'){
+        const raw=event.type==='tool/call'?event.data.callId:event.data.message?.source?.callId,currentId=binding.resolve('toolCallIds',raw).key;
+        if(original.kind!=='toolCall'||original.toolCallId!==currentId||callIds.get(currentId)!==child.toolCallId)throw deny('guard.forkTargetAmbiguous','tool call/result row association differs');
+        if(event.type==='tool/call'){
+          if(recordedCalls.has(currentId)||event.data.name!==original.toolName||event.data.arguments!==original.inputText)throw deny('guard.forkTargetAmbiguous','inherited tool call differs');
+          recordedCalls.set(currentId,{turn:event.data.turn,step:event.data.step});
+          // Exact seed keeps ancestor IDs. The live suffix records both the raw
+          // and current ID so an inherited-boundary/nested fork can resolve them.
+          add('toolCallIds',raw,currentId,child.toolCallId);
+        }else{
+          const call=recordedCalls.get(currentId);
+          if(event.data.message.source.kind!=='tool'||event.data.message.toolCallId!==raw||!call||call.turn!==event.data.turn||call.step!==event.data.step)throw deny('guard.forkTargetAmbiguous','inherited tool result association differs');
+        }
+      }
       add(kind,meta.rowKey,current,key(branchSnapshot.logEpoch,child.rowId));
     }
     if(event.type==='assistant/message'){
       if(!meta?.responseKey||!meta.rows?.length)throw deny('guard.forkTargetAmbiguous','unmapped inherited assistant');
       const resolved=binding.resolve('responses',meta.responseKey,meta.rows),rows=resolved.rows.map(row=>paired.get(row.rowId));
       if(rows.some(row=>!row))throw deny('guard.forkTargetAmbiguous');
+      for(const block of event.data.message?.content??[]){
+        if(block.type!=='tool-call')continue;
+        const currentId=binding.resolve('toolCallIds',block.id).key;
+        if(!callIds.has(currentId)||!resolved.rows.some(row=>row.kind==='toolCall'&&row.toolCallId===currentId))throw deny('guard.forkTargetAmbiguous','assistant tool call association differs');
+      }
       const first=rows[0];add('responses',meta.responseKey,resolved.key,key(branchSnapshot.logEpoch,first.assistantResponseId??first.rowId),{rows});
     }
   }
+  if(recordedCalls.size!==callIds.size)throw deny('guard.forkTargetAmbiguous','unmapped inherited tool call');
   return checkpoint;
 }
 export async function createFork(factory,ownerCtx,options,signal){

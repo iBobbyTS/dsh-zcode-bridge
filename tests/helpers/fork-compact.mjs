@@ -38,7 +38,13 @@ export async function forkWorld(){
     const source=official.snapshots.get(envelope.sessionId),target=source.rows.window.find(row=>row.rowId===envelope.payload.target.rowId),turns=[];
     for(const row of source.rows.window){if(!turns.includes(row.turnId))turns.push(row.turnId);if(row.rowId===target.rowId)break}
     const child=structuredClone(source),index=++serial;child.sessionId='branch-'+index;child.logEpoch='branch-epoch-'+index;child.rows.window=child.rows.window.filter(row=>turns.includes(row.turnId));
-    for(const row of child.rows.window){row.rowId+=index*100;row.entityId='branch-'+index+'-'+row.entityId;row.turnId='branch-'+index+'-'+row.turnId}
+    // SOURCE_INSPECTED: session-fork.ts:248 allocates child-local tool IDs;
+    // steering.ts:315 rewrites transcript parts; transcript-hydration.ts:736
+    // projects those new IDs. Preserve contents, not the parent's call identity.
+    const toolIds=new Map();for(const row of child.rows.window)if(row.kind==='toolCall')toolIds.set(row.toolCallId,`branch-${index}-call-${toolIds.size+1}`);
+    for(const row of child.rows.window){row.rowId+=index*100;row.entityId='branch-'+index+'-'+row.entityId;row.turnId='branch-'+index+'-'+row.turnId;
+     for(const field of ['toolCallId','parentToolCallId','anchorToolCallId'])if(toolIds.has(row[field]))row[field]=toolIds.get(row[field]);
+    }
     child.rows.totalCount=child.rows.window.length;child.rows.firstRowId=child.rows.window[0]?.rowId??null;official.snapshots.set(child.sessionId,child);
     const ack={commandId:envelope.commandId,status:'accepted',revisionAtDecision:source.revision,result:{type:'forkAssistant',sessionId:child.sessionId}};official.acks.set(envelope.commandId,ack);return ack;
    }

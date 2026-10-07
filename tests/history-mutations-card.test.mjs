@@ -8,6 +8,7 @@ import {readFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import vm from 'node:vm';
+import {historyRuntime} from './fixtures/history-management-runtime.mjs';
 
 const repo=process.cwd();
 const require=createRequire(pathToFileURL(resolve(repo,'package.json')));
@@ -30,8 +31,9 @@ function load(){
 function fakeController({sharedContextImport=null}={}){
   const listeners=new Set();
   let revision=1;
-  const state=()=>({status:'live',admission:{allowed:true},managementAdmission:{allowed:true},
-    snapshot:{sessionId:'one',revision,logEpoch:'epoch-1',rows:structuredClone(history.initial.frame.payload.snapshot.rows),commands:[],...(sharedContextImport?{sharedContextImport}:{})}});
+  const records=new Map();
+  const state=()=>({status:'live',commands:[...records.values()].map(record=>structuredClone(record)),admission:{allowed:true},managementAdmission:{allowed:true},
+    snapshot:{sessionId:'one',revision,logEpoch:'epoch-1',rows:structuredClone(history.initial.frame.payload.snapshot.rows),...(sharedContextImport?{sharedContextImport}:{})}});
   const calls=[];
   return {calls,get revision(){return revision},bump(){revision++},notify(){for(const listener of listeners)listener()},
     subscribe(listener){listeners.add(listener);return ()=>listeners.delete(listener)},
@@ -51,7 +53,7 @@ function fakeController({sharedContextImport=null}={}){
       if(typeof snapshot?.revision!=='number'||typeof snapshot?.logEpoch!=='string'||snapshot.revision!==revision)
         throw Object.assign(new Error('stale projection'),{code:'parity-projection-stale'});
       revision++;
-      return {commandId:'c-'+calls.length,type,state:'completed',ack:{status:'accepted'}};
+      const record={commandId:'c-'+calls.length,type,state:'completed',ack:{status:'accepted'}};records.set(record.commandId,record);return structuredClone(record);
     },
   };
 }
@@ -135,4 +137,27 @@ test('discard shared context is only enabled for a pending import',async()=>{
   await React.act(async()=>root.render(React.createElement(HistoryMutationsCard,{controller,pollMs:0})));
   assert.ok(q('[data-zcode-history-discard]').disabled,'an attached import cannot be withdrawn');
   root.unmount();
+});
+
+
+for(const type of ['retryTurn','editUserQuery'])for(const terminal of ['failed','completed'])test(`${type} card polls the real top-level V4 ledger from accepted to ${terminal}`,async()=>{
+ const {React,createRoot,Simulate,HistoryMutationsCard}=load(),f=historyRuntime(),root=createRoot(document.getElementById('root'));
+ const controller={subscribe:()=>()=>{},call:async()=>f.conversation.state,async command(type,payload,snapshot){const pending=f.conversation.submit({type,payload,baseRevision:snapshot.revision,baseLogEpoch:snapshot.logEpoch});f.ack();return pending}};
+ try{
+  await f.open();assert.equal(f.conversation.state.snapshot.commands,undefined);assert.deepEqual(f.conversation.state.commands,[]);
+  await React.act(async()=>root.render(React.createElement(HistoryMutationsCard,{controller,pollMs:5})));
+  if(type==='retryTurn')await React.act(async()=>Simulate.click(q('[data-zcode-history-row="6"] [data-zcode-history-retry]')));
+  else{
+   await React.act(async()=>Simulate.click(q('[data-zcode-history-row="5"] [data-zcode-history-edit]')));
+   await React.act(async()=>Simulate.change(q('[data-zcode-history-edit-text]'),{target:{value:'new input'}}));
+   await React.act(async()=>Simulate.click(q('[data-zcode-history-edit-submit]')));
+  }
+  assert.match(q('[data-zcode-history-result]').textContent,/accepted-awaiting-terminal/);
+  const record=f.conversation.state.commands.at(-1);assert.equal(record.type,type);assert.equal(record.ack.status,'accepted');
+  // The canonical turn header updates the existing ledger, while the old receipt
+  // object returned to the card remains accepted-awaiting-terminal.
+  await React.act(async()=>{f.update(snapshot=>{const header=snapshot.rows.window.find(row=>row.kind==='turnHeader'&&row.turnId==='turn-2');header.sourceCommandId=record.commandId;header.state=terminal==='failed'?'failed':'completedSuccess';snapshot.control.phase=terminal==='failed'?'error':'completedSuccess'});await new Promise(resolve=>setTimeout(resolve,25))});
+  assert.equal(f.conversation.command(record.commandId).state,terminal);assert.equal(f.conversation.command(record.commandId).ack.status,'accepted');
+  assert.match(q('[data-zcode-history-result]').textContent,new RegExp(`${type}: ${terminal}`));assert.doesNotMatch(q('[data-zcode-history-result]').textContent,/accepted-awaiting-terminal/);
+ }finally{await React.act(async()=>root.unmount());f.dispose();window.close()}
 });

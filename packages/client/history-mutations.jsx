@@ -54,7 +54,7 @@ export function HistoryMutationsCard({controller,pollMs=1500}){
     if(kind==='fileRewindPreview')setPreview(value);
     return value;
   });
-  const shown=snapshot?.commands?.find(record=>record.commandId===result?.commandId)??result;
+  const shown=state?.commands?.find(record=>record.commandId===result?.commandId)??result;
   const rows=(snapshot?.rows?.window??[]).filter(row=>row.entityId&&(row.kind==='assistantText'||row.kind==='userInput'||(row.kind==='turnHeader'&&row.fileChanges)));
   const context=sharedContextState(snapshot);
   return <section data-zcode-history-mutations="" style={{padding:12,overflowWrap:'anywhere'}}>
