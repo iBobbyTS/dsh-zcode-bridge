@@ -53,32 +53,78 @@ export function driverModeProbe({driverMode=false,bridgeStatus,pluginErrors=[],l
 /** Lifecycle probe for a driver session over the official session API surface. The bridge call is
  * injected so the whole flow is offline-testable; the real runner wires it to the authenticated
  * bridge HTTP endpoints. */
-export const DRIVER_LIFECYCLE_STEPS=Object.freeze(['create','prompt','stop','follow']);
+export const DRIVER_LIFECYCLE_STEPS=Object.freeze(['create','prompt','stop','page']);
 const TRANSLATED_EVENT_TYPES=Object.freeze(new Set(['turn/start','turn/end','step/start','step/end','request/header','user/message','assistant/message','tool/call','tool/result','agent/inbox/spliced']));
 export function lifecycleEventTypes(value){
-  const list=value?.events??value?.records??[];
-  return (Array.isArray(list)?list:[]).map(entry=>entry?.type??entry?.event?.type).filter(type=>typeof type==='string');
+  const list=value?.records??value?.events??[];
+  return (Array.isArray(list)?list:[]).map(entry=>entry?.event?.type??entry?.type).filter(type=>typeof type==='string');
 }
-function acceptedReceipt(value){return ['accepted','duplicate','completed','accepted-awaiting-terminal','interrupted','running'].includes(value?.ack?.status??value?.state)}
-/** Evaluate one create→prompt→stop→follow run. `follow` must read a transcript that contains the
- * driver's translated session events, not just an empty shell. */
-export function evaluateDriverLifecycle({created,prompted,stopped,follow}={}){
-  const events=lifecycleEventTypes(follow);
+/** The official prompt/cancel receipts are `{accepted:true}` (SessionPromptValue / SessionCancelValue)
+ * and carry no ack/state. The legacy bridge ack/state vocabulary stays accepted as a compatibility
+ * positive so the probe works against both surfaces. */
+function acceptedReceipt(value){
+  if(value?.accepted===true)return true;
+  return ['accepted','duplicate','completed','accepted-awaiting-terminal','interrupted','running'].includes(value?.ack?.status??value?.state);
+}
+/** Evaluate one create→prompt→stop→page run. `page` is the official `@Remote('page')` cold
+ * transcript read; it must contain the driver's translated session events, not an empty shell. */
+export function evaluateDriverLifecycle({created,prompted,stopped,page}={}){
+  const events=lifecycleEventTypes(page);
   const checks={
     created:typeof created?.sessionId==='string'&&created.sessionId.length>0,
     prompted:acceptedReceipt(prompted),
     stopped:acceptedReceipt(stopped),
-    followed:Array.isArray(follow)===false&&events.length>0,
+    followed:events.filter(type=>type!=='session/end-seed').length>0,
     translated:events.some(type=>TRANSLATED_EVENT_TYPES.has(type)),
   };
   return {ok:Object.values(checks).every(Boolean),checks,events};
 }
+/** The official session API surface of the isolated web host (never the bridge's own endpoints).
+ * `session/page` replaces the stream-mode `session/follow`: the S04 authority confirms page is a
+ * single-shot cold read that works without an active Agent. */
+export const OFFICIAL_SESSION_METHODS=Object.freeze({create:'session/create',prompt:'session/prompt',cancel:'session/cancel',page:'session/page'});
+/** Build the official remote caller. Wire contract: POST `/api/<method>` with the client-request
+ * envelope `{type:'client-request',rpcId,method,payload}` and read the matching
+ * `{type:'server-response',rpcId,result:{ok,value|error}}` reply. */
+export function officialRemoteCall({baseURL,cookie,fetchImpl=globalThis.fetch,timeoutMs=30000,newRpcId}={}){
+  const nextRpcId=newRpcId??(()=>globalThis.crypto.randomUUID());
+  return async(method,payload,{signal}={})=>{
+    const rpcId=nextRpcId();
+    const timeout=AbortSignal.timeout(timeoutMs);
+    const combined=signal?AbortSignal.any([signal,timeout]):timeout;
+    const response=await fetchImpl(`${baseURL}/api/${method}`,{method:'POST',headers:{...(cookie?{cookie}:{}),'content-type':'application/json'},body:JSON.stringify({type:'client-request',rpcId,method,payload}),signal:combined});
+    const body=await response.json();
+    if(body?.type!=='server-response'||body.rpcId!==rpcId)throw Object.assign(new Error('official remote reply does not match the request'),{code:'official-remote-envelope-mismatch'});
+    if(body.result?.ok!==true)throw Object.assign(new Error(body.result?.error?.code??body.result?.error?.message??'official-remote-failed'),{code:body.result?.error?.code??'official-remote-failed'});
+    return body.result.value;
+  };
+}
 export async function runDriverLifecycleProbe(call,{signal}={}){
-  const created=await call('runtime',{operation:'create'},{signal});
+  const created=await call(OFFICIAL_SESSION_METHODS.create,{},{signal});
   const sessionId=created?.sessionId;
   if(typeof sessionId!=='string'||!sessionId)return {ok:false,checks:{created:false,prompted:false,stopped:false,followed:false,translated:false},events:[],failure:'create-returned-no-session'};
-  const prompted=await call('conversation',{operation:'command',address:{sessionId},command:{type:'sendText',payload:{text:'Reply with exactly: ok'}}},{signal});
-  const stopped=await call('conversation',{operation:'command',address:{sessionId},command:{type:'stop',payload:{}}},{signal});
-  const follow=await call('conversation',{operation:'historyQuery',address:{sessionId},kind:'sessionEvents',params:{}},{signal});
-  return {sessionId,...evaluateDriverLifecycle({created,prompted,stopped,follow})};
+  // SessionAddress is a discriminated union: the ordinary-session variant always carries
+  // `kind:'session'`; without it an addressId consumer falls through to the child variant and
+  // resolves `childSessionId=undefined`, failing the source lookup.
+  const address=created?.address??{kind:'session',sessionId,...(created?.workspace?{workspace:created.workspace}:{}),...(created?.authority?{authority:created.authority}:{})};
+  // SessionPromptRequest requires a client-minted request id (persisted on the accepted message)
+  // and an explicit admission mode.
+  const prompted=await call(OFFICIAL_SESSION_METHODS.prompt,{requestId:globalThis.crypto.randomUUID(),sessionId,mode:'queue',content:[{type:'text',text:'Reply with exactly: ok'}]},{signal});
+  const stopped=await call(OFFICIAL_SESSION_METHODS.cancel,{sessionId},{signal});
+  const page=await call(OFFICIAL_SESSION_METHODS.page,{address,throughSeq:-1,maxMessages:200},{signal});
+  return {sessionId,...evaluateDriverLifecycle({created,prompted,stopped,page})};
+}
+
+/** Merge the generic boot outcome with the opt-in lifecycle probe. A failed probe keeps its own
+ * outcome so a later generic boot result never masks it; a successful or disabled probe leaves the
+ * generic outcome untouched. */
+export function mergeAcceptanceOutcome({genericOutcome,driverLifecycleProbe}){
+  if(driverLifecycleProbe?.ok===false)return 'driver-lifecycle-probe-unconfirmed';
+  return genericOutcome;
+}
+/** Exit-code policy. In smoke mode a seam difference and an unconfirmed lifecycle probe are both
+ * non-zero; outside smoke the child process exit code is reported as before. */
+export function acceptanceExitCode({smoke,outcome,webExitCode}){
+  if(smoke)return ['seam-differences-found','driver-lifecycle-probe-unconfirmed'].includes(outcome)?2:0;
+  return webExitCode??1;
 }

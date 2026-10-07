@@ -11,6 +11,11 @@ const deletion=new Set(['delete','uninstall','marketplaceRemove']);
  * may forward. History mutations join the interaction family here (the driver native path has its
  * own route and the same CAS checks). */
 export const PARITY_MIRROR_COMMANDS=Object.freeze(new Set(['setAssistantFeedback','startSavedWorkflow','resumeWorkflowRun','amendWorkflowRunSettings','cancelBackgroundWork','sendText','sendGoalCommand','reorderQueueItem','setAutoDrain','setFollowupMode','switchCollaborationMode','pauseGoal','resumeGoal','compact',...INTERACTION_COMMANDS,...HISTORY_MUTATION_COMMANDS]));
+/** Control commands the dock may submit directly to a native driver session. The driver owns the
+ * official conversation, so these run through its existing `submitControl` (same CAS, receipt and
+ * kind guards) instead of the retired mirror identity store. Prompts are deliberately excluded:
+ * they must enter through the official session inbox, not the parity dock. */
+export const PARITY_NATIVE_COMMANDS=Object.freeze(new Set(['sendQueuedNow','editQueueItem','reorderQueueItem','setAutoDrain','stop','setFollowupMode','switchCollaborationMode','pauseGoal','resumeGoal']));
 /** Routing owner. Rebuild clients after each transport generation, retaining no unknown
  * capability denial. Workspace/session addresses are resolved from registered mirror records. */
 export class ParityService {
@@ -26,6 +31,11 @@ export class ParityService {
     const native=sessionId&&this.runtime.ctx.agents.get(sessionId);
     if(native?.compactOperation&&domain==='command'&&operation==='submit'&&kind==='compact')return native.compactOperation(payload,signal);
     if(native?.historyOperation&&(domain==='history'||domain==='command'&&operation==='submit'&&HISTORY_MUTATION_COMMANDS.has(kind)))return native.historyOperation(payload,signal);
+    if(native?.submitControl&&domain==='command'&&operation==='submit'&&PARITY_NATIVE_COMMANDS.has(kind)){
+      const snapshot=native.conversation.state.snapshot;
+      if(payload.baseRevision!==snapshot.revision||payload.baseLogEpoch!==snapshot.logEpoch)throw fault('parity-projection-stale');
+      return native.submitControl({type:kind,payload:params,baseRevision:payload.baseRevision,baseLogEpoch:payload.baseLogEpoch,signal});
+    }
     if(native?.hookOperation&&(domain==='snapshot'||domain==='hooks'||domain==='command'&&INTERACTION_COMMANDS.has(kind)))return native.hookOperation(payload,signal);
     await this.runtime.ensurePeer();if(this.runtime.disposed)throw fault('disposed');
     const record=sessionId===undefined?null:this.runtime.store.records.get(sessionId);

@@ -9,7 +9,10 @@ import {join,resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import vm from 'node:vm';
 import {buildSync} from 'esbuild';
-import {parseAcceptanceArgs,assertAcceptanceArgs,profilePatchFor,pluginInstallTargets,driverModeProbe,ACCEPTANCE_OPTIONS} from '../scripts/acceptance-driver-mode.mjs';
+import {parseAcceptanceArgs,assertAcceptanceArgs,profilePatchFor,pluginInstallTargets,driverModeProbe,mergeAcceptanceOutcome,acceptanceExitCode,ACCEPTANCE_OPTIONS} from '../scripts/acceptance-driver-mode.mjs';
+import {ParityController} from '../packages/client/parity.mjs';
+import {ParityService,PARITY_NATIVE_COMMANDS} from '../packages/host/parity.mjs';
+import {commandWorld,queueItem,tick} from './helpers/lifecycle-commands.mjs';
 
 const repo=process.cwd();
 const read=(...parts)=>readFileSync(join(repo,...parts),'utf8');
@@ -56,10 +59,12 @@ test('driver occupancy re-homes the zcode llm route onto the official registry',
   const {registerHooks}=await import('node:module');
   const anchor=pathToFileURL(join(npmRoot,'..','resolve-anchor.js')).href;
   registerHooks({resolve(specifier,context,nextResolve){return specifier.startsWith('@deepseek-ai/')?nextResolve(specifier,{...context,parentURL:anchor}):nextResolve(specifier,context)}});
-  const {apply}=await import('../packages/driver/index.mjs');
-  const registered=[];
-  const llm={listProviders:()=>[{id:'zcode',name:'Zcode'}],registerAdapter:(providers,adapter)=>{registered.push({providers,adapter});return ()=>{}}};
-  const host={driverState:null,zcodeModels:()=>[{id:'A',models:[{id:'model_a',reasoningLevels:['low'],defaultReasoningLevel:'low'}]}]};
+  const {apply,armLlmRouteReadiness}=await import('../packages/driver/index.mjs');
+  const registered=[],announcements=[];
+  const llm={listProviders:()=>[{id:'zcode',name:'Zcode'}],registerAdapter:(providers,adapter)=>{registered.push({providers,adapter});const handle=()=>{};handle.replace=next=>announcements.push(next);return handle}};
+  // The host assigns `zcodeModels` asynchronously at the end of installZCodeRuntime; the driver
+  // must not judge its presence once at install time.
+  const host={driverState:null};
   const ctx={
     zcodeBridgeHost:host,fiber:{assertActive(){}},
     get:name=>({llm,sessionPersistence:undefined,sessionQuery:undefined,sessions:undefined,workspaceRegistry:undefined}[name]),
@@ -70,9 +75,39 @@ test('driver occupancy re-homes the zcode llm route onto the official registry',
   await apply(ctx);
   assert.equal(host.driverState.state,'occupied');
   assert.equal(host.llmRouteState.state,'registered');
+  assert.equal(host.llmRouteState.discovery(),false,'discovery is not ready yet at install time');
   assert.equal(registered.length,1);
   assert.deepEqual(registered[0].providers,['zcode']);
-  assert.deepEqual((await registered[0].adapter.listModels('zcode')).map(model=>model.id),['A/model_a'],'the adapter reads the retained host discovery');
+  assert.deepEqual(await registered[0].adapter.listModels('zcode'),[],'an unready discovery advertises nothing instead of failing the route');
+  // The host finishes asynchronously; the already-registered route picks discovery up lazily.
+  host.zcodeModels=()=>[{id:'A',models:[{id:'model_a',reasoningLevels:['low'],defaultReasoningLevel:'low'}]}];
+  assert.equal(host.llmRouteState.discovery(),true);
+  assert.deepEqual((await registered[0].adapter.listModels('zcode')).map(model=>model.id),['A/model_a'],'the adapter reads the retained host discovery after the host is ready');
+  // installZCodeLlm keeps the official handle's `replace`, so readiness can re-announce the route.
+  const {installZCodeLlm}=await import('../packages/host/zcode-llm.mjs');
+  const directReplaces=[],directHandle=()=>{};directHandle.replace=next=>directReplaces.push(next);
+  const directLlm={registerAdapter:()=>directHandle};
+  const installed=installZCodeLlm({get:()=>directLlm,effect:()=>{}},{discover:async()=>[]});
+  assert.equal(typeof installed.replace,'function','the registration handle keeps the official replace');
+  installed.replace(['zcode']);
+  assert.deepEqual(directReplaces,[['zcode']]);
+  // Readiness re-announces the route through the official handle so `llm/adapters-updated` fires
+  // once, waking the catalog cache and the default-model cover together.
+  let ready=false,setTimeoutStore=null,readyCalls=0;
+  const stop=armLlmRouteReadiness({replace:next=>announcements.push(next),isReady:()=>ready,onReady:()=>{readyCalls++},intervalMs:1,maxAttempts:5,setTimeoutImpl:fn=>{setTimeoutStore=fn;return {unref(){}}},clearTimeoutImpl:()=>{}});
+  assert.equal(readyCalls,0,'a pending discovery arms a timer instead of concluding');
+  ready=true;setTimeoutStore();
+  assert.deepEqual(announcements,[['zcode']],'the route is re-announced exactly once when discovery becomes ready');
+  assert.equal(readyCalls,1);
+  stop();
+  // Already-ready discovery does not need a replacement announcement.
+  let replaceCalls=0;const stop2=armLlmRouteReadiness({replace:()=>replaceCalls++,isReady:()=>true,onReady:()=>{}});
+  assert.equal(replaceCalls,0);stop2();
+  // Bounded: a discovery that never becomes ready ends as an explicit failure, not a silent hang.
+  const failures=[];let neverTick=null;
+  const stop3=armLlmRouteReadiness({replace:()=>{},isReady:()=>false,onReady:error=>failures.push(error?.code),maxAttempts:1,intervalMs:1,setTimeoutImpl:fn=>{neverTick=fn;return {unref(){}}},clearTimeoutImpl:()=>{}});
+  neverTick();
+  assert.deepEqual(failures,['llm-route-readiness-timeout']);stop3();
 });
 
 function loadDock(){
@@ -116,6 +151,34 @@ test('the retained send-now dock issues sendQueuedNow with the frozen CAS only w
   root.unmount();
 });
 
+test('a native driver session routes the send-now dock command through parity to submitControl',async()=>{
+  assert.ok(PARITY_NATIVE_COMMANDS.has('sendQueuedNow'));
+  const w=await commandWorld('idle');
+  try{
+    const published=structuredClone(w.peer.snapshot);published.seq++;published.revision++;
+    published.availability={...published.availability,sendQueuedNow:{allowed:true}};
+    published.queue={items:[queueItem()],autoDrain:true,pauseReason:'manual'};
+    w.peer.publish(published);await tick();
+    const agent=w.agent;
+    const runtime={disposed:false,ctx:{agents:{get:id=>id===agent.id?agent:undefined}}};
+    const parity=new ParityService(runtime);
+    const rpc={call:async(_channel,_endpoint,payload)=>{try{return {ok:true,value:await parity.handle(payload)}}catch(error){return {ok:false,error:{code:error.code??'mock-failure',message:error.message}}}}};
+    const controller=new ParityController(rpc,{sessionId:agent.id});
+    try{
+      const current=agent.conversation.state.snapshot;
+      const result=await controller.command('sendQueuedNow',{queueItemId:'queue-1'},{revision:current.revision,logEpoch:current.logEpoch});
+      assert.equal(result.ack.status,'accepted');
+      const sent=w.peer.calls.filter(call=>call.method==='v4/command').map(call=>call.params).find(command=>command.type==='sendQueuedNow');
+      assert.ok(sent,'the send-now command reached the official wire');
+      assert.equal(sent.baseRevision,current.revision,'the wire envelope keeps the frozen CAS revision');
+      assert.deepEqual(sent.payload,{queueItemId:'queue-1'});
+      const before=w.peer.calls.length;
+      await assert.rejects(controller.command('sendQueuedNow',{queueItemId:'queue-1'},{revision:current.revision-1,logEpoch:current.logEpoch}),error=>error.code==='parity-projection-stale');
+      assert.equal(w.peer.calls.length,before,'a stale baseline is refused before the wire');
+    }finally{controller.dispose()}
+  }finally{await w.close()}
+});
+
 test('the interlock notice is visible only while the official loop blocks the driver',async()=>{
   const {React,createRoot,ZCodeInterlockBanner}=loadDock();
   const root=createRoot(document.getElementById('root'));
@@ -146,30 +209,74 @@ test('the acceptance runner --driver-mode helpers are offline-testable and leave
   assert.deepEqual(ok,{ok:true,checks:{bridgeStatusOk:true,launcherReady:true,pluginErrors:true,driverOccupied:true}});
   assert.equal(driverModeProbe({driverMode:true,bridgeStatus:{ok:true,launcherPhase:'ready',driverState:{state:'blocked-official-loop-active'}},pluginErrors:[]}).ok,false,'driver mode requires occupancy');
   assert.equal(driverModeProbe({driverMode:false,bridgeStatus:{ok:true,launcherPhase:'ready'},pluginErrors:[]}).ok,true,'non-driver mode probe is unchanged');
+  // Outcome merge: a failed lifecycle probe is preserved over the generic boot result and is a
+  // non-zero smoke exit; a successful or disabled probe leaves the generic outcome and codes alone.
+  assert.equal(mergeAcceptanceOutcome({genericOutcome:'web-booted',driverLifecycleProbe:{ok:false,failure:'no-session'}}),'driver-lifecycle-probe-unconfirmed','a failed probe is never masked by the generic outcome');
+  assert.equal(mergeAcceptanceOutcome({genericOutcome:'seam-differences-found',driverLifecycleProbe:{ok:false}}),'driver-lifecycle-probe-unconfirmed');
+  assert.equal(mergeAcceptanceOutcome({genericOutcome:'web-booted',driverLifecycleProbe:{ok:true}}),'web-booted');
+  assert.equal(mergeAcceptanceOutcome({genericOutcome:'web-booted',driverLifecycleProbe:undefined}),'web-booted','a disabled probe leaves the generic outcome');
+  assert.equal(acceptanceExitCode({smoke:true,outcome:'driver-lifecycle-probe-unconfirmed',webExitCode:0}),2,'a probe failure is a non-zero smoke exit');
+  assert.equal(acceptanceExitCode({smoke:true,outcome:'seam-differences-found',webExitCode:0}),2);
+  assert.equal(acceptanceExitCode({smoke:true,outcome:'web-booted',webExitCode:0}),0,'a successful probe keeps the smoke exit at zero');
+  assert.equal(acceptanceExitCode({smoke:false,outcome:'web-booted',webExitCode:0}),0,'non-smoke reports the child exit code');
+  assert.equal(acceptanceExitCode({smoke:false,outcome:'web-booted',webExitCode:undefined}),1,'a missing child exit code is non-zero');
 });
 
-test('the driver lifecycle probe evaluates create->prompt->stop->follow and requires translated events',async()=>{
-  const {evaluateDriverLifecycle,runDriverLifecycleProbe,lifecycleEventTypes}=await import('../scripts/acceptance-driver-mode.mjs');
+test('the driver lifecycle probe evaluates create->prompt->stop->page and requires translated events',async()=>{
+  const {evaluateDriverLifecycle,runDriverLifecycleProbe,lifecycleEventTypes,OFFICIAL_SESSION_METHODS,officialRemoteCall}=await import('../scripts/acceptance-driver-mode.mjs');
   const transcript={events:[{type:'turn/start'},{type:'user/message'},{type:'assistant/message'},{type:'turn/end'}]};
-  const ok=evaluateDriverLifecycle({created:{sessionId:'s1'},prompted:{ack:{status:'accepted'}},stopped:{ack:{status:'completed'}},follow:transcript});
-  assert.equal(ok.ok,true);
-  assert.deepEqual(ok.events,['turn/start','user/message','assistant/message','turn/end']);
-  assert.equal(evaluateDriverLifecycle({created:{sessionId:'s1'},prompted:{ack:{status:'accepted'}},stopped:{ack:{status:'accepted'}},follow:{events:[]}}).ok,false,'an empty transcript is not a follow readback');
-  assert.equal(evaluateDriverLifecycle({created:{sessionId:'s1'},prompted:{ack:{status:'accepted'}},stopped:{ack:{status:'accepted'}},follow:{events:[{type:'unrelated/event'}]}}).checks.translated,false,'a transcript without translated events is refused');
-  assert.equal(evaluateDriverLifecycle({created:{},prompted:{ack:{status:'accepted'}},stopped:{ack:{status:'accepted'}},follow:transcript}).checks.created,false);
-  assert.equal(evaluateDriverLifecycle({created:{sessionId:'s1'},prompted:{ack:{status:'rejected'}},stopped:{ack:{status:'accepted'}},follow:transcript}).checks.prompted,false);
+  // Official receipts are {accepted:true} with no ack/state (SessionPromptValue/SessionCancelValue).
+  const official=evaluateDriverLifecycle({created:{sessionId:'s1'},prompted:{accepted:true},stopped:{accepted:true},page:transcript});
+  assert.equal(official.ok,true);
+  assert.equal(official.checks.prompted,true,'the official prompt receipt marks the step accepted');
+  assert.equal(official.checks.stopped,true,'the official cancel receipt marks the step accepted');
+  assert.deepEqual(official.events,['turn/start','user/message','assistant/message','turn/end']);
+  // The legacy bridge ack/state vocabulary stays a compatibility positive.
+  assert.equal(evaluateDriverLifecycle({created:{sessionId:'s1'},prompted:{ack:{status:'accepted'}},stopped:{ack:{status:'completed'}},page:transcript}).ok,true);
+  // A refusal is never accepted in either shape.
+  assert.equal(evaluateDriverLifecycle({created:{sessionId:'s1'},prompted:{accepted:false},stopped:{accepted:true},page:transcript}).checks.prompted,false);
+  assert.equal(evaluateDriverLifecycle({created:{sessionId:'s1'},prompted:{ack:{status:'rejected'}},stopped:{accepted:true},page:transcript}).checks.prompted,false);
+  assert.equal(evaluateDriverLifecycle({created:{sessionId:'s1'},prompted:{ack:{status:'accepted'}},stopped:{ack:{status:'accepted'}},page:{events:[]}}).ok,false,'an empty transcript is not a follow readback');
+  assert.equal(evaluateDriverLifecycle({created:{sessionId:'s1'},prompted:{ack:{status:'accepted'}},stopped:{ack:{status:'accepted'}},page:{events:[{type:'unrelated/event'}]}}).checks.translated,false,'a transcript without translated events is refused');
+  assert.equal(evaluateDriverLifecycle({created:{},prompted:{ack:{status:'accepted'}},stopped:{ack:{status:'accepted'}},page:transcript}).checks.created,false);
+  assert.equal(evaluateDriverLifecycle({created:{sessionId:'s1'},prompted:{ack:{status:'rejected'}},stopped:{ack:{status:'accepted'}},page:transcript}).checks.prompted,false);
+  assert.deepEqual(Object.values(OFFICIAL_SESSION_METHODS),['session/create','session/prompt','session/cancel','session/page'],'the probe targets the official session API, never the bridge endpoints');
   const calls=[];
-  const call=async(endpoint,payload)=>{
-    calls.push({endpoint,operation:payload.operation});
-    if(endpoint==='runtime')return {sessionId:'s1'};
-    if(payload.command?.type==='sendText')return {ack:{status:'accepted'}};
-    if(payload.command?.type==='stop')return {ack:{status:'accepted'}};
-    return transcript;
+  const call=async(method,params)=>{
+    calls.push({method,params});
+    if(method===OFFICIAL_SESSION_METHODS.create)return {sessionId:'s1'};
+    if(method===OFFICIAL_SESSION_METHODS.page)return transcript;
+    return {accepted:true};
   };
   const run=await runDriverLifecycleProbe(call);
   assert.equal(run.ok,true);
-  assert.deepEqual(calls.map(entry=>[entry.endpoint,entry.operation]),[['runtime','create'],['conversation','command'],['conversation','command'],['conversation','historyQuery']]);
+  assert.equal(run.checks.prompted,true,'the official-shaped prompt reply is accepted');
+  assert.equal(run.checks.stopped,true,'the official-shaped cancel reply is accepted');
+  assert.deepEqual(calls.map(entry=>entry.method),['session/create','session/prompt','session/cancel','session/page'],'follow is replaced by the official page cold read');
+  const prompt=calls.find(entry=>entry.method==='session/prompt').params;
+  assert.equal(prompt.sessionId,'s1');
+  assert.equal(prompt.mode,'queue','SessionPromptRequest requires an explicit admission mode');
+  assert.match(prompt.requestId,/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,'the prompt carries a client-minted request id');
+  assert.deepEqual(prompt.content,[{type:'text',text:'Reply with exactly: ok'}]);
+  const page=calls.find(entry=>entry.method==='session/page').params;
+  assert.equal(page.throughSeq,-1);
+  assert.equal(page.address.kind,'session','SessionAddress is a discriminated union and the ordinary variant needs kind');
+  assert.equal(page.address.sessionId,'s1');
   const noCreate=await runDriverLifecycleProbe(async()=>({}));
   assert.equal(noCreate.ok,false);assert.equal(noCreate.failure,'create-returned-no-session');
-  assert.deepEqual(lifecycleEventTypes({records:[{event:{type:'turn/start'}}]}),['turn/start']);
+  assert.deepEqual(lifecycleEventTypes({records:[{type:'event',event:{type:'turn/start'}},{type:'event',event:{type:'assistant/message'}}]}),['turn/start','assistant/message'],'page records are event envelopes');
+  assert.deepEqual(lifecycleEventTypes({events:[{type:'turn/start'}]}),['turn/start']);
+  // The official remote caller uses the /api channel, the client-request envelope and the
+  // server-response reply shape; a mismatched or failed reply is refused.
+  const requests=[];let rpcCounter=0;
+  const fetchImpl=async(url,options)=>{requests.push({url,options});const sent=JSON.parse(options.body);return {async json(){return {type:'server-response',rpcId:sent.rpcId,result:{ok:true,value:{sessionId:'s1'}}}}}};
+  const remoteCall=officialRemoteCall({baseURL:'http://127.0.0.1:9',cookie:'c=1',fetchImpl,newRpcId:()=>`rpc-${++rpcCounter}`});
+  assert.deepEqual(await remoteCall('session/create',{cwd:'/w'}),{sessionId:'s1'});
+  assert.equal(requests[0].url,'http://127.0.0.1:9/api/session/create');
+  assert.equal(requests[0].options.headers.cookie,'c=1');
+  assert.deepEqual(JSON.parse(requests[0].options.body),{type:'client-request',rpcId:'rpc-1',method:'session/create',payload:{cwd:'/w'}});
+  const mismatch=officialRemoteCall({baseURL:'http://x',fetchImpl:async()=>({async json(){return {type:'server-response',rpcId:'other',result:{ok:true,value:1}}}})});
+  await assert.rejects(mismatch('session/page',{}),error=>error.code==='official-remote-envelope-mismatch');
+  const failed=officialRemoteCall({baseURL:'http://x',newRpcId:()=>'rpc-9',fetchImpl:async()=>({async json(){return {type:'server-response',rpcId:'rpc-9',result:{ok:false,error:{code:'no-session'}}}}})});
+  await assert.rejects(failed('session/page',{}),error=>error.code==='no-session');
 });

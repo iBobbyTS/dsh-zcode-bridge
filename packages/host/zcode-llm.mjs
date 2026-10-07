@@ -49,9 +49,12 @@ export function createZCodeAdapter({discover=async()=>[]}={}){
 export function installZCodeLlm(ctx,{discover}={}){
   const adapter=createZCodeAdapter({discover});
   const register=scope=>{
-    const dispose=scope.llm.registerAdapter([ZCODE_PROVIDER],adapter);
-    if(typeof scope.effect==='function')scope.effect(()=>()=>dispose(),'zcode-bridge: zcode llm route');
-    return {adapter,dispose};
+    // The official handle is the disposer carrying `replace`. Keeping it lets a late discovery
+    // re-announce the route (`replace` emits `llm/adapters-updated` exactly like a first
+    // registration), which is what wakes the official catalog cache and the default-model cover.
+    const handle=scope.llm.registerAdapter([ZCODE_PROVIDER],adapter);
+    if(typeof scope.effect==='function')scope.effect(()=>()=>handle(),'zcode-bridge: zcode llm route');
+    return {adapter,dispose:handle,replace:providers=>handle.replace(providers)};
   };
   // ctx.get is the inject-free accessor: register synchronously at install time so the
   // provider set is complete before the first client catalog read.

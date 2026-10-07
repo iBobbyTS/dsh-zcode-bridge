@@ -9,7 +9,7 @@ import {createServer} from 'node:net';
 import {randomUUID} from 'node:crypto';
 import {createLauncherConfig} from '../packages/host/launcher/config.mjs';
 
-import {parseAcceptanceArgs,assertAcceptanceArgs,profilePatchFor,pluginInstallTargets,driverModeProbe,runDriverLifecycleProbe} from './acceptance-driver-mode.mjs';
+import {parseAcceptanceArgs,assertAcceptanceArgs,profilePatchFor,pluginInstallTargets,driverModeProbe,runDriverLifecycleProbe,officialRemoteCall,mergeAcceptanceOutcome,acceptanceExitCode} from './acceptance-driver-mode.mjs';
 
 const {root:_root,port,smoke,prepareOnly,diagnose,driverMode}=assertAcceptanceArgs(parseAcceptanceArgs(process.argv.slice(2),{resolve}));
 let root=_root;
@@ -93,22 +93,19 @@ try{
   result.runtimeReady=result.bridgeStatus.launcherPhase==='ready';
   const probe=driverModeProbe({driverMode,bridgeStatus:result.bridgeStatus,pluginErrors:result.pluginErrors,launcherReady:result.runtimeReady});
   result.driverModeProbe=probe;
-  // Opt-in lifecycle probe (create→prompt→stop→follow) over the authenticated bridge surface.
-  // Kept behind an explicit switch because it creates and drives a real official session.
+  // Opt-in lifecycle probe (create→prompt→stop→page) over the OFFICIAL session API surface the
+  // isolated web host serves — never the bridge's own endpoints. Kept behind an explicit switch
+  // because it creates and drives a real official session.
   if(driverMode&&process.env.DSH_ACCEPTANCE_LIFECYCLE==='1'){
     try{
-      const bridgeCall=async(endpoint,payload)=>{
-        const response=await fetch(result.baseURL+'/zcode-bridge/'+endpoint,{method:'POST',headers:{cookie,'content-type':'application/json'},body:JSON.stringify({type:'client-request',rpcId:randomUUID(),method:endpoint,payload}),signal:AbortSignal.timeout(30000)});
-        const body=await response.json();
-        if(body.result?.ok!==true)throw Error(body.result?.error?.code??'bridge-call-failed');
-        return body.result.value;
-      };
-      result.driverLifecycleProbe=await runDriverLifecycleProbe(bridgeCall);
+      const officialCall=officialRemoteCall({baseURL:result.officialRemoteBase??result.baseURL,cookie});
+      result.driverLifecycleProbe=await runDriverLifecycleProbe(officialCall);
     }catch(error){result.driverLifecycleProbe={ok:false,failure:error.message}}
-    if(!result.driverLifecycleProbe.ok)result.outcome='driver-lifecycle-probe-unconfirmed';
   }
-  result.outcome=result.pluginErrors.length||!result.bridgeStatus.ok||!probe.ok?'seam-differences-found':!result.runtimeReady?'web-booted-runtime-unconfirmed':result.versionExemption?'web-booted-with-diagnostic-exemption':'web-booted';save();
+  const genericOutcome=result.pluginErrors.length||!result.bridgeStatus.ok||!probe.ok?'seam-differences-found':!result.runtimeReady?'web-booted-runtime-unconfirmed':result.versionExemption?'web-booted-with-diagnostic-exemption':'web-booted';
+  // A failed lifecycle probe keeps its own outcome; the generic boot result never masks it.
+  result.outcome=mergeAcceptanceOutcome({genericOutcome,driverLifecycleProbe:result.driverLifecycleProbe});save();
   console.log(JSON.stringify({root,npmVersion:result.npmVersion,outcome:result.outcome,baseURL:result.baseURL,resultPath:join(root,'environment-result.json'),note:'Web boot only; parent owns read-only browser acceptance. Token is in local web.log.'}));
-  if(smoke){await stop();result.webExitCode=exitCode;save();if(result.outcome==='seam-differences-found')process.exitCode=2}
-  else {await done;result.webExitCode=exitCode;save();process.exitCode=exitCode??1}
+  if(smoke){await stop();result.webExitCode=exitCode;save();process.exitCode=acceptanceExitCode({smoke:true,outcome:result.outcome,webExitCode:exitCode})}
+  else {await done;result.webExitCode=exitCode;save();process.exitCode=acceptanceExitCode({smoke:false,outcome:result.outcome,webExitCode:exitCode})}
 }catch(error){await childStop?.();result.error=error.message;result.outcome??='setup-failed';save();console.error(error.message);console.error('Evidence root: '+root);process.exitCode=1}

@@ -23,6 +23,26 @@ export {runNativeArchive} from './legacy-archive.mjs';
 export {LegacyDirectory,installLegacyDirectory} from './legacy-directory.mjs';
 export {collectHistoryPages,historySnapshots,historyAttachmentReader,HISTORY_PAGE_LIMIT} from './history-backfill.mjs';
 export const inject=['agents','sessions','sessionProjections','zcodeBridgeHost'];
+/** Wait for the host's async model discovery, then re-announce the registered route exactly once.
+ * `replace` is the official handle's route swap: it emits `llm/adapters-updated` like a first
+ * registration, so the catalog cache and the default-model cover see the same wakeup. Deterministic
+ * timer injection keeps this offline-testable. */
+export function armLlmRouteReadiness({replace,isReady,onReady=()=>{},intervalMs=200,maxAttempts=150,setTimeoutImpl=setTimeout,clearTimeoutImpl=clearTimeout}={}){
+  if(isReady()){onReady();return ()=>{}}
+  let attempts=0,timer=null,disposed=false;
+  const finish=error=>{if(disposed)return;disposed=true;if(timer!==null)clearTimeoutImpl(timer);timer=null;onReady(error)};
+  const tick=()=>{
+    if(disposed)return;
+    if(isReady()){
+      try{replace?.(['zcode'])}catch(error){finish(error);return}
+      finish();return;
+    }
+    if(++attempts>=maxAttempts){finish(Object.assign(new Error('llm route discovery did not become ready'),{code:'llm-route-readiness-timeout'}));return}
+    timer=setTimeoutImpl(tick,intervalMs);timer?.unref?.();
+  };
+  timer=setTimeoutImpl(tick,intervalMs);timer?.unref?.();
+  return ()=>{disposed=true;if(timer!==null)clearTimeoutImpl(timer);timer=null};
+}
 export async function apply(ctx){
   const [{createScope},{agentEvents},{interruptedTurnClosers}]=await Promise.all([import('@deepseek-ai/dsh-scope'),import('@deepseek-ai/dsh-agent'),import('@deepseek-ai/dsh-session')]);
   const host=ctx.zcodeBridgeHost;
@@ -38,9 +58,24 @@ export async function apply(ctx){
     // The zcode llm route is registered here, not in the retired host mirror wiring: the picker
     // catalog and the deployment-default cover both depend on the adapter being present whenever
     // the driver occupies the factory.
+    // Discovery is a lazy callback: the host assigns `zcodeModels` asynchronously at the end of
+    // `installZCodeRuntime`, which the parent fiber does not await. Judging its presence once at
+    // install time would race and leave the route unregistered; resolve it on every catalog query
+    // instead and let an empty discovery simply advertise nothing until the host is ready.
     const llmSeam=ctx.inject(['llm'],llmCtx=>{
-      if(typeof host.zcodeModels!=='function'){host.llmRouteState={state:'unavailable',reason:'model-discovery-missing'};return}
-      try{installZCodeLlm(llmCtx,{discover:()=>host.zcodeModels()});host.llmRouteState={state:'registered'}}
+      try{
+        const route=installZCodeLlm(llmCtx,{discover:()=>typeof host.zcodeModels==='function'?host.zcodeModels():[]});
+        host.llmRouteState={state:'registered',discovery:()=>typeof host.zcodeModels==='function'};
+        // Discovery readiness emits no event of its own. When it first becomes available, re-announce
+        // the route through the official handle so `llm/adapters-updated` fires once and wakes both
+        // the official catalog cache and the default-model cover listener in the same turn.
+        const stop=armLlmRouteReadiness({
+          replace:route.replace,
+          isReady:()=>typeof host.zcodeModels==='function',
+          onReady:error=>{host.llmRouteState=error?{state:'failed',error:error?.code??String(error)}:{state:'registered',discovery:()=>true,announced:true}},
+        });
+        if(typeof llmCtx.effect==='function')llmCtx.effect(()=>stop,'zcode-driver: llm route readiness');
+      }
       catch(error){host.llmRouteState={state:'failed',error:error?.code??String(error)}}
     });
     if(ctx.get('llm'))await llmSeam.await();
