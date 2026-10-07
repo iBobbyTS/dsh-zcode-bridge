@@ -302,8 +302,12 @@ export class ConversationEventTranslator {
     if(turn.openStep!==null)this.append('step/end',{turn:turn.turn,step:turn.openStep});
     this.append('turn/end',{turn:turn.turn,reason});turn.closed=true;turn.openStep=null;
   }
-  async close(){
+  async close({keepOpenTurns=false}={}){
     this.abort();await this.tail;this.interruptNow();
-    for(const turn of this.turns.values())if(!turn.closed)this.closeTurn(turn,{kind:'aborted',reason:{kind:'disposed'}});
+    // keepOpenTurns serves the history backfill of a conversation that was STILL RUNNING when
+    // its window was read: closing the final turn here (or via the factory's interrupted-turn
+    // closers) would mark a live turn "stopped" while the live layer keeps appending into the
+    // closed turn. The live translator closes it from the snapshot's terminal state instead.
+    if(!keepOpenTurns)for(const turn of this.turns.values())if(!turn.closed)this.closeTurn(turn,{kind:'aborted',reason:{kind:'disposed'}});
   }
 }

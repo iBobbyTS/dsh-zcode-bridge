@@ -29,12 +29,14 @@ export async function collectHistoryPages(request,{sessionId,workspace,signal,li
   throw fault('rows-range-page-limit');
 }
 
-/** Wrap each page as a caller-owned history window for `mergeEventWindows`/`replay`. The phase is
- * terminal because only committed history is read; per-turn state still comes from the rows. */
+/** Wrap each page as a caller-owned history window for `mergeEventWindows`/`replay`. The phase
+ * carries the FINAL turn's own state: a still-running turn must stay open (the live layer owns
+ * its terminal state), while committed history reads terminal by default. Earlier turns read
+ * their per-row state regardless. */
 export function historySnapshots(sessionId,pages){
   return pages.map(page=>({
     protocolVersion:3,sessionId,logEpoch:page.atLogEpoch,seq:page.atSeq,revision:page.atRevision,
-    control:{phase:'completedSuccess',canStop:false,activeWorks:[],lastError:null},
+    control:{phase:page.rows.findLast(row=>row.kind==='turnHeader')?.state??'completedSuccess',canStop:false,activeWorks:[],lastError:null},
     availability:{},inputRouting:{mode:'startNow'},queue:{items:[],autoDrain:true},pendingInteractions:[],
     rows:{window:page.rows},
   }));

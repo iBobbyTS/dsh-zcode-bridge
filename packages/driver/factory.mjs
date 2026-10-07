@@ -88,9 +88,10 @@ export class DriverFactory {
       // the store before the Session is announced, so an open/prompt never reads a partial transcript.
       // While the gate is initializing the resume waits; a failed initialization keeps rejecting; an
       // undeclared legacy row resolves immediately for ordinary driver Sessions once the gate is open.
+      let gateResult;
       if(source==='resume'){
         await this.#awaitWriteGate(signal);
-        if(this.gate.fn)await cancellable(()=>this.gate.fn(id,signal),signal);
+        if(this.gate.fn)gateResult=await cancellable(()=>this.gate.fn(id,signal),signal);
       }
       const persistence=this.ctx.get('sessionPersistence');
       let session,storedCount=0,zcodeConversationId;
@@ -117,8 +118,12 @@ export class DriverFactory {
         zcodeConversationId=boundConversationId(id,cold.events,handle.inheritedEventCount);
         storedCount=cold.events.length;
         const open=cold.events.findLast(event=>event.type==='turn/start'||event.type==='turn/end')?.type==='turn/start';
-        if(open&&!this.interruptedTurnClosers)throw new Error('driver resume requires the official interruptedTurnClosers contract');
-        const closers=open?this.interruptedTurnClosers(cold.events).map(event=>event.type==='turn/end'?{...event,data:{...event.data,reason:{kind:'aborted',reason:{kind:'disposed'}}}}:event):[];
+        // A legacy gate that observed the conversation STILL RUNNING keeps its final turn open
+        // on purpose: the live translator closes it from the snapshot's terminal state. Closing
+        // it here as interrupted would render the live turn "stopped" with trailing content.
+        const closersSkip=gateResult?.active===true;
+        if(open&&!closersSkip&&!this.interruptedTurnClosers)throw new Error('driver resume requires the official interruptedTurnClosers contract');
+        const closers=open&&!closersSkip?this.interruptedTurnClosers(cold.events).map(event=>event.type==='turn/end'?{...event,data:{...event.data,reason:{kind:'aborted',reason:{kind:'disposed'}}}}:event):[];
         if(closers.length){await cancellable(()=>handle.append(closers),signal);storedCount+=closers.length}
         session=this.ctx.sessions.prepare(id,{seed:[...cold.events,...closers],meta:handle.header,inheritedEventCount:handle.inheritedEventCount,eventState:cold.eventState});
         await cancellable(()=>this.transport.resume({zcodeConversationId,cwd:session.header.cwd,signal}),signal);

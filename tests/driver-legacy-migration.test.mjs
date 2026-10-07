@@ -764,3 +764,58 @@ test('legacyHistoryRequest establishes the launcher peer instead of failing befo
   const aborting=legacyHistoryRequest({async ready(cwd,signal){signal.throwIfAborted()}});
   await assert.rejects(aborting('v4/conversation/rowsRange',{}, {signal:controller.signal}),/stop/);
 });
+
+test('a conversation still running at backfill time keeps its final turn open and marks the entry active',async()=>{
+  const store=memoryStore(),persistence=fakePersistence(),sessions=fakeSessions();
+  const rows=historyRows(2);
+  rows.findLast(row=>row.kind==='turnHeader').state='running';
+  rows.findLast(row=>row.kind==='assistantText').state='streaming';
+  const directory=new LegacyDirectory({store,persistence,sessions,request:rowsRangeRequest(rows),
+    listCatalog:async()=>[{sessionId:'zcode-old',workspacePath:'/workspace',title:'t'}],
+    listPersistedHeaders:async()=>[...persistence.records.values()].map(r=>r.header),
+  });
+  try{
+    await directory.sync({});
+    const entry=await directory.ensureReadable('zcode-old');
+    assert.equal(entry.active,true,'the gate reports the live conversation');
+    const events=persistence.records.get('zcode-old').events;
+    const ends=events.filter(event=>event.type==='turn/end');
+    assert.equal(ends.length,1,'only the settled first turn closes');
+    assert.equal(ends[0].data.reason.kind,'completed');
+    assert.notEqual(events.at(-1).type,'turn/end','the running final turn stays open for the live layer to close from its terminal state');
+    // The settled control: a fully completed history never reports active.
+    const donePersistence=fakePersistence(),doneRows=historyRows(2);
+    const done=new LegacyDirectory({store:memoryStore(),persistence:donePersistence,sessions:fakeSessions(),request:rowsRangeRequest(doneRows),
+      listCatalog:async()=>[{sessionId:'zcode-done',workspacePath:'/workspace',title:'d'}],
+      listPersistedHeaders:async()=>[...donePersistence.records.values()].map(r=>r.header),
+    });
+    await done.sync({});
+    const doneEntry=await done.ensureReadable('zcode-done');
+    assert.equal(doneEntry.active,undefined);
+    await done.dispose();
+  }finally{await directory.dispose()}
+});
+
+test('an active legacy conversation skips the interrupted-turn closers on resume',async()=>{
+  const f=driverFixture(),driver=installDriver(f.ctx,f.deps);
+  try{
+    const created=await f.persistence.create({version:4,id:'legacy-live',createdAt:1,isSeeded:false,delegationDepth:0});
+    await created.append([
+      {type:'session/title',data:{title:'live',messageSeqs:[],source:{kind:'user'}},seq:0,time:1},
+      {type:'turn/start',data:{turn:1},seq:1,time:2},
+      {type:'user/message',data:{id:'u1',role:'user',source:{kind:'user'},content:[{type:'text',text:'hi'}]},seq:2,time:2},
+    ]);
+    await created.close();
+    // Without the active flag an open final turn demands the official closers contract.
+    f.factory.setWriteGate(async()=>({}));
+    await assert.rejects(f.factory.resume(f.owner,{resumeSessionId:'legacy-live'}),/interruptedTurnClosers/);
+    // An active conversation keeps its open turn: the live layer closes it from the snapshot.
+    f.factory.setWriteGate(async()=>({active:true}));
+    const handle=await f.factory.resume(f.owner,{resumeSessionId:'legacy-live'});
+    try{
+      const session=handle.agent.session;
+      const events=Array.from({length:session.seq},(_,seq)=>session.eventAt(seq));
+      assert.equal(events.some(event=>event.type==='turn/end'),false,'no aborted closer is appended for a live turn');
+    }finally{await handle.dispose()}
+  }finally{await driver.dispose()}
+});

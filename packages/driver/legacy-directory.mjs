@@ -302,7 +302,7 @@ export class LegacyDirectory {
       const outcome=await this.#backfill(row,{signal});
       // `ensureReadable` always resolves to the stored state entry, so callers see a stable
       // shape ({state, appended, cursor}) for both the first sync and later freshness probes.
-      const entry={state:'readable',appended:outcome.appended,cursor:outcome.cursor,workspace:row.workspacePath,at:Date.now()};
+      const entry={state:'readable',appended:outcome.appended,cursor:outcome.cursor,workspace:row.workspacePath,at:Date.now(),...(outcome.active?{active:true}:{})};
       this.store.value.legacy[id]=entry;
       await this.store.save();
       return entry;
@@ -346,7 +346,15 @@ export class LegacyDirectory {
         session,dispatch:{emit(){}},conversation:historyAttachmentReader(this.request,id),
         attachments:this.attachments,input:()=>undefined,claim:()=>{},syncInbox:()=>{},history:true,
       });
-      try{await translator.replay(windows)}finally{await translator.close()}
+      let active=false;
+      try{
+        await translator.replay(windows);
+        // A conversation that was still running when its window was read keeps its final turn
+        // OPEN here and in the persisted copy: the live layer closes it from the snapshot's
+        // terminal state. Aborting it would show a live turn as "stopped" with trailing content.
+        active=[...translator.turns.values()].some(turn=>!turn.closed);
+        await translator.close({keepOpenTurns:active});
+      }catch(error){await translator.close().catch(()=>{});throw error}
       const appended=readEvents(session).slice(existing.length);
       // Detached prepare adds a `session/end-seed` terminator at the seed boundary. Persist it at
       // most once (matching the create path), and never count it as backfill progress.
@@ -359,7 +367,7 @@ export class LegacyDirectory {
       const retimed=retimeHistoryEvents(toAppend,merged.rows.window,merged.logEpoch,{sessionUpdatedAt:typeof row.updatedAt==='number'?row.updatedAt:undefined});
       if(retimed.length)await handle.append(retimed);
       const tail=pages[0];
-      return {appended:body.length,cursor:{logEpoch:tail.atLogEpoch,revision:tail.atRevision,seq:tail.atSeq,maxRowId:Math.max(0,...tail.rows.map(item=>item.rowId))}};
+      return {appended:body.length,active,cursor:{logEpoch:tail.atLogEpoch,revision:tail.atRevision,seq:tail.atSeq,maxRowId:Math.max(0,...tail.rows.map(item=>item.rowId))}};
     }finally{await handle.close()}
   }
   dispose(){
