@@ -1,5 +1,6 @@
-// Legacy migration: one-shot native archive, catalog import/ensure with SessionId=ZCode
-// conversation id dedup, eager rowsRange backfill (placeholder→backfilling→readable), and the
+// Legacy migration: one-shot native archive, list-only catalog import at startup
+// (placeholder→listed, SessionId=ZCode conversation id dedup), on-open content sync through the
+// resume write gate (→readable with a tail cursor), tail-probe freshness on later opens, and the
 // history replay/attachment legs. The import e2e uses the real rc.2 SessionStore + JSONL
 // persistence; the archive/workspace registry surface is exercised through its documented
 // archive(id) contract (external workspace registry assembly is a recorded gap).
@@ -47,13 +48,38 @@ function fakePersistence(){
 function fakeSessions(){
   const live=new Map();
   return {prepare(id,{meta={},seed=[]}={}){
-    if(live.has(id))throw new Error('duplicate session');
+    // The official SessionStore re-prepares the same id on every resume; a re-sync does too.
     const events=structuredClone(seed);
     const session={id,header:{version:4,id,createdAt:1,isSeeded:false,delegationDepth:0,...(meta.cwd?{cwd:meta.cwd}:{})},inheritedEventCount:0,
       get seq(){return events.length},eventAt:seq=>events[seq],snapshotEvents:()=>events,
       append(type,data){const event=Object.freeze({type,data:structuredClone(data),seq:events.length,time:1});events.push(event);return event}};
     live.set(id,session);return session;
   }};
+}
+
+/** Session-store double that records the placeholder publication lifecycle (enter/announce/detach). */
+function announcingSessions({prepareThrows=[]}={}){
+  const state={entered:new Map(),announced:new Set(),detached:new Set(),live:new Map()};
+  return {state,
+    prepare(id,{meta={},seed=[]}={}){
+      if(prepareThrows.includes(id))throw new Error(`session "${id}" already exists`);
+      const events=structuredClone(seed);
+      const session={id,header:{createdAt:meta.createdAt,...(meta.cwd?{cwd:meta.cwd}:{})},get seq(){return events.length},eventAt:seq=>events[seq],snapshotEvents:()=>events,
+        append(type,data){const event={type,data:structuredClone(data),seq:events.length,time:1};events.push(event);return event}};
+      state.live.set(id,session);return session;
+    },
+    enter(session){state.entered.set(session.id,session);return ()=>{state.detached.add(session.id);state.entered.delete(session.id);state.announced.delete(session.id)}},
+    announce(session){if(!state.entered.has(session.id))throw new Error('announce before enter');state.announced.add(session.id)},
+  };
+}
+
+/** Workspace-registry double recording placeholder grouping attachments and create-if-missing. */
+function trackingWorkspaceRegistry(){
+  const state={attached:[],detached:[],created:[]};
+  const workspaceFor=path=>({id:'ws-'+path,attachSession:async id=>state.attached.push({path,id}),detachSession:async id=>state.detached.push(id)});
+  return {state,
+    async resolveByPath(path){return state.created.includes(path)?workspaceFor(path):undefined},
+    async create(path){state.created.push(path);return workspaceFor(path)}};
 }
 
 /** Serve `v4/conversation/rowsRange` newest-first pages over an ascending row list. */
@@ -153,40 +179,177 @@ test('collectHistoryPages rejects a stalled cursor, over-limit page and malforme
   await assert.rejects(collectHistoryPages(async()=>({rows:[],hasMore:false,atSeq:1,atRevision:1}),{sessionId:'s'}),/rows-range-result-invalid/);
 });
 
-test('legacy directory: placeholder → backfilling → readable, dedups one ZCode id, and gates on backfill',async()=>{
+test('legacy directory: startup lists only (no history read); an open syncs content and stays fresh',async()=>{
   const store=memoryStore(),persistence=fakePersistence(),sessions=fakeSessions();
   const rows=historyRows(3);
   const request=rowsRangeRequest(rows);
   const directory=new LegacyDirectory({store,persistence,sessions,request,
     listCatalog:async()=>[{sessionId:'zcode-old',workspacePath:'/workspace',title:'Old ZCode task'}],
-    listPersistedIds:async()=>new Set(persistence.records.keys()),
+    listPersistedHeaders:async()=>[...persistence.records.values()].map(r=>r.header),
   });
-  const synced=await directory.sync({});
-  assert.deepEqual(synced,{ensured:1,readable:1,failed:[]});
+  // Startup is a list import only: one placeholder, zero conversation reads.
+  const listed=await directory.sync({});
+  assert.deepEqual(listed,{listed:1,failed:[]});
+  assert.equal(request.calls.length,0,'startup never reads conversation history');
   assert.equal(persistence.calls.create,1,'the placeholder is created once');
-  assert.deepEqual(directory.status('zcode-old').state,'readable');
+  assert.equal(directory.status('zcode-old').state,'listed');
   const record=persistence.records.get('zcode-old');
   assert.equal(record.header.id,'zcode-old','SessionId equals the ZCode conversation id');
-  assert.equal(record.events[0].type,'session/title');
+  assert.deepEqual(record.events.map(event=>event.type),['session/title'],'a title-only placeholder');
   assert.equal(record.events[0].data.title,'Old ZCode task');
-  assert.ok(record.events.some(event=>event.type==='user/message'&&event.data.content[0].text==='question-1'));
-  // A second sync never re-ensures the same id (ambiguous-create orphans collapse by id).
+  // A later poll re-lists without re-creating or reading.
   await directory.sync({});
   assert.equal(persistence.calls.create,1);
-  assert.equal(persistence.calls.open,1,'the readable row is not re-opened on every poll');
+  assert.equal(request.calls.length,0);
+  // The persisted placeholder stays title-only: the visibility marker turn exists only in the
+  // announced in-memory seed, so the factory's cold read at the gate sees a clean log.
+  assert.deepEqual(record.events.map(event=>event.type),['session/title'],'persistence never gains the marker turn');
+  // The first open (resume write gate) syncs the full content.
+  const synced=await directory.ensureReadable('zcode-old');
+  assert.equal(synced.state,'readable');
+  assert.ok(persistence.records.get('zcode-old').events.some(event=>event.type==='user/message'&&event.data.content[0].text==='question-1'));
+  assert.deepEqual(synced.cursor,{logEpoch:'epoch-1',revision:1,seq:9,maxRowId:8},'the tail cursor is recorded for later freshness probes');
+  // Every later open probes the tail once; unchanged history is not re-read or re-opened.
+  request.calls.length=0;
+  const fresh=await directory.ensureReadable('zcode-old');
+  assert.equal(fresh.state,'readable');
+  assert.deepEqual(request.calls.map(call=>call.params.limit),[1],'exactly one tail probe with limit 1');
+  assert.equal(persistence.calls.open,1,'a fresh probe never re-opens the store');
   assert.deepEqual(Object.keys(store.value.legacy),['zcode-old']);
 });
 
-test('ensureReadable awaits an in-flight backfill and reports failure explicitly',async()=>{
+test('listed placeholders are announced with their catalog title and workspace grouping; the write gate hands the id to the factory',async()=>{
+  const store=memoryStore(),persistence=fakePersistence();
+  const sessions=announcingSessions(),workspaces=trackingWorkspaceRegistry();
+  const request=rowsRangeRequest(historyRows(1),{sessionId:'zcode-old'});
+  const directory=new LegacyDirectory({store,persistence,sessions:sessions,workspaceRegistry:workspaces,request,
+    listCatalog:async()=>[{sessionId:'zcode-old',workspacePath:'/ws/one',title:'Catalog title'}],
+    listPersistedHeaders:async()=>[...persistence.records.values()].map(r=>r.header),
+  });
+  try{
+    await directory.sync({});
+    // The placeholder is a live session carrying the catalog title, grouped under its workspace.
+    assert.deepEqual([...sessions.state.announced],['zcode-old']);
+    assert.equal(sessions.state.live.get('zcode-old').eventAt(0).type,'session/title');
+    assert.equal(sessions.state.live.get('zcode-old').eventAt(0).data.title,'Catalog title');
+    assert.deepEqual(sessions.state.live.get('zcode-old').snapshotEvents().map(e=>e.type),['session/title','turn/start','turn/end'],
+      'the announced seed carries the live-only visibility marker turn (0.2.1 blank-hiding)');
+    assert.deepEqual(persistence.records.get('zcode-old').events.map(e=>e.type),['session/title'],
+      'the persisted placeholder stays title-only');
+    assert.equal(sessions.state.live.get('zcode-old').header.cwd,'/ws/one');
+    assert.equal(sessions.state.live.get('zcode-old').header.createdAt,persistence.records.get('zcode-old').header.createdAt,
+      'the announced header must be observation-compatible with the persisted placeholder header (0.2.1 session-query source check)');
+    assert.deepEqual(workspaces.state.attached,[{path:'/ws/one',id:'zcode-old'}]);
+    // The poll never announces twice.
+    await directory.sync({});
+    assert.deepEqual([...sessions.state.announced],['zcode-old']);
+    // The resume write gate releases the announcement exactly once so the factory can
+    // prepare the same id; a later poll treats the id as opened and stays silent.
+    await directory.ensureReadable('zcode-old');
+    assert.deepEqual([...sessions.state.detached],['zcode-old']);
+    await directory.sync({});
+    assert.deepEqual([...sessions.state.announced],[],'an opened id is never re-announced');
+  }finally{await directory.dispose()}
+});
+
+test('a placeholder the session store already owns is never announced and never blocks listing',async()=>{
+  const store=memoryStore(),persistence=fakePersistence();
+  const sessions=announcingSessions({prepareThrows:['zcode-owned']});
+  const request=rowsRangeRequest(historyRows(1),{sessionId:'zcode-owned'});
+  const directory=new LegacyDirectory({store,persistence,sessions:sessions,workspaceRegistry:trackingWorkspaceRegistry(),request,
+    listCatalog:async()=>[{sessionId:'zcode-owned',workspacePath:'/ws/one',title:'Owned elsewhere'}],
+    listPersistedHeaders:async()=>[...persistence.records.values()].map(r=>r.header),
+  });
+  try{
+    const listed=await directory.sync({});
+    assert.deepEqual(listed,{listed:1,failed:[]});
+    assert.equal(sessions.state.announced.size,0,'a factory-owned id is never announced');
+    assert.deepEqual([...directory.opened],['zcode-owned']);
+  }finally{await directory.dispose()}
+});
+
+test('a re-open detects ZCode-side additions and appends only the delta',async()=>{
+  const store=memoryStore(),persistence=fakePersistence(),sessions=fakeSessions();
+  const rows=historyRows(2);
+  const request=rowsRangeRequest(rows);
+  const directory=new LegacyDirectory({store,persistence,sessions,request,
+    listCatalog:async()=>[{sessionId:'zcode-old',workspacePath:'/workspace',title:'t'}],
+    listPersistedHeaders:async()=>[...persistence.records.values()].map(r=>r.header),
+  });
+  await directory.sync({});
+  await directory.ensureReadable('zcode-old');
+  const userEvents=()=>persistence.records.get('zcode-old').events.filter(event=>event.type==='user/message');
+  assert.equal(userEvents().length,2);
+  // The ZCode side gains a third turn while the session is closed in DSH.
+  const next=rows.at(-1).rowId+1;
+  rows.push(row('turnHeader',next,{origin:'userInput',state:'completedSuccess',startedAt:0,turnId:'turn-3',sourceCommandId:'cmd-3'}));
+  rows.push(row('userInput',next+1,{origin:'realUser',text:'question-3',turnId:'turn-3',sourceCommandId:'cmd-3'}));
+  rows.push(row('assistantText',next+2,{text:'answer-3',state:'complete',model:'model_a',turnId:'turn-3',assistantResponseId:'resp-3'}));
+  request.calls.length=0;
+  const updated=await directory.ensureReadable('zcode-old');
+  assert.equal(updated.state,'readable');
+  assert.deepEqual(request.calls.map(call=>call.params.limit).at(0),1,'the probe runs first');
+  assert.ok(request.calls.length>1,'a changed tail triggers a history re-read');
+  assert.equal(userEvents().length,3,'only the new turn is appended');
+  assert.ok(userEvents().some(event=>event.data.content[0].text==='question-3'));
+  assert.deepEqual(updated.cursor.maxRowId,next+2,'the cursor advances');
+});
+
+test('a changed ZCode log epoch keeps the persisted transcript instead of duplicating it',async()=>{
+  const store=memoryStore(),persistence=fakePersistence(),sessions=fakeSessions();
+  const rows=historyRows(2);
+  const holder={fn:rowsRangeRequest(rows)};
+  const errors=[];
+  const directory=new LegacyDirectory({store,persistence,sessions,request:(...args)=>holder.fn(...args),
+    listCatalog:async()=>[{sessionId:'zcode-old',workspacePath:'/workspace',title:'t'}],
+    listPersistedHeaders:async()=>[...persistence.records.values()].map(r=>r.header),
+    onError:error=>errors.push(error.code),
+  });
+  await directory.sync({});
+  await directory.ensureReadable('zcode-old');
+  const before=persistence.records.get('zcode-old').events.length;
+  // ZCode rewrites its history (rewind/edit): the epoch changes under the same conversation.
+  holder.fn=rowsRangeRequest(rows,{logEpoch:'epoch-2'});
+  const kept=await directory.ensureReadable('zcode-old');
+  assert.equal(kept.state,'readable');
+  assert.equal(persistence.records.get('zcode-old').events.length,before,'a rewritten epoch never appends a duplicate transcript');
+  assert.ok(errors.includes('legacy-epoch-divergence'),'the divergence is reported');
+});
+
+test('replayed events carry the ZCode rows real createdAt, so Completed-in durations survive',async()=>{
+  const store=memoryStore(),persistence=fakePersistence(),sessions=fakeSessions();
+  const rows=[
+    row('turnHeader',1,{origin:'userInput',state:'completedSuccess',startedAt:0,turnId:'turn-1',sourceCommandId:'cmd-1',createdAt:1_000}),
+    row('userInput',2,{origin:'realUser',text:'q-1',turnId:'turn-1',sourceCommandId:'cmd-1',createdAt:1_000}),
+    row('assistantText',3,{text:'a-1',state:'complete',model:'m',turnId:'turn-1',assistantResponseId:'resp-1',createdAt:61_000}),
+  ];
+  const request=rowsRangeRequest(rows);
+  const directory=new LegacyDirectory({store,persistence,sessions,request,
+    listCatalog:async()=>[{sessionId:'zcode-old',workspacePath:'/workspace',title:'t'}],
+    listPersistedHeaders:async()=>[...persistence.records.values()].map(r=>r.header),
+  });
+  await directory.sync({});
+  await directory.ensureReadable('zcode-old');
+  const events=persistence.records.get('zcode-old').events;
+  const start=events.find(event=>event.type==='turn/start'),end=events.find(event=>event.type==='turn/end');
+  const user=events.find(event=>event.type==='user/message'),message=events.find(event=>event.type==='assistant/message');
+  assert.equal(start.time,1_000);
+  assert.equal(user.time,1_000);
+  assert.equal(message.time,61_000);
+  assert.equal(end.time,61_000,'turn/end closes at the terminal row time — the renderer computes 60s, not the sync moment');
+});
+
+test('ensureReadable awaits an in-flight content sync and reports failure explicitly',async()=>{
   const store=memoryStore(),persistence=fakePersistence(),sessions=fakeSessions();
   const rows=historyRows(2);
   const entered=Promise.withResolvers(),release=Promise.withResolvers();
   const request=rowsRangeRequest(rows,{gate:{onEnter:entered.resolve,release}});
   const directory=new LegacyDirectory({store,persistence,sessions,request,
     listCatalog:async()=>[{sessionId:'zcode-old',workspacePath:'/workspace',title:'t'}],
-    listPersistedIds:async()=>new Set(persistence.records.keys()),
+    listPersistedHeaders:async()=>[...persistence.records.values()].map(r=>r.header),
   });
-  const syncing=directory.sync({});
+  await directory.sync({});
+  const syncing=directory.ensureReadable('zcode-old');
   await entered.promise;
   assert.equal(directory.status('zcode-old').state,'backfilling');
   const waiting=directory.ensureReadable('zcode-old');
@@ -201,11 +364,11 @@ test('ensureReadable awaits an in-flight backfill and reports failure explicitly
   const failing=new LegacyDirectory({store:memoryStore(),persistence:failingPersistence,sessions:fakeSessions(),
     request:async()=>{throw Object.assign(new Error('offline'),{code:'execution-unavailable'})},
     listCatalog:async()=>[{sessionId:'zcode-bad',workspacePath:'/workspace',title:'bad'}],
-    listPersistedIds:async()=>new Set(failingPersistence.records.keys()),
+    listPersistedHeaders:async()=>[...failingPersistence.records.values()].map(r=>r.header),
   });
-  const failed=await failing.sync({});
-  assert.deepEqual(failed.failed,[{sessionId:'zcode-bad',code:'execution-unavailable'}]);
-  assert.equal(failing.status('zcode-bad').state,'error','a backfill failure is explicit, never a silent empty history');
+  await failing.sync({});
+  await assert.rejects(failing.ensureReadable('zcode-bad'),error=>error.code==='execution-unavailable');
+  assert.equal(failing.status('zcode-bad').state,'error','a content-sync failure is explicit, never a silent empty history');
   await assert.rejects(failing.ensureReadable('zcode-bad'),error=>error.code==='execution-unavailable');
 });
 
@@ -215,23 +378,23 @@ test('a persisted non-readable legacy state is never released without a catalog 
     store.value.legacy['zcode-old']={state};
     const directory=new LegacyDirectory({store,persistence,sessions,request:rowsRangeRequest(historyRows(1)),
       listCatalog:async()=>[{sessionId:'zcode-old',workspacePath:'/workspace',title:'t'}],
-      listPersistedIds:async()=>new Set(persistence.records.keys()),
+      listPersistedHeaders:async()=>[...persistence.records.values()].map(r=>r.header),
     });
     // Restart window: the catalog row is not available yet (peer unavailable / sync not run).
     await assert.rejects(directory.ensureReadable('zcode-old'),error=>error.code==='legacy-backfill-unavailable',`${state} must not pass the gate`);
     assert.equal(persistence.calls.create,0,'no session is announced or created while blocked');
-    // Catalog recovers: the eager sync backfills the same id (idempotent re-entry), then it is readable.
-    const synced=await directory.sync({});
-    assert.deepEqual(synced.failed,[]);
-    assert.equal(directory.status('zcode-old').state,'readable');
+    // Catalog recovers: the list poll registers the row, then the write gate syncs the content.
+    const listed=await directory.sync({});
+    assert.deepEqual(listed.failed,[]);
+    assert.equal(directory.status('zcode-old').state,'listed');
     const released=await directory.ensureReadable('zcode-old');
     assert.equal(released.state,'readable');
     assert.equal(typeof released.appended,'number');
-    assert.ok(released.appended>0,'the history was actually backfilled after the catalog recovered');
+    assert.ok(released.appended>0,'the history was actually synced after the catalog recovered');
   }
   // A never-seen id still passes through untouched.
   const store=memoryStore();
-  const directory=new LegacyDirectory({store,persistence:fakePersistence(),sessions:fakeSessions(),request:rowsRangeRequest([]),listCatalog:async()=>[],listPersistedIds:async()=>new Set()});
+  const directory=new LegacyDirectory({store,persistence:fakePersistence(),sessions:fakeSessions(),request:rowsRangeRequest([]),listCatalog:async()=>[],listPersistedHeaders:async()=>[]});
   assert.equal(await directory.ensureReadable('ordinary-driver-session'),undefined);
 });
 
@@ -284,7 +447,7 @@ test('the installed catalog poll uses the resolved default period instead of an 
   globalThis.clearInterval=()=>{};
   try{
     const ctx={effect:fn=>{fn();return ()=>{}}};
-    const deps={store:memoryStore(),persistence:fakePersistence(),sessions:fakeSessions(),request:async()=>{throw new Error('unused')},listCatalog:async()=>[],listPersistedIds:async()=>new Set()};
+    const deps={store:memoryStore(),persistence:fakePersistence(),sessions:fakeSessions(),request:async()=>{throw new Error('unused')},listCatalog:async()=>[],listPersistedHeaders:async()=>[]};
     const installed=installLegacyDirectory(ctx,deps);
     assert.equal(installed.intervalMs,5000,'the constructor default period is resolved on the directory');
     assert.deepEqual(captured,[5000],'the poll is armed at the resolved period, never at an undefined 1ms');
@@ -308,10 +471,10 @@ test('catalogSnapshot carries the host-backed sharedTask.archived flag and the i
   const store=memoryStore(),persistence=fakePersistence(),sessions=fakeSessions();
   const directory=new LegacyDirectory({store,persistence,sessions,request:rowsRangeRequest(historyRows(1)),
     listCatalog:()=>ZCodeRuntime.prototype.catalogSnapshot.call({host:hostBacked}),
-    listPersistedIds:async()=>new Set(persistence.records.keys()),
+    listPersistedHeaders:async()=>[...persistence.records.values()].map(r=>r.header),
   });
   const synced=await directory.sync({});
-  assert.deepEqual(synced,{ensured:1,readable:1,failed:[]});
+  assert.deepEqual(synced,{listed:1,failed:[]});
   assert.equal(persistence.records.has('archived-1'),false,'an archived official task is never imported');
   assert.equal(persistence.records.has('live-1'),true);
 });
@@ -331,9 +494,10 @@ test('backfill history rows: rendered attachment blocks resolve through the DSH 
   };
   const directory=new LegacyDirectory({store,persistence,sessions,request,attachments:()=>dshStore,
     listCatalog:async()=>[{sessionId:'zcode-att',workspacePath:'/workspace',title:'att'}],
-    listPersistedIds:async()=>new Set(persistence.records.keys()),
+    listPersistedHeaders:async()=>[...persistence.records.values()].map(r=>r.header),
   });
   await directory.sync({});
+  await directory.ensureReadable('zcode-att');
   const user=persistence.records.get('zcode-att').events.find(event=>event.type==='user/message');
   assert.deepEqual(user.data.content.map(block=>block.type),['text','file']);
   assert.deepEqual(user.data.content[1].attachment,attachments[0],'the stored DSH attachment ref is resolvable');
@@ -387,10 +551,14 @@ test('real rc.2 JSONL persistence: a >200-row legacy ZCode session is fully back
     const request=rowsRangeRequest(rows);
     const directory=new LegacyDirectory({store,persistence,sessions:ctx.sessions,request,
       listCatalog:async()=>[{sessionId:'legacy-zcode-1',workspacePath:root,title:'Legacy',cwd:root}],
-      listPersistedIds:async()=>new Set((await persistence.list()).map(snapshot=>snapshot.header.id)),
+      listPersistedHeaders:async()=>(await persistence.list()).map(snapshot=>snapshot.header),
     });
-    const outcome=await directory.sync({});
-    assert.deepEqual(outcome,{ensured:1,readable:1,failed:[]});
+    const listed=await directory.sync({});
+    assert.deepEqual(listed,{listed:1,failed:[]});
+    // The first open syncs the full 80-turn history through the write gate.
+    const outcome=await directory.ensureReadable('legacy-zcode-1');
+    assert.equal(outcome.state,'readable');
+    assert.ok(outcome.appended>0);
     // Cold read through persistence only (no live Agent was ever announced/entered).
     assert.equal(ctx.sessions.get('legacy-zcode-1'),undefined);
     const handle=await persistence.open('legacy-zcode-1','read');
@@ -398,18 +566,48 @@ test('real rc.2 JSONL persistence: a >200-row legacy ZCode session is fully back
     await handle.close();
     const types=cold.events.map(event=>event.type);
     assert.equal(types[0],'session/title');
-    assert.ok(types.filter(type=>type==='user/message').length===80,'all 80 turns were backfilled, not only the tail window');
-    assert.ok(cold.events.some(event=>event.type==='user/message'&&event.data.content[0].text==='question-1'),'the first-window content is present after backfill');
+    assert.ok(types.filter(type=>type==='user/message').length===80,'all 80 turns were synced, not only the tail window');
+    assert.ok(cold.events.some(event=>event.type==='user/message'&&event.data.content[0].text==='question-1'),'the first-window content is present after the sync');
     assert.ok(cold.events.some(event=>event.type==='assistant/message'&&event.data.message.content[0].text==='answer-80'));
-    assert.deepEqual(cold.events.map(event=>event.seq),cold.events.map((_,index)=>index),'backfilled seq is gap-free');
-    // Idempotent re-run appends nothing new to the durable store.
+    assert.deepEqual(cold.events.map(event=>event.seq),cold.events.map((_,index)=>index),'synced seq is gap-free');
+    // A later open probes the tail and appends nothing new to the durable store.
     const before=cold.events.length;
-    store.value.legacy={};
-    await directory.sync({});
+    const fresh=await directory.ensureReadable('legacy-zcode-1');
+    assert.equal(fresh.state,'readable');
     const handle2=await persistence.open('legacy-zcode-1','read');
     const cold2=await handle2.read(0);
     await handle2.close();
-    assert.equal(cold2.events.length,before,'a repeated backfill is idempotent');
+    assert.equal(cold2.events.length,before,'a fresh re-open appends nothing');
     await ctx.fiber.dispose();
   }finally{await rm(root,{recursive:true,force:true})}
+});
+
+test('legacyHistoryRequest establishes the launcher peer instead of failing before any driver session ran',async()=>{
+  const calls=[];
+  const makeTransport=({readyError}={})=>{
+    const transport={peer:null,
+      async ready(cwd,signal){
+        calls.push(['ready',cwd,signal!==undefined]);
+        if(readyError)throw readyError;
+        transport.peer={async request(method,params,options){calls.push(['request',method,params,options?.signal!==undefined]);return {rows:[],hasMore:false,atSeq:0,atRevision:0,atLogEpoch:'epoch'}}};
+      }};
+    return transport;
+  };
+  const {legacyHistoryRequest}=await import('../packages/driver/index.mjs');
+  // Before any driver session: no peer yet. The request must still succeed after ready().
+  const request=legacyHistoryRequest(makeTransport());
+  const result=await request('v4/conversation/rowsRange',{sessionId:'zcode-1'},{signal:AbortSignal.abort()});
+  assert.deepEqual(result,{rows:[],hasMore:false,atSeq:0,atRevision:0,atLogEpoch:'epoch'});
+  assert.deepEqual(calls,[['ready',undefined,true],['request','v4/conversation/rowsRange',{sessionId:'zcode-1'},true]],'ready runs first with the caller signal, then the peer request');
+  // The directory's sync passes no options at all; ready() and the peer must tolerate that
+  // (regression: a mandatory signal in ready() turned every backfill into a TypeError).
+  const bare=legacyHistoryRequest(makeTransport());
+  await bare('v4/conversation/rowsRange',{sessionId:'zcode-1'});
+  // An unavailable launcher surfaces its own fault code for the directory's per-row error state.
+  const failing=legacyHistoryRequest(makeTransport({readyError:Object.assign(new Error('execution-unavailable'),{code:'execution-unavailable'})}));
+  await assert.rejects(failing('v4/conversation/rowsRange',{}),{code:'execution-unavailable'});
+  // An aborted caller signal aborts during readiness, never touching a peer.
+  const controller=new AbortController();controller.abort(new Error('stop'));
+  const aborting=legacyHistoryRequest({async ready(cwd,signal){signal.throwIfAborted()}});
+  await assert.rejects(aborting('v4/conversation/rowsRange',{}, {signal:controller.signal}),/stop/);
 });

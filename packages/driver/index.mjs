@@ -23,6 +23,17 @@ export {runNativeArchive} from './legacy-archive.mjs';
 export {LegacyDirectory,installLegacyDirectory} from './legacy-directory.mjs';
 export {collectHistoryPages,historySnapshots,historyAttachmentReader,HISTORY_PAGE_LIMIT} from './history-backfill.mjs';
 export const inject=['agents','sessions','sessionProjections','zcodeBridgeHost'];
+/** The legacy directory's v4 history reads ride the same launcher peer as driver sessions. A peer
+ * exists only after the transport's first ready(); before any driver session has run there is
+ * none, so establish it (idempotent handshake) instead of failing every backfill with
+ * execution-unavailable — the 5s directory poll retries, and the first ready launcher admits the
+ * whole catalog. */
+export function legacyHistoryRequest(transport){
+  return async (method,params,options)=>{
+    await transport.ready(undefined,options?.signal);
+    return transport.peer.request(method,params,options);
+  };
+}
 /** Wait for the host's async model discovery, then re-announce the registered route exactly once.
  * `replace` is the official handle's route swap: it emits `llm/adapters-updated` like a first
  * registration, so the catalog cache and the default-model cover see the same wakeup. Deterministic
@@ -49,6 +60,11 @@ export async function apply(ctx){
   const driver=installDriver(ctx,{createScope,agentEvents,interruptedTurnClosers,transport:new DriverTransport(host)});
   host.driverState=driver.state;
   if(driver.state.state==='occupied'){
+    // The occupied driver owns the official catalog import. Retire the host mirror directory
+    // (its zcode-* records would otherwise shadow the driver's lazy placeholders with partial
+    // per-row projections and steal the sidebar's open path). Fire-and-forget: retirement and
+    // the driver's own list import touch disjoint ids and converge independently.
+    host.suspendDirectory?.('driver-occupied');
     // Synchronously barrier the legacy write gate before any await below: the factory is already
     // callable, and a resume in this installation window must wait rather than publish a placeholder.
     driver.factory.claimWriteGate();
@@ -92,46 +108,49 @@ export async function apply(ctx){
     if(ctx.get('sessionController')&&ctx.get('sessionTitle'))await seams.await();
     installDefaultModelCover(ctx);
     // Legacy migration + catalog import: the native archive is one-shot (snapshot semantics), the
-    // directory eagerly backfills each ZCode catalog row before it becomes readable, and resume is
-    // gated on that backfill. The host mirror publication chain is not touched.
-    const legacy=ctx.inject(['sessionPersistence','sessionQuery','sessions','workspaceRegistry'],async legacyCtx=>{
-      const persistence=legacyCtx.get('sessionPersistence'),sessionQuery=legacyCtx.get('sessionQuery');
-      const sessions=legacyCtx.get('sessions'),workspaceRegistry=legacyCtx.get('workspaceRegistry');
-      if(!persistence||!sessionQuery||!sessions||!workspaceRegistry){
-        host.legacyState={state:'unavailable',reason:'legacy-services-missing'};
-        clearTimeout(gateTimeout);
-        driver.factory.failWriteGate(Object.assign(new Error('legacy write gate is unavailable: legacy services are not mounted'),{code:'legacy-write-gate-unavailable'}));
-        return;
-      }
-      legacyCtx.fiber.assertActive();
-      const store=new DriverStateStore(process.env.DSH_HOME??join(homedir(),'.dsh'));
-      await store.load();
-      try{
-        const archive=await runNativeArchive({
-          store,
-          listSessionIds:async()=>(await sessionQuery.listSessions()).map(record=>record.header.id),
-          readEvents:async id=>(await sessionQuery.readSession(id)).events,
-          archive:id=>workspaceRegistry.archiveSession(id),
+    // directory lists placeholders at startup and backfills content at the resume gate, and the
+    // host mirror directory is retired at occupation (the driver owns the catalog surface).
+    // The inject fiber is held by a parent effect for the plugin's lifetime: from 0.2.1 the
+    // injected child context is disposed when the callback returns, which would tear down the
+    // directory effect (its 5s catalog poll) one tick after installation.
+    ctx.effect(()=>{
+      const legacy=ctx.inject(['sessionPersistence','sessionQuery','sessions','workspaceRegistry'],async legacyCtx=>{
+        const persistence=legacyCtx.get('sessionPersistence'),sessionQuery=legacyCtx.get('sessionQuery');
+        const sessions=legacyCtx.get('sessions'),workspaceRegistry=legacyCtx.get('workspaceRegistry');
+        if(!persistence||!sessionQuery||!sessions||!workspaceRegistry){
+          host.legacyState={state:'unavailable',reason:'legacy-services-missing'};
+          clearTimeout(gateTimeout);
+          driver.factory.failWriteGate(Object.assign(new Error('legacy write gate is unavailable: legacy services are not mounted'),{code:'legacy-write-gate-unavailable'}));
+          return;
+        }
+        legacyCtx.fiber.assertActive();
+        const store=new DriverStateStore(process.env.DSH_HOME??join(homedir(),'.dsh'));
+        await store.load();
+        try{
+          const archive=await runNativeArchive({
+            store,
+            listSessionIds:async()=>(await sessionQuery.listSessions()).map(record=>record.header.id),
+            readEvents:async id=>(await sessionQuery.readSession(id)).events,
+            archive:id=>workspaceRegistry.archiveSession(id),
+          });
+          host.nativeArchiveState=archive.outcome;
+        }catch(error){host.nativeArchiveState={state:'archive-failed',error:error?.code??String(error)}}
+        const directory=installLegacyDirectory(legacyCtx,{
+          store,persistence,sessions,
+          workspaceRegistry:legacyCtx.get('workspaceRegistry'),
+          attachments:()=>legacyCtx.get('attachments'),
+          listCatalog:signal=>typeof host.zcodeCatalog==='function'?host.zcodeCatalog(signal):[],
+          listPersistedHeaders:async ({signal}={})=>(await sessionQuery.listSessions(signal)).map(record=>record.header),
+          request:legacyHistoryRequest(driver.factory.transport),
+          onError:(error,row)=>legacyCtx.logger?.warn?.(`zcode-driver: legacy backfill for ${row?.sessionId??'unknown'} failed: ${error?.code??error}`),
         });
-        host.nativeArchiveState=archive.outcome;
-      }catch(error){host.nativeArchiveState={state:'archive-failed',error:error?.code??String(error)}}
-      const directory=installLegacyDirectory(legacyCtx,{
-        store,persistence,sessions,
-        attachments:()=>legacyCtx.get('attachments'),
-        listCatalog:signal=>typeof host.zcodeCatalog==='function'?host.zcodeCatalog(signal):[],
-        listPersistedIds:async()=>new Set((await sessionQuery.listSessions()).map(record=>record.header.id)),
-        request:(method,params,options)=>{
-          const peer=driver.factory.transport.peer;
-          if(!peer)throw Object.assign(new Error('execution-unavailable'),{code:'execution-unavailable'});
-          return peer.request(method,params,options);
-        },
-        onError:(error,row)=>legacyCtx.logger?.warn?.(`zcode-driver: legacy backfill for ${row?.sessionId??'unknown'} failed: ${error?.code??error}`),
+        clearTimeout(gateTimeout);
+        driver.factory.setWriteGate((id,signal)=>directory.ensureReadable(id,{signal}));
+        host.legacyState={state:'ready'};
       });
-      clearTimeout(gateTimeout);
-      driver.factory.setWriteGate((id,signal)=>directory.ensureReadable(id,{signal}));
-      host.legacyState={state:'ready'};
-    });
-    if(ctx.get('sessionPersistence')&&ctx.get('sessionQuery'))await legacy.await();
+      void legacy.await?.().catch(error=>{host.legacyState={state:'error',error:error?.code??String(error)}});
+      return ()=>{void legacy.dispose?.()};
+    },'zcode-driver: legacy directory lifetime');
   }
   ctx.effect(()=>async()=>{try{await driver.dispose()}finally{if(host.driverState===driver.state)host.driverState={state:'unavailable',reason:'driver-unloaded'}}},'zcode-driver: factory lifecycle');
 }

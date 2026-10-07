@@ -7,10 +7,12 @@ const fault=code=>Object.assign(new Error(code),{code});
 /** Reuses the host-owned launcher. It owns only its protocol listeners, never the host. */
 export class DriverTransport {
   constructor(host){this.host=host}
+  /** `signal` is optional: background callers (legacy history backfill) run unscoped by an
+   * individual request lifecycle, while driver sessions always pass their command's signal. */
   async ready(cwd,signal){
-    signal.throwIfAborted();
+    signal?.throwIfAborted();
     await this.host.connect();
-    signal.throwIfAborted();
+    signal?.throwIfAborted();
     const state=this.host.launcher?.state;
     if(state?.phase!=='ready'||state.auth!=='authenticated'||!state.executionWorkspace)throw fault('execution-unavailable');
     if(cwd!==undefined&&cwd!==state.executionWorkspace)throw fault('driver-workspace-mismatch');
@@ -23,7 +25,7 @@ export class DriverTransport {
       this.handshake=flight;
     }
     await this.handshake;
-    signal.throwIfAborted();
+    signal?.throwIfAborted();
     return state.executionWorkspace;
   }
   async create({cwd,signal,firstInput,modelSelection,mode}){

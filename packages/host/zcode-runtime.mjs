@@ -43,7 +43,9 @@ export class ZCodeRuntime {
   modelProviders(){return this.discoverModels()}
   /** Driver-facing catalog read side: normalized official task rows (ZCode conversation id,
    * workspace, title). Read-only: no mirror record, identity adoption or publication is performed
-   * here — the driver owns the DSH import/backfill state. */
+   * here — the driver owns the DSH import/backfill state. createdAt/updatedAt ride along so the
+   * driver's placeholders can sort in list surfaces by the task's real activity, not the sync
+   * moment. */
   async catalogSnapshot(){
     if(this.host.listSessions){
       const response=await this.host.listSessions();
@@ -51,15 +53,34 @@ export class ZCodeRuntime {
       // catalog carries no archived concept at all. A missing flag means "not archived" (do not skip).
       return (response.sessions??[]).map(row=>{
         const archived=row.sharedTask?.archived===true||row.archived===true;
-        return {sessionId:row.address.sessionId,workspacePath:row.address.workspace,workspaceIdentity:row.address.workspace,authority:row.address.authority,title:row.title,...(archived?{archived:true}:{})};
+        const createdAt=row.sharedTask?.createdAt??row.createdAt,updatedAt=row.sharedTask?.lastActivityAt??row.updatedAt;
+        return {sessionId:row.address.sessionId,workspacePath:row.address.workspace,workspaceIdentity:row.address.workspace,authority:row.address.authority,title:row.title,
+          ...(typeof createdAt==='number'?{createdAt}:{}),...(typeof updatedAt==='number'?{updatedAt}:{}),...(archived?{archived:true}:{})};
       });
     }
     const value=await this.host.launcher?.read?.('catalog');
-    return (value?.tasks??[]).map(task=>({sessionId:task.taskId,workspacePath:task.workspacePath,workspaceIdentity:task.workspaceIdentity,title:task.title,...(task.archived===true?{archived:true}:{})}));
+    return (value?.tasks??[]).map(task=>({sessionId:task.taskId,workspacePath:task.workspacePath,workspaceIdentity:task.workspaceIdentity,title:task.title,...(typeof task.createdAt==='number'?{createdAt:task.createdAt}:{}),...(typeof task.updatedAt==='number'?{updatedAt:task.updatedAt}:{}),...(task.archived===true?{archived:true}:{})}));
   }
   persist(){const promise=this.store.save();void promise.catch(()=>{this.persistError='runtime-persistence-failed'});return promise}
-  async start(){await this.settings.load();this.parity=new ParityService(this);await this.store.load();for(const record of this.store.records.values())for(const retired of record.retiredMirrors??[])this.absent.add(retired.id);for(const record of this.store.records.values()){if(record.catalogSeen&&this.host.listSessions)continue;if(record.officialId||record.localDraft)await this.register(record);else record.error='create-outcome-unknown'}this.offRecovery=this.host.launcher?.subscribe(state=>{if(state.phase!=='ready')this.handshake=null;if(state.phase==='ready')void this.recoverAll().catch(()=>{})});if(this.host.launcher?.state.phase==='ready')await this.recoverAll();if(this.host.listSessions){await this.refreshDirectory();this.scheduleDirectorySync()}}
-  scheduleDirectorySync(){clearInterval(this.directoryTimer);if(!this.disposed&&this.host.listSessions&&this.settings.value.catalogSync){this.directoryTimer=setInterval(()=>{void this.refreshDirectory().catch(()=>{})},5000);this.directoryTimer.unref?.()}}
+  async start(){await this.settings.load();this.parity=new ParityService(this);await this.store.load();for(const record of this.store.records.values())for(const retired of record.retiredMirrors??[])this.absent.add(retired.id);for(const record of this.store.records.values()){if(record.catalogSeen&&this.host.listSessions)continue;if(record.officialId||record.localDraft)await this.register(record);else record.error='create-outcome-unknown'}this.offRecovery=this.host.launcher?.subscribe(state=>{if(state.phase!=='ready')this.handshake=null;if(state.phase==='ready')void this.recoverAll().catch(()=>{})});if(this.host.launcher?.state.phase==='ready')await this.recoverAll();if(this.host.listSessions&&!this.host.directorySuspended){await this.refreshDirectory();this.scheduleDirectorySync()}}
+  scheduleDirectorySync(){clearInterval(this.directoryTimer);if(!this.disposed&&!this.host.directorySuspended&&this.host.listSessions&&this.settings.value.catalogSync){this.directoryTimer=setInterval(()=>{void this.refreshDirectory().catch(()=>{})},5000);this.directoryTimer.unref?.()}}
+  /** Withdraw every catalog-imported mirror record and stop the directory poll. Called when the
+   * zcode driver occupies the factory: it owns the catalog import (title-only placeholders plus
+   * the resume-gated lazy backfill), so a lingering zcode-* record would shadow the driver's
+   * session id with a partial per-row projection. Idempotent and safe on an empty store. */
+  async retireImportedMirrors(){
+    if(this.disposed)return [];
+    clearInterval(this.directoryTimer);this.directoryTimer=null;
+    const retired=[];
+    for(const record of [...this.store.records.values()]){
+      if(!record.catalogSeen&&record.imported!==true)continue;
+      this.absent.add(record.id);
+      try{await this.withdrawMirror(record)}catch{}
+      this.store.records.delete(record.id);retired.push(record.id);
+    }
+    if(retired.length)await this.store.save();
+    return retired;
+  }
   async bridgeSettings(patch){if(patch&&Object.keys(patch).length){await this.settings.update(patch);this.scheduleDirectorySync()}return {...this.settings.value,runtimeDefault:'zcode',connection:this.host.launcher?.state.phase??'unconfigured',version:this.host.status?.installation?.version??null}}
   async ensurePeer(){
     await this.host.connect();const state=this.host.launcher?.state;
@@ -199,6 +220,7 @@ export class ZCodeRuntime {
     }
   }
   async refreshDirectory(){
+    if(this.host.directorySuspended)return;
     if(!this.host.listSessions)return;
     await this.ensurePeer();const generation=++this.directoryRead;
     const response=await this.host.listSessions();
@@ -305,6 +327,9 @@ export async function installZCodeRuntime(ctx,host,options={}){
   const {createScope}=options.createScope?options:await import('@deepseek-ai/dsh-scope');
   const {agentEvents}=options.agentEvents?options:await import('@deepseek-ai/dsh-agent');
   const runtime=new ZCodeRuntime(ctx,host,{...options,createScope,agentEvents});
+  // Registered before start(): a driver occupation that suspends the directory must always reach
+  // this runtime, whether it loads before or after the host plugin's inject callback fires.
+  host.zcodeRuntime=runtime;
   await runtime.start();
   // Product assembly is driver-only: the mirror guard/history wrappers and the llm route
   // registration are retired from this host entry. The driver owns the official selection surface

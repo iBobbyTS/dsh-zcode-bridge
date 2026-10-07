@@ -2,7 +2,6 @@ import React,{useEffect,useMemo,useRef,useState,useSyncExternalStore} from 'reac
 import { ParityController } from './parity.mjs';
 import {HookReviewPanel} from './hook-review.jsx';
 import {UserInputCard} from './user-input-card.jsx';
-import {HistoryMutationsCard} from './history-mutations.jsx';
 import {QueueSendNowControl,ZCodeInterlockBanner} from './session-dock-controls.jsx';
 import { ZCodeCatalogPanel,catalogLocales } from './catalog-view.jsx';
 import { ZCodeInsightsPanel,insightsLocales } from './insights-view.jsx';
@@ -126,8 +125,8 @@ export function SessionParityPanel({rpc,sessionId,connectionGeneration}){
   const controller=useMemo(()=>new ParityController(rpc,{sessionId,connectionGeneration}),[rpc,sessionId,connectionGeneration]);
   useEffect(()=>()=>controller.dispose(),[controller]);
   const read=useParityRead(controller);
-  // Driver-only assembly: the dock family is gated by its own official projection probe, not by the
-  // retired mirror runtime-controls store. A session without a ZCode projection hides the dock.
+  // Gap-only assembly: the panel is gated by its own official projection probe. A session without
+  // a ZCode projection hides the cards entirely.
   const [available,setAvailable]=useState(null);
   useEffect(()=>{
     let cancelled=false;setAvailable(null);
@@ -136,11 +135,11 @@ export function SessionParityPanel({rpc,sessionId,connectionGeneration}){
   },[controller,sessionId]);
   useEffect(()=>{if(available===true)void read.run(()=>controller.call('snapshot','read'))},[controller,available]);
   if(available!==true)return null;
-  const state=read.value,snapshot=state?.snapshot;
-  return <><HookReviewPanel controller={controller}/><UserInputCard controller={controller}/><HistoryMutationsCard controller={controller}/><QueueSendNowControl controller={controller}/><details data-zcode-session-parity="" style={{maxHeight:420,overflow:'auto'}}><summary>Zcode Bridge · workflows, feedback and attachments</summary><button disabled={read.busy} onClick={()=>void read.run(()=>controller.call('snapshot','read'))}>Refresh session capabilities</button><Result read={read}/>
-    {state&&<><ZCodeWorkflowPanel state={state} controller={controller}/><DiagnosticsExtras controller={controller} sessionId={sessionId} snapshot={snapshot}/><FeedbackPanel controller={controller} snapshot={snapshot}/><QueuePreferencesPanel controller={controller} snapshot={snapshot}/><HistoryResourcesPanel controller={controller} snapshot={snapshot}/><AttachmentPanel controller={controller} snapshot={snapshot}/></>}
-    {!snapshot&&<p>The first text input creates the official session. Session-bound resources are available after its official projection arrives.</p>}
-  </details></>;
+  // Gap-only assembly: the official transcript natively renders messages, edit and retry, so the
+  // always-visible history card and the session dock duplicated it as a second UI. Only the
+  // interaction-gated gap cards remain (restricted userInput, workspace hook trust, queue
+  // send-now); each renders nothing unless its own pending interaction exists.
+  return <><HookReviewPanel controller={controller}/><UserInputCard controller={controller}/><QueueSendNowControl controller={controller}/></>;
 }
 export function WorkspacePresentationPanel({controller}){
   const read=useParityRead(controller);
