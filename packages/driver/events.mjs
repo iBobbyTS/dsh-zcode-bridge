@@ -2,6 +2,7 @@ import {randomUUID} from 'node:crypto';
 import {commandFault} from './commands.mjs';
 import {renderAttachments} from './attachment-render.mjs';
 import {inboxProjectionDefinition} from './projections.mjs';
+import {FORK_PROJECTION_EVENT} from './fork.mjs';
 
 const clean=value=>JSON.parse(JSON.stringify(value));
 export const eventRowKey=(epoch,id)=>JSON.stringify([epoch,id]);
@@ -52,6 +53,7 @@ export class ConversationEventTranslator {
     const events=session.snapshotEvents?.()??Array.from({length:session.seq},(_,seq)=>session.eventAt(seq));
     for(const event of events){
       const data=event.data,meta=data.zcode;
+      if(event.type===FORK_PROJECTION_EVENT){this.bindForkProjection(data);continue}
       if(event.type==='turn/start'){
         this.nextTurn=Math.max(this.nextTurn,data.turn+1);
         if(meta)this.turns.set(meta.turnKey,{turn:data.turn,closed:false,steps:new Map(),openStep:null,nextStep:1});
@@ -69,6 +71,16 @@ export class ConversationEventTranslator {
         else for(const [key,call] of this.calls)if(call.callId===data.message.source.callId)this.results.set(key,{seq:event.seq,status:'recovered'});
       }
     }
+  }
+  bindForkProjection(checkpoint){
+    for(const {from,to} of checkpoint.turns){const turn=this.turns.get(from);if(turn)this.turns.set(to,turn)}
+    for(const {from,to} of checkpoint.users)if(this.users.has(from))this.users.add(to);
+    for(const {from,to,rows} of checkpoint.responses){
+      const previous=this.responses.get(from);
+      if(previous){this.responses.set(to,{...previous,rows});for(const turn of this.turns.values())if(turn.steps.has(from))turn.steps.set(to,turn.steps.get(from))}
+    }
+    for(const kind of ['calls','results'])for(const {from,to} of checkpoint[kind]){const previous=this[kind].get(from);if(previous)this[kind].set(to,previous)}
+    if(checkpoint.cumulative)this.cumulative=structuredClone(checkpoint.cumulative);
   }
   append(type,data,surfaceOp){return this.session.append(type,clean(data),...(surfaceOp?[{surfaceOp}]:[]))}
   enqueue(snapshot){

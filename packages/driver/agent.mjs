@@ -7,17 +7,18 @@ import {captureControlReceipt} from './control-receipts.mjs';
 import {validateHookReview,validateInteractionRoute,driverHookOperation} from './hook-review.mjs';
 import {classifyUserInputRoute,USER_INPUT_OFFICIAL,officialRequestQuestions,officialAnswerPayload} from '../host/user-input.mjs';
 import {ConversationEventTranslator} from './events.mjs';
+import {installCompactCommand,compactOperation} from './compact.mjs';
 
 export class DriverAgent {
   status='idle';disposed=false;activity=null;tasks=new Set();inputs=new Map();approvals=new Map();idleWaiters=[];lastError=null;
-  constructor(ctx,session,options,zcodeConversationId,{createScope,agentEvents,parentAgent,transport}){
+  constructor(ctx,session,options,zcodeConversationId,{createScope,agentEvents,parentAgent,transport,conversation}){
     Object.assign(this,{id:session.id,session,options:Object.freeze({...options}),zcodeConversationId,transport});
     this.scope=createScope(ctx,this,parentAgent?{parent:parentAgent}:undefined);
     this.ctx=this.scope.ctx;this.dispatch=agentEvents(ctx,this);this.inbox=new DriverInbox(this);
     for(const target of ['next-turn','next-step'])for(const message of this.inbox.current()[target]){
       if(!message.id.startsWith('zcode-queue:'))this.inputs.set(message.id,{message,commandId:inputCommandId(this.id,message.id),target});
     }
-    this.conversation=transport?.conversation?.({zcodeConversationId,cwd:session.header.cwd});
+    this.conversation=conversation??transport?.conversation?.({zcodeConversationId,cwd:session.header.cwd});
     if(this.conversation)this.translator=new ConversationEventTranslator({session,dispatch:this.dispatch,conversation:this.conversation,
       attachments:()=>this.ctx.get?this.ctx.get('attachments'):this.ctx.attachments,
       input:commandId=>[...this.inputs.values()].find(input=>input.commandId===commandId)?.message,
@@ -28,8 +29,10 @@ export class DriverAgent {
     this.offRecovery=this.conversation?.peer.launcher?.subscribe(state=>{
       if(state.phase==='ready'&&this.conversation.state.status==='error'&&!this.disposed)this.track(this.ready());
     });
+    installCompactCommand(this);
   }
   assertAvailable(){if(this.disposed)throw commandFault('agent-disposed');if(!this.conversation)throw commandFault('driver-command-unavailable')}
+  compactOperation(payload,signal){return this.track(compactOperation(this,payload,signal))}
   hookOperation(payload,signal){return this.track(driverHookOperation(this,payload,signal))}
   track(task){
     this.tasks.add(task);

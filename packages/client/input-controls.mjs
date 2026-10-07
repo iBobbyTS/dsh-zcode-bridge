@@ -8,6 +8,11 @@ const queueCommands = new Set(['editQueueItem', 'deleteQueueItem', 'reorderQueue
 export function inputSubmission(snapshot, text, { goal = false, delivery, attachments, sharedContextRefs } = {}) {
   const slash = parseV4VisibleSlashCommand(goal && !text.trim().startsWith('/') ? `/goal ${text}` : text);
   if (slash?.kind === 'resumeGoal') return { type: 'resumeGoal', payload: {} };
+  if (slash?.kind === 'compact') {
+    if (text.trim().split(/\s+/).length !== 1) throw new Error('compact-arguments-unavailable');
+    if (attachments?.length || sharedContextRefs?.length) throw new Error('compact-attachments-unavailable');
+    return { type: 'compact', payload: {} };
+  }
   if (slash && slash.kind !== 'sendGoalCommand') throw new Error(`input-command-unavailable:${slash.kind}`);
   if (goal && !slash) throw new Error('goal-objective-required');
   const selection = snapshot?.config?.modelSelection;
@@ -75,6 +80,12 @@ export function confirmHeld(snapshot, confirmation, disposition) {
       snapshot.queue.items.length !== confirmation.items.length ||
       !confirmation.items.every(item => snapshot.queue.items.some(current => current.queueItemId === item.queueItemId && current.sourceCommandId === item.sourceCommandId))) {
     throw new Error('held-queue-confirmation-stale');
+  }
+  if (confirmation.command.type === 'compact') {
+    // ZCode compact is a typed FIFO maintenance intent (goal-compact.ts:52-54),
+    // with payload {}. It cannot clear or preempt the confirmed held queue.
+    if (disposition !== 'keepQueueAndSend') throw new Error('compact-queue-disposition-unavailable');
+    return structuredClone(confirmation.command);
   }
   return {
     ...confirmation.command,

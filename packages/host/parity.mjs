@@ -19,6 +19,7 @@ export class ParityService {
     if(this.runtime.disposed)throw fault('disposed');
     signal?.throwIfAborted();
     const native=sessionId&&this.runtime.ctx.agents.get(sessionId);
+    if(native?.compactOperation&&domain==='command'&&operation==='submit'&&kind==='compact')return native.compactOperation(payload,signal);
     if(native?.hookOperation&&(domain==='snapshot'||domain==='hooks'||domain==='command'&&INTERACTION_COMMANDS.has(kind)))return native.hookOperation(payload,signal);
     await this.runtime.ensurePeer();if(this.runtime.disposed)throw fault('disposed');
     const record=sessionId===undefined?null:this.runtime.store.records.get(sessionId);
@@ -85,7 +86,7 @@ export class ParityService {
         throw fault('parity-operation-denied');
       }
       if(domain==='command'){
-        const allowed=new Set(['setAssistantFeedback','startSavedWorkflow','resumeWorkflowRun','amendWorkflowRunSettings','cancelBackgroundWork','sendText','sendGoalCommand','reorderQueueItem','setAutoDrain','setFollowupMode','switchCollaborationMode','pauseGoal','resumeGoal',...INTERACTION_COMMANDS]);
+        const allowed=new Set(['setAssistantFeedback','startSavedWorkflow','resumeWorkflowRun','amendWorkflowRunSettings','cancelBackgroundWork','sendText','sendGoalCommand','reorderQueueItem','setAutoDrain','setFollowupMode','switchCollaborationMode','pauseGoal','resumeGoal','compact',...INTERACTION_COMMANDS]);
         if(operation!=='submit'||!allowed.has(kind))throw fault('parity-command-denied');
         const snapshot=agent.conversation.state.snapshot;
         if(payload.baseLogEpoch!==snapshot.logEpoch||payload.baseRevision!==snapshot.revision)throw fault('parity-projection-stale');

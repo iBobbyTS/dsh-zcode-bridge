@@ -1,3 +1,5 @@
+export {forkBoundary,forkProjection,FORK_PROJECTION_EVENT} from './fork.mjs';
+export {compactAgent,installCompactCommand} from './compact.mjs';
 import {join} from 'node:path';
 import {homedir} from 'node:os';
 import {installDriver} from './factory.mjs';

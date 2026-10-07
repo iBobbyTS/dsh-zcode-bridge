@@ -1,16 +1,22 @@
 import {DriverAgent} from './agent.mjs';
 import {turnBoundaryProjectionDefinition,inboxProjectionDefinition} from './projections.mjs';
+import {createFork,FORK_PROJECTION_EVENT} from './fork.mjs';
 
 export const BINDING_EVENT='zcode-driver/conversation-bound';
 const readEvents=session=>Array.from({length:session.seq},(_,seq)=>session.eventAt(seq));
-export function boundConversationId(id,events){
+export function boundConversationId(id,events,inheritedEventCount=0){
+  if(!Number.isSafeInteger(inheritedEventCount)||inheritedEventCount<0||inheritedEventCount>events.length)throw new Error('invalid ZCode inherited binding boundary');
   let bound;
   for(const event of events){
     if(event.type!==BINDING_EVENT)continue;
+    // The exact inherited prefix retains its ancestors' binding envelopes.
+    // Only this Session's live suffix can establish its routing identity.
+    if(event.seq<inheritedEventCount)continue;
     const data=event.data;
     if(event.ignorable!==true||data.sessionId!==id||typeof data.zcodeConversationId!=='string'||!data.zcodeConversationId||bound&&bound!==data.zcodeConversationId)throw new Error('invalid ZCode conversation binding');
     bound=data.zcodeConversationId;
   }
+  if(inheritedEventCount>0&&!bound)throw new Error('invalid ZCode conversation binding: fork binding missing');
   return bound??id;
 }
 // A canceled load must release a write handle even when the backend resolves late.
@@ -58,7 +64,7 @@ export class DriverFactory {
     ownerCtx.fiber.assertActive();
     const id=source==='startup'?options.sessionId:options.resumeSessionId;
     const abort=new AbortController(),signal=abort.signal;
-    let handle,agent,detachAgent,detachSession,publication,disposal,unfollowOwner,loadGuard=true;
+    let handle,agent,fork,detachAgent,detachSession,publication,disposal,unfollowOwner,loadGuard=true;
     const callerAbort=()=>abort.abort(options.signal.reason);
     options.signal?.throwIfAborted();
     options.signal?.addEventListener('abort',callerAbort,{once:true});
@@ -67,7 +73,7 @@ export class DriverFactory {
       options.signal?.removeEventListener('abort',callerAbort);
       if(publication)await publication;
       const errors=[];
-      for(const cleanup of [()=>agent?.stop(),()=>handle?.close(),()=>detachAgent?.(),()=>detachSession?.(),()=>agent?.scope.dispose()]){
+      for(const cleanup of [()=>agent?.stop(),()=>fork?.conversation.cancel(),()=>handle?.close(),()=>detachAgent?.(),()=>detachSession?.(),()=>agent?.scope.dispose()]){
         try{await cleanup()}catch(error){errors.push(error)}
       }
       this.transactions.delete(dispose);
@@ -90,10 +96,15 @@ export class DriverFactory {
       if(source==='startup'){
         // Validate caller data before sending anything to ZCode, preserve its authoritative id.
         session=this.ctx.sessions.prepare(id,{seed:options.seed,meta:options.meta,inheritedEventCount:options.inheritedEventCount});
-        // Fork/history adaptation is a later task; never pretend an independent draft inherited it.
-        if(options.meta?.isSeeded||options.seed?.length)throw new Error('ZCode driver history creation is not available');
-        zcodeConversationId=await cancellable(()=>this.transport.create({cwd:session.header.cwd,signal,firstInput:options.firstInput,
-          modelSelection:options.modelSelection??options.agentOptions?.modelSelection,mode:options.mode??options.agentOptions?.mode}),signal);
+        if(options.meta?.isSeeded||options.seed?.length){
+          fork=await cancellable(()=>createFork(this,ownerCtx,options,signal),signal,value=>value.conversation.cancel());
+          zcodeConversationId=fork.zcodeConversationId;
+          const projection={type:FORK_PROJECTION_EVENT,seq:session.seq,time:Date.now(),ignorable:true,data:{...fork.projection,commandId:fork.commandId,zcodeConversationId}};
+          session=this.ctx.sessions.prepare(id,{seed:[...readEvents(session),projection],meta:session.header,inheritedEventCount:session.inheritedEventCount});
+        }else{
+          zcodeConversationId=await cancellable(()=>this.transport.create({cwd:session.header.cwd,signal,firstInput:options.firstInput,
+            modelSelection:options.modelSelection??options.agentOptions?.modelSelection,mode:options.mode??options.agentOptions?.mode}),signal);
+        }
         const binding={type:BINDING_EVENT,seq:session.seq,time:Date.now(),ignorable:true,data:{sessionId:id,zcodeConversationId}};
         // append() cannot set ignorable. Re-prepare the still-detached log with the binding envelope.
         session=this.ctx.sessions.prepare(id,{seed:[...readEvents(session),binding],meta:session.header,inheritedEventCount:session.inheritedEventCount});
@@ -102,7 +113,7 @@ export class DriverFactory {
         if(!persistence)throw new Error('cannot resume: session persistence is not configured');
         handle=await cancellable(()=>persistence.open(id,'write',{signal}),signal,value=>value.close());
         const cold=await cancellable(()=>handle.read(0,undefined,{signal}),signal);
-        zcodeConversationId=boundConversationId(id,cold.events);
+        zcodeConversationId=boundConversationId(id,cold.events,handle.inheritedEventCount);
         storedCount=cold.events.length;
         const open=cold.events.findLast(event=>event.type==='turn/start'||event.type==='turn/end')?.type==='turn/start';
         if(open&&!this.interruptedTurnClosers)throw new Error('driver resume requires the official interruptedTurnClosers contract');
@@ -115,7 +126,7 @@ export class DriverFactory {
       // Exact scope disposer is nested under the owner, behind the lifecycle drain.
       const releaseScopeOwner=ownerCtx.effect(function*(){
         agent=new DriverAgent(this.ctx,session,{...options.agentOptions,
-          ...(options.modelSelection?{modelSelection:options.modelSelection}:{}),...(options.mode?{mode:options.mode}:{})},zcodeConversationId,{...this,parentAgent:options.parentAgent});
+          ...(options.modelSelection?{modelSelection:options.modelSelection}:{}),...(options.mode?{mode:options.mode}:{})},zcodeConversationId,{...this,conversation:fork?.conversation,parentAgent:options.parentAgent});
         yield agent.scope.rawDispose;
         yield ()=>disposal?undefined:dispose(true);
       }.bind(this),`zcode-driver.scope(${id})`);
