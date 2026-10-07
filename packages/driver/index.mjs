@@ -16,6 +16,7 @@ export {COMMAND_REJECTIONS,ROUTED_COMMANDS,requestedDelivery} from './commands.m
 export {installSessionCommandSeams} from './session-commands.mjs';
 export {coverDefaultModel,installDefaultModelCover,installModelSeat} from './model-seat.mjs';
 export {ConversationEventTranslator,mergeEventWindows,turnEndReason} from './events.mjs';
+export {HISTORY_MUTATION_COMMANDS,historyOperation} from './history.mjs';
 export {DriverStateStore} from './driver-state.mjs';
 export {runNativeArchive} from './legacy-archive.mjs';
 export {LegacyDirectory,installLegacyDirectory} from './legacy-directory.mjs';

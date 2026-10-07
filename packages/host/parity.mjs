@@ -4,8 +4,13 @@ import { AutomationClient } from './automation.mjs';
 import { zcodeWorkspacePresentationSchema } from './vendor/zcode/v4.mjs';
 import { requestWorkflow } from './workflow.mjs';
 import {HOOK_REVIEW_COMMANDS,INTERACTION_COMMANDS,validateHookReview,validateInteractionRoute,grantWorkspaceHookTrust} from '../driver/hook-review.mjs';
+import {HISTORY_MUTATION_COMMANDS} from '../driver/history.mjs';
 const fault=code=>Object.assign(new Error(code),{code,sent:false});
 const deletion=new Set(['delete','uninstall','marketplaceRemove']);
+/** Fourth gate for the plugin dock on a mirror session: the commands the bridge-parity host path
+ * may forward. History mutations join the interaction family here (the driver native path has its
+ * own route and the same CAS checks). */
+export const PARITY_MIRROR_COMMANDS=Object.freeze(new Set(['setAssistantFeedback','startSavedWorkflow','resumeWorkflowRun','amendWorkflowRunSettings','cancelBackgroundWork','sendText','sendGoalCommand','reorderQueueItem','setAutoDrain','setFollowupMode','switchCollaborationMode','pauseGoal','resumeGoal','compact',...INTERACTION_COMMANDS,...HISTORY_MUTATION_COMMANDS]));
 /** Routing owner. Rebuild clients after each transport generation, retaining no unknown
  * capability denial. Workspace/session addresses are resolved from registered mirror records. */
 export class ParityService {
@@ -20,6 +25,7 @@ export class ParityService {
     signal?.throwIfAborted();
     const native=sessionId&&this.runtime.ctx.agents.get(sessionId);
     if(native?.compactOperation&&domain==='command'&&operation==='submit'&&kind==='compact')return native.compactOperation(payload,signal);
+    if(native?.historyOperation&&(domain==='history'||domain==='command'&&operation==='submit'&&HISTORY_MUTATION_COMMANDS.has(kind)))return native.historyOperation(payload,signal);
     if(native?.hookOperation&&(domain==='snapshot'||domain==='hooks'||domain==='command'&&INTERACTION_COMMANDS.has(kind)))return native.hookOperation(payload,signal);
     await this.runtime.ensurePeer();if(this.runtime.disposed)throw fault('disposed');
     const record=sessionId===undefined?null:this.runtime.store.records.get(sessionId);
@@ -86,8 +92,7 @@ export class ParityService {
         throw fault('parity-operation-denied');
       }
       if(domain==='command'){
-        const allowed=new Set(['setAssistantFeedback','startSavedWorkflow','resumeWorkflowRun','amendWorkflowRunSettings','cancelBackgroundWork','sendText','sendGoalCommand','reorderQueueItem','setAutoDrain','setFollowupMode','switchCollaborationMode','pauseGoal','resumeGoal','compact',...INTERACTION_COMMANDS]);
-        if(operation!=='submit'||!allowed.has(kind))throw fault('parity-command-denied');
+        if(operation!=='submit'||!PARITY_MIRROR_COMMANDS.has(kind))throw fault('parity-command-denied');
         const snapshot=agent.conversation.state.snapshot;
         if(payload.baseLogEpoch!==snapshot.logEpoch||payload.baseRevision!==snapshot.revision)throw fault('parity-projection-stale');
         const reviewCommand={type:kind,payload:params,baseRevision:payload.baseRevision,baseLogEpoch:payload.baseLogEpoch};

@@ -8,6 +8,7 @@ import {validateHookReview,validateInteractionRoute,driverHookOperation} from '.
 import {classifyUserInputRoute,USER_INPUT_OFFICIAL,officialRequestQuestions,officialAnswerPayload} from '../host/user-input.mjs';
 import {ConversationEventTranslator} from './events.mjs';
 import {installCompactCommand,compactOperation} from './compact.mjs';
+import {historyOperation} from './history.mjs';
 
 export class DriverAgent {
   status='idle';disposed=false;activity=null;tasks=new Set();inputs=new Map();approvals=new Map();idleWaiters=[];lastError=null;
@@ -33,6 +34,7 @@ export class DriverAgent {
   }
   assertAvailable(){if(this.disposed)throw commandFault('agent-disposed');if(!this.conversation)throw commandFault('driver-command-unavailable')}
   compactOperation(payload,signal){return this.track(compactOperation(this,payload,signal))}
+  historyOperation(payload,signal){return this.track(historyOperation(this,payload,signal))}
   hookOperation(payload,signal){return this.track(driverHookOperation(this,payload,signal))}
   track(task){
     this.tasks.add(task);

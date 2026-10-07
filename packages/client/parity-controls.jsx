@@ -2,6 +2,7 @@ import React,{useEffect,useMemo,useRef,useState,useSyncExternalStore} from 'reac
 import { ParityController } from './parity.mjs';
 import {HookReviewPanel} from './hook-review.jsx';
 import {UserInputCard} from './user-input-card.jsx';
+import {HistoryMutationsCard} from './history-mutations.jsx';
 import { ZCodeCatalogPanel,catalogLocales } from './catalog-view.jsx';
 import { ZCodeInsightsPanel,insightsLocales } from './insights-view.jsx';
 import { ZCodeWorkflowPanel } from './workflow-view.jsx';
@@ -128,7 +129,7 @@ export function SessionParityPanel({rpc,sessionId,controls,connectionGeneration}
   useEffect(()=>{if(info?.runtime==='zcode'&&info.officialAddress?.sessionId)void read.run(()=>controller.call('snapshot','read'))},[controller,info?.runtime,info?.officialAddress?.sessionId]);
   if(info?.runtime!=='zcode')return null;
   const state=read.value,snapshot=state?.snapshot;
-  return <>{info.officialAddress?.sessionId&&<HookReviewPanel controller={controller}/>}{info.officialAddress?.sessionId&&<UserInputCard controller={controller}/>}<details data-zcode-session-parity="" style={{maxHeight:420,overflow:'auto'}}><summary>Zcode Bridge · workflows, feedback and attachments</summary><button disabled={read.busy} onClick={()=>void read.run(()=>controller.call('snapshot','read'))}>Refresh session capabilities</button><Result read={read}/>
+  return <>{info.officialAddress?.sessionId&&<HookReviewPanel controller={controller}/>}{info.officialAddress?.sessionId&&<UserInputCard controller={controller}/>}{info.officialAddress?.sessionId&&<HistoryMutationsCard controller={controller}/>}<details data-zcode-session-parity="" style={{maxHeight:420,overflow:'auto'}}><summary>Zcode Bridge · workflows, feedback and attachments</summary><button disabled={read.busy} onClick={()=>void read.run(()=>controller.call('snapshot','read'))}>Refresh session capabilities</button><Result read={read}/>
     {state&&<><ZCodeWorkflowPanel state={state} controller={controller}/><DiagnosticsExtras controller={controller} sessionId={sessionId} snapshot={snapshot}/><FeedbackPanel controller={controller} snapshot={snapshot}/><QueuePreferencesPanel controller={controller} snapshot={snapshot}/><HistoryResourcesPanel controller={controller} snapshot={snapshot}/><AttachmentPanel controller={controller} snapshot={snapshot}/></>}
     {!info.officialAddress?.sessionId&&<p>The first text input creates the official session. Session-bound resources are available after its official projection arrives.</p>}
   </details></>;
