@@ -47,12 +47,13 @@ export function mergeEventWindows(windows){
  * zcode metadata is JSON on standard events, never a second command ACK ledger.
  */
 export class ConversationEventTranslator {
-  turns=new Map();responses=new Map();users=new Set();calls=new Map();results=new Map();streams=new Map();revision=0;nextTurn=1;tail=Promise.resolve();lifetime=new AbortController();generation=randomUUID();
+  turns=new Map();responses=new Map();users=new Set();calls=new Map();results=new Map();streams=new Map();revision=0;nextTurn=1;tail=Promise.resolve();lifetime=new AbortController();generation=randomUUID();title=null;epoch=null;
   constructor({session,dispatch,conversation,attachments=()=>undefined,input=()=>undefined,claim=()=>{},syncInbox=()=>{},acceptInput=()=>true,history=false,clock=Date.now}){
     Object.assign(this,{session,dispatch,conversation,attachments,input,claim,syncInbox,acceptInput,history,clock});
     const events=session.snapshotEvents?.()??Array.from({length:session.seq},(_,seq)=>session.eventAt(seq));
     for(const event of events){
       const data=event.data,meta=data.zcode;
+      if(this.epoch===null){const key=meta?.rowKey??meta?.turnKey??meta?.responseKey;if(typeof key==='string'){try{const [epoch]=JSON.parse(key);if(typeof epoch==='string')this.epoch=epoch}catch{}}}
       if(event.type===FORK_PROJECTION_EVENT){this.bindForkProjection(data);continue}
       if(event.type==='turn/start'){
         this.nextTurn=Math.max(this.nextTurn,data.turn+1);
@@ -70,6 +71,7 @@ export class ConversationEventTranslator {
         if(meta)this.results.set(meta.rowKey,{seq:event.seq,status:meta.status});
         else for(const [key,call] of this.calls)if(call.callId===data.message.source.callId)this.results.set(key,{seq:event.seq,status:'recovered'});
       }
+      if(event.type==='session/title'&&typeof data.title==='string')this.title=data.title;
     }
   }
   bindForkProjection(checkpoint){
@@ -88,6 +90,31 @@ export class ConversationEventTranslator {
     const task=this.tail.then(()=>this.translate(window));this.tail=task.catch(()=>{});return task;
   }
   replay(windows){return this.enqueue(mergeEventWindows(windows))}
+  /** Mirror the conversation's current title (snapshot meta) into the session's title
+   * projection. ZCode is the source of truth; the catalog row's registry title can be stale. */
+  syncTitle(title){
+    if(typeof title!=='string'||!title||title===this.title)return;
+    this.title=title;
+    this.append('session/title',{title,messageSeqs:[],source:{kind:'user'}});
+  }
+  /** The runtime mints a fresh log epoch per process lifetime while row/turn ids stay stable,
+   * so a resumed conversation's first snapshot after a restart carries new keys for the very
+   * same rows. Re-key the dedupe indexes to the new epoch instead of re-emitting the whole
+   * visible window — a re-emission would duplicate the transcript and stamp the copies with
+   * sync-moment times (poisoning every duration and the list's lastPromptAt). */
+  rekeyEpoch(from,to){
+    const rekey=key=>{
+      if(typeof key!=='string')return key;
+      try{const [epoch,id]=JSON.parse(key);return epoch===from?JSON.stringify([to,id]):key}catch{return key}
+    };
+    this.users=new Set([...this.users].map(rekey));
+    this.turns=new Map([...this.turns].map(([key,turn])=>[rekey(key),{...turn,steps:new Map([...turn.steps].map(([stepKey,step])=>[rekey(stepKey),step])),...(turn.pendingKey?{pendingKey:rekey(turn.pendingKey)}:{})}]));
+    this.responses=new Map([...this.responses].map(([key,value])=>[rekey(key),value]));
+    this.calls=new Map([...this.calls].map(([key,value])=>[rekey(key),value]));
+    this.results=new Map([...this.results].map(([key,value])=>[rekey(key),value]));
+    this.streams=new Map([...this.streams].map(([key,stream])=>[rekey(key),stream]));
+    this.epoch=to;
+  }
   turn(key,restart=false){
     if(this.turns.get(key)?.closed&&restart)this.turns.delete(key);
     if(!this.turns.has(key)){
@@ -179,6 +206,12 @@ export class ConversationEventTranslator {
   }
   async translate(snapshot){
     this.lifetime.signal.throwIfAborted();
+    // The conversation snapshot is authoritative for the title: the task-registry catalog can
+    // lag a rename by design (an automation re-title bypasses the registry), so every
+    // snapshot reconciliation also mirrors meta.title into the session's title projection.
+    if(typeof snapshot.meta?.title==='string')this.syncTitle(snapshot.meta.title);
+    if(typeof snapshot.logEpoch==='string'&&this.epoch!==null&&this.epoch!==snapshot.logEpoch)
+      this.rekeyEpoch(this.epoch,snapshot.logEpoch);
     const groups=new Map();for(const row of rowsFor(snapshot)){const key=eventRowKey(snapshot.logEpoch,row.turnId);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(row)}
     const cumulative=snapshot.usage?.cumulative;
     const candidates=[];

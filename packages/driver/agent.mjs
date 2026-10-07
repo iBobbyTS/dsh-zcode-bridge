@@ -73,7 +73,12 @@ export class DriverAgent {
   async readyOwned(){
     this.assertAvailable();
     if(!this.conversation.state.admission.allowed){
-      await this.transport.ready?.(this.session.header.cwd,new AbortController().signal);
+      // Admission only needs the authenticated handshake, never the create-side cwd equality:
+      // a resumed legacy session lives in its own project workspace while the launcher keeps a
+      // single execution workspace, and the conversation address already carries the session's
+      // own workspace. Passing the session cwd here would fault driver-workspace-mismatch and
+      // leave the live subscription (and every snapshot-driven surface) permanently dormant.
+      await this.transport.ready?.(undefined,new AbortController().signal);
       await this.conversation.connect({forceSnapshot:true});
       if(!this.conversation.state.admission.allowed)await new Promise((resolve,reject)=>{
         const timer=setTimeout(()=>{off();reject(commandFault('projection-unconfirmed'))},5000);

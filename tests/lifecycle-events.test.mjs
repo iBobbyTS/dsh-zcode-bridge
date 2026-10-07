@@ -229,3 +229,48 @@ test('a guided ZCode row feeds durable next-step claims and the official steerin
     assert.deepEqual(ctx.sessionProjections.stateOf(session,'inbox'),{'next-turn':[],'next-step':[]});
   }finally{await translator.close();await consumer.close();await ctx.fiber.dispose()}
 });
+
+test('snapshot meta.title mirrors the authoritative conversation title over a stale catalog title',async()=>{
+  const events=[];
+  const session={id:'title-sync',get seq(){return events.length},eventAt:seq=>events[seq],snapshotEvents:()=>events,append(type,data){const event={type,data:structuredClone(data),seq:events.length,time:1};events.push(event);return event}};
+  // The persisted/backfilled log carries the task-registry title; the live conversation was
+  // re-titled in ZCode (e.g. an automation resume) and the registry never caught up.
+  session.append('session/title',{title:'pppms: 修复section编号泄露',messageSeqs:[],source:{kind:'user'}});
+  const translator=new ConversationEventTranslator({session,dispatch:{emit(){}}});
+  try{
+    const snapshot=baseSnapshot('title-sync');
+    snapshot.meta={title:'计时全量导入监控（70 分钟后检查）',titleSource:'custom'};
+    await translator.enqueue(snapshot);
+    assert.equal(events.at(-1).type,'session/title','the snapshot title is mirrored into the session');
+    assert.equal(events.at(-1).data.title,'计时全量导入监控（70 分钟后检查）');
+    const count=events.length;
+    await translator.enqueue(structuredClone(snapshot));
+    assert.equal(events.length,count,'an unchanged title never re-appends');
+    const bare=structuredClone(snapshot);delete bare.meta;
+    await translator.enqueue(bare);
+    assert.equal(events.length,count,'a snapshot without meta leaves the title alone');
+    const renamed=structuredClone(snapshot);renamed.meta={title:'later rename',titleSource:'custom'};
+    await translator.enqueue(renamed);
+    assert.equal(events.at(-1).data.title,'later rename','later ZCode-side renames keep propagating');
+  }finally{await translator.close()}
+});
+
+test('a restarted runtime re-keys dedupe indexes to the fresh log epoch instead of re-emitting',async()=>{
+  const f=fixture();
+  await f.translator.enqueue(frozen.snapshots[0]);
+  const count=f.events.length;
+  // Same rows under a new epoch: what the first snapshot after a process restart carries.
+  // Row ids are stable across epochs; re-emitting would duplicate the transcript with
+  // sync-moment timestamps and poison durations and the list's lastPromptAt.
+  const reepoched=structuredClone(frozen.snapshots[0]);
+  reepoched.logEpoch='epoch-after-restart';
+  await f.translator.enqueue(reepoched);
+  assert.equal(f.events.length,count,'identical rows under a new epoch append nothing');
+  // A genuinely new row in the new epoch still emits normally.
+  const extended=structuredClone(frozen.snapshots[1]);
+  extended.logEpoch='epoch-after-restart';
+  await f.translator.enqueue(extended);
+  assert.ok(f.events.length>count,'new rows in the new epoch still emit');
+  sequence(f);
+  await f.translator.close();
+});
