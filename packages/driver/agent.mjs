@@ -204,7 +204,9 @@ export class DriverAgent {
   cancel(cause,options={}){
     if(this.disposed)throw commandFault('agent-disposed');
     if(this.conversation?.state.status==='error')throw commandFault('execution-unavailable');
-    if(this.conversation&&!this.conversation.state.admission.allowed)throw commandFault('projection-unconfirmed');
+    // A cancel can arrive before the first projection is live; do not reject here —
+    // submitControl awaits readiness itself, and with no stoppable work the cancel
+    // is a legitimate no-op.
     if(!options.keepInbox)this.inbox.clear();
     this.activity?.controller.abort(cause);
     const snapshot=this.conversation?.state.snapshot;

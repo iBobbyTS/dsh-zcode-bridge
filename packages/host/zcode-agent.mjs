@@ -43,7 +43,7 @@ export class ZCodeAgent {
   append(type,data,opts){const event=this.session.append(type,clean(data),opts);this.record.events??=[];this.record.events=this.session.snapshotEvents?clean(this.session.snapshotEvents()):[...this.record.events,clean(event)];this.persist();return event}
   setStatus(status){if(this.status===status)return;this.status=status;this.dispatch.emit('agent/status',{status});if(status==='idle')for(const resolve of this.idleWaiters.splice(0))resolve()}
   bindConversation(){
-    this.conversation=new V4Conversation(this.peer,{address:{runtime:'zcode',authority:this.record.authority,workspace:this.record.workspace,sessionId:this.record.officialId},workspace:{workspacePath:this.record.workspace,workspaceKey:this.record.workspace},connectionId:this.peer.connectionId,clientId:'dsh-zcode-bridge',clientMode:'desktop-continuous',runnable:true,managementAllowed:true,reconnectable:true,onChange:state=>this.project(state)});
+    this.conversation=new V4Conversation(this.peer,{address:{runtime:'zcode',authority:this.record.authority,workspace:this.record.workspace,sessionId:this.record.officialId},workspace:{workspacePath:this.record.workspace,workspaceKey:this.record.workspace},connectionId:this.peer.connectionId,clientId:'dsh-zcode-driver',clientMode:'desktop-continuous',runnable:true,managementAllowed:true,reconnectable:true,onChange:state=>this.project(state)});
     this.offState=this.peer.launcher?.subscribe(state=>{if(state.phase==='ready'&&this.conversation?.state.status==='error'&&!this.disposed)this.scheduleReconnect(0)});
   }
   async connect(){

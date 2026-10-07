@@ -84,23 +84,27 @@ export function evaluateDriverLifecycle({created,prompted,stopped,page}={}){
  * single-shot cold read that works without an active Agent. */
 export const OFFICIAL_SESSION_METHODS=Object.freeze({create:'session/create',prompt:'session/prompt',cancel:'session/cancel',page:'session/page'});
 /** Build the official remote caller. Wire contract: POST `/api/<method>` with the client-request
- * envelope `{type:'client-request',rpcId,method,payload}` and read the matching
- * `{type:'server-response',rpcId,result:{ok,value|error}}` reply. */
+ * envelope `{type:'client-request',rpcId,method,payload:{args}}` — the gateway requires the payload
+ * to be exactly one plain-object `args` field (dsh-api-gateway remoteRequest) — and read the
+ * matching `{type:'server-response',rpcId,result:{ok,value|error}}` reply. */
 export function officialRemoteCall({baseURL,cookie,fetchImpl=globalThis.fetch,timeoutMs=30000,newRpcId}={}){
   const nextRpcId=newRpcId??(()=>globalThis.crypto.randomUUID());
   return async(method,payload,{signal}={})=>{
     const rpcId=nextRpcId();
     const timeout=AbortSignal.timeout(timeoutMs);
     const combined=signal?AbortSignal.any([signal,timeout]):timeout;
-    const response=await fetchImpl(`${baseURL}/api/${method}`,{method:'POST',headers:{...(cookie?{cookie}:{}),'content-type':'application/json'},body:JSON.stringify({type:'client-request',rpcId,method,payload}),signal:combined});
+    const response=await fetchImpl(`${baseURL}/api/${method}`,{method:'POST',headers:{...(cookie?{cookie}:{}),'content-type':'application/json'},body:JSON.stringify({type:'client-request',rpcId,method,payload:{args:payload??{}}}),signal:combined});
     const body=await response.json();
     if(body?.type!=='server-response'||body.rpcId!==rpcId)throw Object.assign(new Error('official remote reply does not match the request'),{code:'official-remote-envelope-mismatch'});
     if(body.result?.ok!==true)throw Object.assign(new Error(body.result?.error?.code??body.result?.error?.message??'official-remote-failed'),{code:body.result?.error?.code??'official-remote-failed'});
     return body.result.value;
   };
 }
-export async function runDriverLifecycleProbe(call,{signal}={}){
-  const created=await call(OFFICIAL_SESSION_METHODS.create,{},{signal});
+export async function runDriverLifecycleProbe(call,{cwd,signal}={}){
+  // The typert gateway keys `args` by the Remote method's declared parameter names; every
+  // session-controller Remote takes one `request` parameter. The driver only accepts sessions in
+  // the launcher's single execution workspace, so the create must use that cwd.
+  const created=await call(OFFICIAL_SESSION_METHODS.create,{request:cwd?{cwd}:{}},{signal});
   const sessionId=created?.sessionId;
   if(typeof sessionId!=='string'||!sessionId)return {ok:false,checks:{created:false,prompted:false,stopped:false,followed:false,translated:false},events:[],failure:'create-returned-no-session'};
   // SessionAddress is a discriminated union: the ordinary-session variant always carries
@@ -109,10 +113,17 @@ export async function runDriverLifecycleProbe(call,{signal}={}){
   const address=created?.address??{kind:'session',sessionId,...(created?.workspace?{workspace:created.workspace}:{}),...(created?.authority?{authority:created.authority}:{})};
   // SessionPromptRequest requires a client-minted request id (persisted on the accepted message)
   // and an explicit admission mode.
-  const prompted=await call(OFFICIAL_SESSION_METHODS.prompt,{requestId:globalThis.crypto.randomUUID(),sessionId,mode:'queue',content:[{type:'text',text:'Reply with exactly: ok'}]},{signal});
-  const stopped=await call(OFFICIAL_SESSION_METHODS.cancel,{sessionId},{signal});
-  const page=await call(OFFICIAL_SESSION_METHODS.page,{address,throughSeq:-1,maxMessages:200},{signal});
-  return {sessionId,...evaluateDriverLifecycle({created,prompted,stopped,page})};
+  const prompted=await call(OFFICIAL_SESSION_METHODS.prompt,{request:{requestId:globalThis.crypto.randomUUID(),sessionId,mode:'steer',content:[{type:'text',text:'Reply with exactly: ok'}]}},{signal});
+  const stopped=await call(OFFICIAL_SESSION_METHODS.cancel,{request:{sessionId}},{signal});
+  // The driver translates ZCode frames into DSH session events asynchronously; the cold page
+  // read may briefly precede the settled transcript, so poll it within a bounded window.
+  let page={},attempts=0;
+  for(;attempts<40;attempts++){
+    page=await call(OFFICIAL_SESSION_METHODS.page,{request:{address,throughSeq:-1,maxMessages:200}},{signal});
+    if(lifecycleEventTypes(page).filter(type=>type!=='session/end-seed').length>0)break;
+    await new Promise(ok=>setTimeout(ok,500));
+  }
+  return {sessionId,...evaluateDriverLifecycle({created,prompted,stopped,page}),pageAttempts:attempts+1};
 }
 
 /** Merge the generic boot outcome with the opt-in lifecycle probe. A failed probe keeps its own

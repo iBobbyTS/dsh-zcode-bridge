@@ -253,12 +253,12 @@ test('the driver lifecycle probe evaluates create->prompt->stop->page and requir
   assert.equal(run.checks.prompted,true,'the official-shaped prompt reply is accepted');
   assert.equal(run.checks.stopped,true,'the official-shaped cancel reply is accepted');
   assert.deepEqual(calls.map(entry=>entry.method),['session/create','session/prompt','session/cancel','session/page'],'follow is replaced by the official page cold read');
-  const prompt=calls.find(entry=>entry.method==='session/prompt').params;
+  const prompt=calls.find(entry=>entry.method==='session/prompt').params.request;
   assert.equal(prompt.sessionId,'s1');
-  assert.equal(prompt.mode,'queue','SessionPromptRequest requires an explicit admission mode');
-  assert.match(prompt.requestId,/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,'the prompt carries a client-minted request id');
+  assert.equal(prompt.mode,'steer','SessionPromptRequest requires an explicit admission mode');
+  assert.match(prompt.requestId,/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,'the prompt carries a client-minted request id');
   assert.deepEqual(prompt.content,[{type:'text',text:'Reply with exactly: ok'}]);
-  const page=calls.find(entry=>entry.method==='session/page').params;
+  const page=calls.find(entry=>entry.method==='session/page').params.request;
   assert.equal(page.throughSeq,-1);
   assert.equal(page.address.kind,'session','SessionAddress is a discriminated union and the ordinary variant needs kind');
   assert.equal(page.address.sessionId,'s1');
@@ -274,7 +274,7 @@ test('the driver lifecycle probe evaluates create->prompt->stop->page and requir
   assert.deepEqual(await remoteCall('session/create',{cwd:'/w'}),{sessionId:'s1'});
   assert.equal(requests[0].url,'http://127.0.0.1:9/api/session/create');
   assert.equal(requests[0].options.headers.cookie,'c=1');
-  assert.deepEqual(JSON.parse(requests[0].options.body),{type:'client-request',rpcId:'rpc-1',method:'session/create',payload:{cwd:'/w'}});
+  assert.deepEqual(JSON.parse(requests[0].options.body),{type:'client-request',rpcId:'rpc-1',method:'session/create',payload:{args:{cwd:'/w'}}});
   const mismatch=officialRemoteCall({baseURL:'http://x',fetchImpl:async()=>({async json(){return {type:'server-response',rpcId:'other',result:{ok:true,value:1}}}})});
   await assert.rejects(mismatch('session/page',{}),error=>error.code==='official-remote-envelope-mismatch');
   const failed=officialRemoteCall({baseURL:'http://x',newRpcId:()=>'rpc-9',fetchImpl:async()=>({async json(){return {type:'server-response',rpcId:'rpc-9',result:{ok:false,error:{code:'no-session'}}}}})});

@@ -65,7 +65,7 @@ export class ZCodeRuntime {
     await this.host.connect();const state=this.host.launcher?.state;
     if(state?.phase!=='ready'||state.auth!=='authenticated'||!state.executionWorkspace)throw fault('execution-unavailable');
     this.peer??=this.peerFactory(this.host.launcher);
-    if(!this.handshake){const flight=(async()=>{const hello=await this.peer.request('hello');await this.peer.request('initialize',negotiatedClientHello(hello,{clientId:'dsh-zcode-bridge',appVersion:'0.1.0'}))})().catch(error=>{if(this.handshake===flight)this.handshake=null;throw error});this.handshake=flight;}await this.handshake;
+    if(!this.handshake){const flight=(async()=>{const hello=await this.peer.request('hello');await this.peer.request('initialize',negotiatedClientHello(hello,{clientId:'dsh-zcode-driver',appVersion:'0.1.0'}))})().catch(error=>{if(this.handshake===flight)this.handshake=null;throw error});this.handshake=flight;}await this.handshake;
     const execution=await this.ensureExecutionWorkspace(state.executionWorkspace);
     return {peer:this.peer,workspace:state.executionWorkspace,cwd:execution.path??state.executionWorkspace,workspaceId:execution.id,authority:'official-host'};
   }
@@ -176,7 +176,7 @@ export class ZCodeRuntime {
     const record=agent.record;let issued=false;
     try{
       await this.ensurePeer();
-      const envelope={commandId:operation.commandId,clientId:'dsh-zcode-bridge',sessionId:null,type:'createSession',issuedAt:Date.now(),workspace:{workspacePath:record.workspace,workspaceKey:record.workspace},payload:{workspaceId:record.workspace,firstInput:{text,...(record.selection?{modelSelection:record.selection}:{}),mode:record.mode??'build'},config:{...(record.selection?{modelSelection:record.selection}:{}),mode:record.mode??'build'}}};
+      const envelope={commandId:operation.commandId,clientId:'dsh-zcode-driver',sessionId:null,type:'createSession',issuedAt:Date.now(),workspace:{workspacePath:record.workspace,workspaceKey:record.workspace},payload:{workspaceId:record.workspace,firstInput:{text,...(record.selection?{modelSelection:record.selection}:{}),mode:record.mode??'build'},config:{...(record.selection?{modelSelection:record.selection}:{}),mode:record.mode??'build'}}};
       this.peer.prepareCommand?.(envelope);
       // Write-ahead association only after the peer and local command shape can dispatch.
       // Explicit relay not-sent failures can subsequently clear this attempt pointer safely.

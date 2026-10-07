@@ -97,7 +97,7 @@ test('cancel keeps inbox for UI stop; clear rejects remote queue and clears undi
     publish(w,s=>{s.control.canStop=false;s.control.activeWorks=[]});assert.equal(w.agent.status,'idle');await w.agent.whenIdle();
   }finally{await w.close()}
   const paused=await commandWorld('queue-paused');
-  try{assert.throws(()=>paused.agent.cancel({kind:'user'}),{code:'official-queue-clear-unavailable'});assert.equal(commands(paused).length,0)}finally{await paused.close()}
+  try{try{paused.agent.cancel({kind:'user'});assert.fail('expected clear rejection')}catch(error){assert.equal(error.code,'official-queue-clear-unavailable')};assert.equal(commands(paused).length,0)}finally{await paused.close()}
 });
 
 test('stale CAS, reserved queue and missing stop target fail before wire dispatch',async()=>{

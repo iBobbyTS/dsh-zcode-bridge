@@ -84,7 +84,7 @@ try{
   do{
     const statusResponse=await fetch(result.baseURL+'/zcode-bridge/status',{method:'POST',headers:{cookie,'content-type':'application/json'},body:JSON.stringify({type:'client-request',rpcId:randomUUID(),method:'status',payload:{}}),signal:AbortSignal.timeout(5000)});
     result.bridgeStatusHttp=statusResponse.status;
-    try{const body=await statusResponse.json(),value=body.result?.value;result.bridgeStatus={ok:body.result?.ok??false,state:value?.state,reason:value?.reason,launcherPhase:value?.launcher?.phase,driverState:value?.driverState,error:body.result?.error?.code}}catch{result.bridgeStatus={ok:false,error:'status-response-unavailable'}}
+    try{const body=await statusResponse.json(),value=body.result?.value;result.bridgeStatus={ok:body.result?.ok??false,state:value?.state,reason:value?.reason,launcherPhase:value?.launcher?.phase,driverState:value?.driverState,executionWorkspace:value?.launcher?.executionWorkspace,error:body.result?.error?.code}}catch{result.bridgeStatus={ok:false,error:'status-response-unavailable'}}
     if(!['starting','bootstrapping'].includes(result.bridgeStatus.launcherPhase)||exited)break;
     await new Promise(ok=>setTimeout(ok,1000));
   }while(Date.now()<statusDeadline);
@@ -99,7 +99,7 @@ try{
   if(driverMode&&process.env.DSH_ACCEPTANCE_LIFECYCLE==='1'){
     try{
       const officialCall=officialRemoteCall({baseURL:result.officialRemoteBase??result.baseURL,cookie});
-      result.driverLifecycleProbe=await runDriverLifecycleProbe(officialCall);
+      result.driverLifecycleProbe=await runDriverLifecycleProbe(officialCall,{cwd:result.bridgeStatus.executionWorkspace});
     }catch(error){result.driverLifecycleProbe={ok:false,failure:error.message}}
   }
   const genericOutcome=result.pluginErrors.length||!result.bridgeStatus.ok||!probe.ok?'seam-differences-found':!result.runtimeReady?'web-booted-runtime-unconfirmed':result.versionExemption?'web-booted-with-diagnostic-exemption':'web-booted';
