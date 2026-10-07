@@ -15,9 +15,8 @@ export async function historyOperation(agent,payload,signal){
   agent.assertAvailable();signal?.throwIfAborted();
   await agent.ready();signal?.throwIfAborted();
   if(domain==='history'){
-    if(operation!=='read'||!HISTORY_READS.has(kind))throw commandFault('parity-operation-denied');
     // A row-targeting read must carry the frozen baseline so a late reply cannot apply to a newer projection.
-    if(kind!=='fileChanges'&&kind!=='fileRewindPreview')throw commandFault('parity-operation-denied');
+    if(operation!=='read'||!HISTORY_READS.has(kind))throw commandFault('parity-operation-denied');
     return agent.conversation.historyQuery({kind,target:params.target,baseRevision:payload.baseRevision,baseLogEpoch:payload.baseLogEpoch},{signal});
   }
   if(domain==='command'&&operation==='submit'&&HISTORY_MUTATION_COMMANDS.has(kind)){

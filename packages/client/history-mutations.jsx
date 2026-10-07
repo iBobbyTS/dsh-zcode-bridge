@@ -40,7 +40,13 @@ export function HistoryMutationsCard({controller,pollMs=1500}){
     catch(err){if(token===owner.current)setError(err.code??err.message);return undefined}
     finally{if(token===owner.current)setBusy(false)}
   }
-  const command=(type,payload,frozen)=>run(()=>controller.command(type,payload,{revision:frozen.baseRevision,logEpoch:frozen.baseLogEpoch}));
+  // `frozen` is either a row-target token (`baseRevision`/`baseLogEpoch`) or the projection
+  // snapshot itself (`revision`/`logEpoch`). Reading only one shape silently dropped the CAS
+  // baseline for side-session/discard, which the ingress then rejected as stale.
+  const command=(type,payload,frozen)=>run(()=>controller.command(type,payload,{
+    revision:frozen.baseRevision??frozen.revision,
+    logEpoch:frozen.baseLogEpoch??frozen.logEpoch,
+  }));
   // Preview uses its own frozen token and never silently adopts the newest revision.
   const readHistory=(kind,row)=>run(async()=>{
     const frozen=historyTarget(state,row);

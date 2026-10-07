@@ -9,7 +9,10 @@ import {PARITY_MIRROR_COMMANDS} from '../packages/host/parity.mjs';
 import {ROUTED_COMMANDS} from '../packages/driver/commands.mjs';
 import {HISTORY_MUTATION_COMMANDS,historyOperation} from '../packages/driver/history.mjs';
 import {HISTORY_COMMANDS,MANAGEMENT_COMMANDS} from '../packages/host/conversation.mjs';
+import {ParityController} from '../packages/client/parity.mjs';
+import {ParityService} from '../packages/host/parity.mjs';
 import {commandWorld} from './helpers/lifecycle-commands.mjs';
+import {parityWorld,tick} from './helpers/settings-panel-parity.mjs';
 
 const history=JSON.parse(readFileSync(new URL('./fixtures/history-management/success.json',import.meta.url)));
 const contextFixture=JSON.parse(readFileSync(new URL('./fixtures/attachments-context/success.json',import.meta.url)));
@@ -117,5 +120,70 @@ test('createSelectionSideSession preserves the empty and firstInput variants on 
     assert.deepEqual(sent[0].payload,{});
     assert.deepEqual(sent[1].payload,{firstInput:{text:'selected'}});
     assert.ok(sent.every(command=>command.sessionId===w.agent.zcodeConversationId));
+  }finally{await w.close()}
+});
+
+// Assembly coverage locking the M1 CAS-shape gap: the plugin chain must deliver a real revision
+// and log epoch for the projection-snapshot ingress (side session / discard), and the row-target
+// envelope must carry both fields. Mirror sessions go through the bridge parity host path; native
+// sessions through ParityService -> DriverAgent.historyOperation.
+test('assembly (mirror): side session and discard arrive with a real CAS baseline and a stale one is refused before the wire',async()=>{
+  const w=await parityWorld();const controller=new ParityController(w.rpc,{sessionId:w.id});
+  try{
+    const current=w.runtime.agents.get(w.id).conversation.state.snapshot;
+    const next=structuredClone(current);next.seq++;next.revision++;next.sharedContextImport=structuredClone(contextFixture.initial.frame.payload.snapshot.sharedContextImport);
+    w.official.publish(next);await tick();
+    const snapshot=w.runtime.agents.get(w.id).conversation.state.snapshot;
+    await controller.command('discardSharedContext',{contextId:'ctx-fixture-1'},{revision:snapshot.revision,logEpoch:snapshot.logEpoch});
+    const discard=w.calls.filter(call=>call.name==='sendConversationCommandV4').at(-1).args[0].envelope;
+    assert.equal(discard.type,'discardSharedContext');
+    assert.equal(discard.sessionId,w.runtime.agents.get(w.id).conversation.address.sessionId,'the wire targets the official conversation');
+    await controller.command('createSelectionSideSession',{},{revision:snapshot.revision,logEpoch:snapshot.logEpoch});
+    const side=w.calls.filter(call=>call.name==='sendConversationCommandV4').at(-1).args[0].envelope;
+    assert.equal(side.type,'createSelectionSideSession');
+    // A missing baseline (the pre-fix card shape) is refused by the parity ingress, not the wire.
+    const before=w.calls.length;
+    await assert.rejects(controller.command('discardSharedContext',{contextId:'ctx-fixture-1'},{revision:undefined,logEpoch:undefined}),error=>error.code==='parity-projection-stale');
+    assert.equal(w.calls.length,before,'no command reaches the wire with a missing CAS baseline');
+    // A row-target command carries both fields in the envelope.
+    const withRows=structuredClone(w.runtime.agents.get(w.id).conversation.state.snapshot);withRows.seq++;withRows.revision++;withRows.rows=fixtureRows();
+    w.official.publish(withRows);await tick();
+    const rows=w.runtime.agents.get(w.id).conversation.state.snapshot;
+    const editRow=rows.rows.window.find(row=>row.actions?.canEdit===true);
+    await controller.command('editUserQuery',{target:{rowId:editRow.rowId,entityId:editRow.entityId},newText:'edited',workspaceMode:'preserve'},{revision:rows.revision,logEpoch:rows.logEpoch});
+    const edit=w.calls.filter(call=>call.name==='sendConversationCommandV4').at(-1).args[0].envelope;
+    assert.equal(edit.type,'editUserQuery');
+    assert.equal(edit.baseRevision,rows.revision);
+    assert.equal(edit.baseLogEpoch,rows.logEpoch);
+  }finally{controller.dispose();await w.close()}
+});
+
+test('assembly (native): ParityController -> ParityService -> DriverAgent.historyOperation preserves the CAS baseline for side session, discard and a row target',async()=>{
+  const w=await commandWorld('idle');
+  try{
+    publish(w,s=>{s.sharedContextImport=structuredClone(contextFixture.initial.frame.payload.snapshot.sharedContextImport)});
+    await w.drain();
+    const agent=w.agent;
+    const runtime={disposed:false,ctx:{agents:{get:id=>id===agent.id?agent:undefined}}};
+    const parity=new ParityService(runtime);
+    const rpc={call:async(_channel,_endpoint,payload)=>{try{return {ok:true,value:await parity.handle(payload)}}catch(error){return {ok:false,error:{code:error.code??'mock-failure',message:error.message}}}}};
+    const controller=new ParityController(rpc,{sessionId:agent.id});
+    try{
+      const snapshot=agent.conversation.state.snapshot;
+      await controller.command('discardSharedContext',{contextId:'ctx-fixture-1'},{revision:snapshot.revision,logEpoch:snapshot.logEpoch});
+      const discard=commands(w).filter(command=>command.type==='discardSharedContext').at(-1);
+      assert.equal(discard.sessionId,agent.zcodeConversationId);
+      await controller.command('createSelectionSideSession',{},{revision:snapshot.revision,logEpoch:snapshot.logEpoch});
+      assert.equal(commands(w).filter(command=>command.type==='createSelectionSideSession').length,1);
+      await assert.rejects(controller.command('createSelectionSideSession',{},{revision:undefined,logEpoch:undefined}),error=>error.code==='parity-projection-stale');
+      publish(w,s=>{s.rows=fixtureRows()});
+      await w.drain();
+      const rows=agent.conversation.state.snapshot;
+      await controller.command('editUserQuery',{target:{rowId:5,entityId:'input-2'},newText:'edited',workspaceMode:'preserve'},{revision:rows.revision,logEpoch:rows.logEpoch});
+      const edit=commands(w).filter(command=>command.type==='editUserQuery').at(-1);
+      assert.equal(edit.baseRevision,rows.revision);
+      assert.equal(edit.baseLogEpoch,rows.logEpoch);
+      assert.deepEqual(edit.payload.target,{rowId:5,entityId:'input-2'});
+    }finally{controller.dispose()}
   }finally{await w.close()}
 });

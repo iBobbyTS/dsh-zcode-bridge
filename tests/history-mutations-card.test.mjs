@@ -45,7 +45,11 @@ function fakeController({sharedContextImport=null}={}){
       throw Object.assign(new Error('unexpected '+domain),{code:'unexpected'});
     },
     async command(type,params,snapshot){
+      // Mirror the ingress CAS: a command whose baseline is missing or not the current revision is
+      // rejected exactly like the real parity driver/history seam.
       calls.push({type,params:structuredClone(params),snapshot:structuredClone(snapshot)});
+      if(typeof snapshot?.revision!=='number'||typeof snapshot?.logEpoch!=='string'||snapshot.revision!==revision)
+        throw Object.assign(new Error('stale projection'),{code:'parity-projection-stale'});
       revision++;
       return {commandId:'c-'+calls.length,type,state:'completed',ack:{status:'accepted'}};
     },
@@ -79,6 +83,12 @@ test('the dock triggers all five migrated operations through the parity data cha
   const edited=controller.calls.find(call=>call.type==='editUserQuery');
   assert.deepEqual(edited.params,{target:{rowId:5,entityId:'input-2'},newText:'edited text',workspaceMode:'preserve'});
   assert.deepEqual(controller.calls.find(call=>call.type==='createSelectionSideSession').params,{firstInput:{text:'selected'}});
+  // The projection-snapshot ingress must carry a real CAS baseline, not an undefined token.
+  for(const type of ['createSelectionSideSession','discardSharedContext']){
+    const call=controller.calls.find(candidate=>candidate.type===type);
+    assert.equal(typeof call.snapshot.revision,'number',`${type} carries revision`);
+    assert.equal(typeof call.snapshot.logEpoch,'string',`${type} carries logEpoch`);
+  }
   root.unmount();
 });
 
