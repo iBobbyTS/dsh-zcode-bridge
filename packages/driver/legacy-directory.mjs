@@ -161,9 +161,11 @@ export class LegacyDirectory {
     return gate;
   }
   /** One tail-page read decides whether the persisted history is already current. Fresh → cheap
-   * return; newer rows → idempotent resync appends just the delta. A changed log epoch means the
-   * ZCode history was rewritten (rewind/edit): resyncing would duplicate the old epoch's events,
-   * so the gate keeps the persisted copy and the live subscription layer carries the new epoch. */
+   * return; newer rows → idempotent resync appends just the delta. A changed log epoch is either
+   * a plain process restart (row ids stay stable; the fold's epoch re-key dedupes the overlap, so
+   * a resync appends exactly the rows the restart-windowed live layer never delivered) or a real
+   * rewrite (rewind/edit removed the persisted cursor's row): only the rewrite keeps the
+   * persisted copy as-is and lets the live subscription layer carry the new epoch. */
   async #probeFresh(sessionId,{signal}={}){
     const state=this.store.value.legacy[sessionId];
     const existing=this.inflight.get(sessionId);
@@ -182,8 +184,14 @@ export class LegacyDirectory {
       const {cursor}=state;
       const newest=page.rows[0]?.rowId??0;
       if(page.atLogEpoch!==cursor.logEpoch){
-        this.onError(fault('legacy-epoch-divergence',`ZCode history epoch changed for ${sessionId}; the persisted transcript is kept as-is`),row);
-        return state;
+        // The anchored read below decides restart vs rewrite: a fresh epoch alone proves
+        // nothing because every ZCode process lifetime mints one while row ids stay stable.
+        const anchored=await this.request('v4/conversation/rowsRange',{sessionId,limit:1,beforeRowId:cursor.maxRowId+1,...(workspace?{workspace:{workspacePath:workspace,workspaceKey:workspace}}:{})},{signal});
+        if(!anchored||!Array.isArray(anchored.rows)||typeof anchored.atLogEpoch!=='string')throw fault('rows-range-result-invalid');
+        if((anchored.rows[0]?.rowId??0)!==cursor.maxRowId){
+          this.onError(fault('legacy-epoch-divergence',`ZCode history epoch changed for ${sessionId} and the persisted cursor row is gone; the persisted transcript is kept as-is`),row);
+          return state;
+        }
       }
       if(newest<=cursor.maxRowId&&page.atRevision===cursor.revision)return state;
       if(!row)throw fault('legacy-backfill-unavailable',`the ZCode history for "${sessionId}" has new rows but its catalog row is unavailable`);
@@ -361,10 +369,14 @@ export class LegacyDirectory {
       const boundary=appended.findIndex(event=>event.type==='session/end-seed');
       const body=boundary<0?appended:[...appended.slice(0,boundary),...appended.slice(boundary+1)];
       const toAppend=boundary>=0&&!existing.some(event=>event.type==='session/end-seed')?[appended[boundary],...body]:body;
+      // An excluded end-seed still consumed a seq inside the detached fold, so the body would
+      // start one past the store's next slot; the official persistence validates contiguous
+      // seq on append. Re-seq the batch from the store's true tail.
+      const sequenced=toAppend.map((event,index)=>({...event,seq:existing.length+index}));
       // Retime against the FULL merged window: a multi-page history puts only the oldest page in
       // `windows.at(-1)`, and rows outside the retime set would keep the sync-moment timestamp.
       const merged=mergeEventWindows(windows);
-      const retimed=retimeHistoryEvents(toAppend,merged.rows.window,merged.logEpoch,{sessionUpdatedAt:typeof row.updatedAt==='number'?row.updatedAt:undefined});
+      const retimed=retimeHistoryEvents(sequenced,merged.rows.window,merged.logEpoch,{sessionUpdatedAt:typeof row.updatedAt==='number'?row.updatedAt:undefined});
       if(retimed.length)await handle.append(retimed);
       const tail=pages[0];
       return {appended:body.length,active,cursor:{logEpoch:tail.atLogEpoch,revision:tail.atRevision,seq:tail.atSeq,maxRowId:Math.max(0,...tail.rows.map(item=>item.rowId))}};

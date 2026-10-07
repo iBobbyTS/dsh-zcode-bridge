@@ -274,3 +274,27 @@ test('a restarted runtime re-keys dedupe indexes to the fresh log epoch instead 
   sequence(f);
   await f.translator.close();
 });
+
+test('a seed spanning several log epochs normalizes every cohort on the next snapshot',async()=>{
+  const f=fixture();
+  // First process lifetime: the turn streams under the original epoch.
+  await f.translator.enqueue(frozen.snapshots[1]);
+  // A restart mints a new epoch; the same rows come back completed plus the turn's tail —
+  // exactly what a session that stayed open across one restart persists.
+  const restartOne=structuredClone(frozen.snapshots[2]);restartOne.logEpoch='epoch-two';
+  const restartTwo=structuredClone(frozen.snapshots[3]);restartTwo.logEpoch='epoch-two';
+  await f.translator.enqueue(restartOne);
+  await f.translator.enqueue(restartTwo);
+  await f.translator.close();
+  const cohortEpochs=[...new Set(f.events.map(event=>{const key=event.data?.zcode?.turnKey??event.data?.zcode?.responseKey??event.data?.zcode?.rowKey;if(typeof key==='string'){try{return JSON.parse(key)[0]}catch{}}return null}).filter(value=>typeof value==='string'))];
+  assert.deepEqual(cohortEpochs,[frozen.snapshots[1].logEpoch,'epoch-two'],'the seed spans two epochs');
+  // Rebuild the fold from that mixed-epoch event log (exactly what the backfill does) and
+  // move to a third epoch: EVERY cohort must re-key, not just the seed's first one.
+  const restored=new ConversationEventTranslator({session:f.session,dispatch:{emit(){}}});
+  const third=structuredClone(frozen.snapshots[3]);third.logEpoch='epoch-three';
+  const before=f.events.length;
+  await restored.enqueue(third);
+  assert.equal(f.events.length,before,'a third epoch re-keys every cohort instead of re-emitting');
+  sequence(f);
+  await restored.close();
+});

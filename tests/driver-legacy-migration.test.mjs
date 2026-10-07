@@ -35,7 +35,7 @@ function fakePersistence(){
   const handle=record=>{
     let closed=false;
     return {header:record.header,get closed(){return closed},
-      async append(events){if(closed)throw new Error('closed');for(const event of events)record.events.push({...structuredClone(event),seq:record.events.length})},
+      async append(events){if(closed)throw new Error('closed');for(const event of events){if(event.seq!==record.events.length)throw new Error(`append seq mismatch: expected ${record.events.length}, got ${event.seq}`);record.events.push(structuredClone(event))}},
       async read(){return {events:structuredClone(record.events),eventState:'detached'}},
       async close(){closed=true},
     };
@@ -48,12 +48,34 @@ function fakePersistence(){
 
 function fakeSessions(){
   const live=new Map();
+  // The official persisted-log load validates the turn/step state machine ("step/start does
+  // not match the open turn and next step"); appends through a detached fold do NOT. Enforce
+  // the same shape here so a corrupt event order fails the test, not a later production load.
+  const replayState=events=>{
+    let openTurn=null;const nextStep=new Map();
+    for(const event of events){const data=event.data??{};
+      if(event.type==='turn/start'){openTurn=data.turn;nextStep.set(data.turn,1)}
+      else if(event.type==='step/start')nextStep.set(data.turn,Math.max(nextStep.get(data.turn)??1,data.step+1));
+      else if(event.type==='turn/end'&&openTurn===data.turn)openTurn=null;
+    }
+    return {openTurn,nextStep};
+  };
   return {prepare(id,{meta={},seed=[]}={}){
     // The official SessionStore re-prepares the same id on every resume; a re-sync does too.
     const events=structuredClone(seed);
+    let {openTurn,nextStep}=replayState(events);
     const session={id,header:{version:4,id,createdAt:1,isSeeded:false,delegationDepth:0,...(meta.cwd?{cwd:meta.cwd}:{})},inheritedEventCount:0,
       get seq(){return events.length},eventAt:seq=>events[seq],snapshotEvents:()=>events,
-      append(type,data){const event=Object.freeze({type,data:structuredClone(data),seq:events.length,time:1});events.push(event);return event}};
+      append(type,data){
+        if(type==='turn/start'){if(openTurn!==null)throw new Error('turn/start with an open turn');openTurn=data.turn;nextStep.set(data.turn,1)}
+        else if(type==='turn/end'){if(openTurn!==data.turn)throw new Error('turn/end does not close the open turn');openTurn=null}
+        else if(type==='step/start'){
+          if(openTurn!==data.turn)throw new Error(`step/start outside the open turn (${data.turn} vs ${openTurn})`);
+          const expected=nextStep.get(data.turn)??1;
+          if(data.step!==expected)throw new Error(`step/start does not match the open turn and next step (expected ${expected}, got ${data.step})`);
+          nextStep.set(data.turn,data.step+1);
+        }
+        const event=Object.freeze({type,data:structuredClone(data),seq:events.length,time:1});events.push(event);return event}};
     live.set(id,session);return session;
   }};
 }
@@ -419,7 +441,7 @@ test('a re-open detects ZCode-side additions and appends only the delta',async()
   assert.deepEqual(updated.cursor.maxRowId,next+2,'the cursor advances');
 });
 
-test('a changed ZCode log epoch keeps the persisted transcript instead of duplicating it',async()=>{
+test('a rewritten ZCode log epoch (persisted cursor row gone) keeps the transcript instead of duplicating it',async()=>{
   const store=memoryStore(),persistence=fakePersistence(),sessions=fakeSessions();
   const rows=historyRows(2);
   const holder={fn:rowsRangeRequest(rows)};
@@ -432,12 +454,163 @@ test('a changed ZCode log epoch keeps the persisted transcript instead of duplic
   await directory.sync({});
   await directory.ensureReadable('zcode-old');
   const before=persistence.records.get('zcode-old').events.length;
-  // ZCode rewrites its history (rewind/edit): the epoch changes under the same conversation.
-  holder.fn=rowsRangeRequest(rows,{logEpoch:'epoch-2'});
+  const cursor=store.value.legacy['zcode-old'].cursor;
+  // ZCode rewrites its history (rewind/edit): a new epoch AND the persisted cursor's row is gone.
+  holder.fn=rowsRangeRequest(historyRows(1),{logEpoch:'epoch-2'});
   const kept=await directory.ensureReadable('zcode-old');
   assert.equal(kept.state,'readable');
   assert.equal(persistence.records.get('zcode-old').events.length,before,'a rewritten epoch never appends a duplicate transcript');
   assert.ok(errors.includes('legacy-epoch-divergence'),'the divergence is reported');
+  const anchored=holder.fn.calls.find(call=>call.params.beforeRowId===cursor.maxRowId+1&&call.params.limit===1);
+  assert.ok(anchored,'the continuity read anchors at the persisted cursor before giving up');
+});
+
+test('a restart-minted log epoch with intact rows resyncs and appends only the delta',async()=>{
+  const store=memoryStore(),persistence=fakePersistence(),sessions=fakeSessions();
+  const rows=historyRows(2);
+  const holder={fn:rowsRangeRequest(rows)};
+  const errors=[];
+  const directory=new LegacyDirectory({store,persistence,sessions,request:(...args)=>holder.fn(...args),
+    listCatalog:async()=>[{sessionId:'zcode-old',workspacePath:'/workspace',title:'t'}],
+    listPersistedHeaders:async()=>[...persistence.records.values()].map(r=>r.header),
+    onError:error=>errors.push(error.code),
+  });
+  await directory.sync({});
+  await directory.ensureReadable('zcode-old');
+  const userEvents=()=>persistence.records.get('zcode-old').events.filter(event=>event.type==='user/message');
+  assert.equal(userEvents().length,2);
+  const cursor=store.value.legacy['zcode-old'].cursor;
+  // A ZCode restart mints a fresh epoch while row ids stay stable, and new turns accrue while
+  // the session stays closed. The follow layer's restart-windowed anchor cannot cover the gap
+  // between the persisted cursor and the newest rows, so the probe must resync; the fold's
+  // epoch re-key then dedupes the already-persisted overlap and appends exactly the delta.
+  const next=rows.at(-1).rowId+1;
+  rows.push(row('turnHeader',next,{origin:'userInput',state:'completedSuccess',startedAt:0,turnId:'turn-3',sourceCommandId:'cmd-3'}));
+  rows.push(row('userInput',next+1,{origin:'realUser',text:'question-3',turnId:'turn-3',sourceCommandId:'cmd-3'}));
+  rows.push(row('assistantText',next+2,{text:'answer-3',state:'complete',model:'model_a',turnId:'turn-3',assistantResponseId:'resp-3'}));
+  holder.fn=rowsRangeRequest(rows,{logEpoch:'epoch-2'});
+  const updated=await directory.ensureReadable('zcode-old');
+  assert.equal(updated.state,'readable');
+  const anchored=holder.fn.calls.find(call=>call.params.beforeRowId===cursor.maxRowId+1&&call.params.limit===1);
+  assert.ok(anchored,'the continuity read anchors at the persisted cursor before resyncing');
+  assert.equal(userEvents().length,3,'only the new turn is appended under the new epoch');
+  assert.ok(userEvents().some(event=>event.data.content[0].text==='question-3'));
+  assert.deepEqual(updated.cursor,{logEpoch:'epoch-2',revision:1,seq:rows.length,maxRowId:next+2},'the cursor adopts the new epoch');
+  assert.ok(!errors.includes('legacy-epoch-divergence'),'an intact restart is not a divergence');
+});
+
+test('a mere restart with intact rows and no new content stays a cheap probe',async()=>{
+  const store=memoryStore(),persistence=fakePersistence(),sessions=fakeSessions();
+  const rows=historyRows(2);
+  const holder={fn:rowsRangeRequest(rows)};
+  const directory=new LegacyDirectory({store,persistence,sessions,request:(...args)=>holder.fn(...args),
+    listCatalog:async()=>[{sessionId:'zcode-old',workspacePath:'/workspace',title:'t'}],
+    listPersistedHeaders:async()=>[...persistence.records.values()].map(r=>r.header),
+  });
+  await directory.sync({});
+  await directory.ensureReadable('zcode-old');
+  const before=persistence.records.get('zcode-old').events.length;
+  holder.fn=rowsRangeRequest(rows,{logEpoch:'epoch-2'});
+  const kept=await directory.ensureReadable('zcode-old');
+  assert.equal(kept.state,'readable');
+  assert.equal(persistence.records.get('zcode-old').events.length,before,'nothing is appended');
+  assert.ok(holder.fn.calls.every(call=>call.params.limit===1),'only limit-1 probe and continuity reads run');
+  assert.equal(persistence.calls.open,1,'no store re-open: the resync never ran');
+});
+
+test('a settled mid-stream partial whose durable text was replaced resyncs instead of failing',async()=>{  const store=memoryStore(),persistence=fakePersistence(),sessions=fakeSessions();
+  // A turn whose header is terminal while its text row still reads 'streaming': the settle
+  // freezes the partial ("answer-…") into the transcript — the shape the old build produced
+  // for every still-running conversation.
+  const rows=[
+    row('turnHeader',1,{origin:'userInput',state:'completedSuccess',startedAt:0,turnId:'turn-1',sourceCommandId:'cmd-1'}),
+    row('userInput',2,{origin:'realUser',text:'q-1',turnId:'turn-1',sourceCommandId:'cmd-1'}),
+    row('assistantText',3,{text:'partial answer',state:'streaming',model:'model_a',turnId:'turn-1',assistantResponseId:'resp-1'}),
+  ];
+  const holder={fn:rowsRangeRequest(rows)};
+  const directory=new LegacyDirectory({store,persistence,sessions,request:(...args)=>holder.fn(...args),
+    listCatalog:async()=>[{sessionId:'zcode-old',workspacePath:'/workspace',title:'t'}],
+    listPersistedHeaders:async()=>[...persistence.records.values()].map(r=>r.header),
+  });
+  await directory.sync({});
+  await directory.ensureReadable('zcode-old');
+  const partial=persistence.records.get('zcode-old').events.find(event=>event.type==='assistant/message');
+  assert.equal(partial.data.message.content[0].text,'partial answer','the mid-stream partial was settled');
+  // Later the durable text REPLACES the partial (not a prefix extension) and new turns accrue
+  // under a restart-minted epoch: the resync must complete and import the delta around it.
+  rows[2].text='replacement answer';rows[2].state='complete';
+  rows.push(row('turnHeader',4,{origin:'userInput',state:'completedSuccess',startedAt:0,turnId:'turn-2',sourceCommandId:'cmd-2'}));
+  rows.push(row('userInput',5,{origin:'realUser',text:'q-2',turnId:'turn-2',sourceCommandId:'cmd-2'}));
+  rows.push(row('assistantText',6,{text:'a-2',state:'complete',model:'model_a',turnId:'turn-2',assistantResponseId:'resp-2'}));
+  holder.fn=rowsRangeRequest(rows,{logEpoch:'epoch-2'});
+  const updated=await directory.ensureReadable('zcode-old');
+  assert.equal(updated.state,'readable','a replaced partial never fails the resync');
+  const userEvents=()=>persistence.records.get('zcode-old').events.filter(event=>event.type==='user/message');
+  assert.equal(userEvents().length,2,'the new turn is appended');
+  assert.deepEqual(updated.cursor,{logEpoch:'epoch-2',revision:1,seq:rows.length,maxRowId:6});
+  // The re-baselined divergence does not repeat on the next probe.
+  const settled=persistence.records.get('zcode-old').events.length;
+  const again=await directory.ensureReadable('zcode-old');
+  assert.equal(again.state,'readable');
+  assert.equal(persistence.records.get('zcode-old').events.length,settled,'a clean re-probe appends nothing');
+});
+
+test('late rows for a turn the persisted log already closed re-open under a fresh turn number',async()=>{
+  const store=memoryStore(),persistence=fakePersistence(),sessions=fakeSessions();
+  const rows=[
+    row('turnHeader',1,{origin:'userInput',state:'completedSuccess',startedAt:0,turnId:'turn-1',sourceCommandId:'cmd-1'}),
+    row('userInput',2,{origin:'realUser',text:'q-1',turnId:'turn-1',sourceCommandId:'cmd-1'}),
+    row('assistantText',3,{text:'partial answer',state:'streaming',model:'model_a',turnId:'turn-1',assistantResponseId:'resp-1'}),
+  ];
+  const holder={fn:rowsRangeRequest(rows)};
+  const directory=new LegacyDirectory({store,persistence,sessions,request:(...args)=>holder.fn(...args),
+    listCatalog:async()=>[{sessionId:'zcode-old',workspacePath:'/workspace',title:'t'}],
+    listPersistedHeaders:async()=>[...persistence.records.values()].map(r=>r.header),
+  });
+  await directory.sync({});
+  await directory.ensureReadable('zcode-old');
+  // The turn closed on a settled mid-stream partial (the old-build damage shape); later reads
+  // EXTEND that partial. Appending the suffix to the closed turn corrupts the official
+  // session format, so the fold re-opens the turn and lands the late rows under a new number.
+  rows[2].text='partial answer continued';rows[2].state='complete';
+  rows.push(row('turnHeader',4,{origin:'userInput',state:'completedSuccess',startedAt:0,turnId:'turn-2',sourceCommandId:'cmd-2'}));
+  rows.push(row('userInput',5,{origin:'realUser',text:'q-2',turnId:'turn-2',sourceCommandId:'cmd-2'}));
+  rows.push(row('assistantText',6,{text:'a-2',state:'complete',model:'model_a',turnId:'turn-2',assistantResponseId:'resp-2'}));
+  holder.fn=rowsRangeRequest(rows,{logEpoch:'epoch-2'});
+  const updated=await directory.ensureReadable('zcode-old');
+  assert.equal(updated.state,'readable','the format-validating fold never corrupts the log');
+  const events=persistence.records.get('zcode-old').events;
+  const text=event=>((event.data.message?.content??[]).map(block=>block.text??'').join('')).trim();
+  assert.ok(events.some(event=>event.type==='assistant/message'&&text(event)==='continued'),'the extended suffix lands');
+  assert.ok(events.filter(event=>event.type==='user/message').some(event=>event.data.content[0].text==='q-2'),'the new turn lands');
+  const starts=events.filter(event=>event.type==='turn/start');
+  assert.equal(starts.length,3,'the late rows arrive under their own re-opened turn number');
+});
+
+test('non-text row drift on a closed turn never re-opens it',async()=>{
+  const store=memoryStore(),persistence=fakePersistence(),sessions=fakeSessions();
+  const rows=historyRows(1);
+  const holder={fn:rowsRangeRequest(rows)};
+  const directory=new LegacyDirectory({store,persistence,sessions,request:(...args)=>holder.fn(...args),
+    listCatalog:async()=>[{sessionId:'zcode-old',workspacePath:'/workspace',title:'t'}],
+    listPersistedHeaders:async()=>[...persistence.records.values()].map(r=>r.header),
+  });
+  await directory.sync({});
+  await directory.ensureReadable('zcode-old');
+  // Between reads ZCode touched a non-text field on an already-delivered row (visibility,
+  // display metadata, timings). Nothing new can be delivered, so the closed turn must stay
+  // exactly as persisted — only the genuinely new turn opens.
+  rows[2].visibility='hidden';
+  const next=rows.at(-1).rowId+1;
+  rows.push(row('turnHeader',next,{origin:'userInput',state:'completedSuccess',startedAt:0,turnId:'turn-2',sourceCommandId:'cmd-2'}));
+  rows.push(row('userInput',next+1,{origin:'realUser',text:'q-2',turnId:'turn-2',sourceCommandId:'cmd-2'}));
+  rows.push(row('assistantText',next+2,{text:'a-2',state:'complete',model:'model_a',turnId:'turn-2',assistantResponseId:'resp-2'}));
+  holder.fn=rowsRangeRequest(rows,{logEpoch:'epoch-2'});
+  const updated=await directory.ensureReadable('zcode-old');
+  assert.equal(updated.state,'readable');
+  const events=persistence.records.get('zcode-old').events;
+  assert.equal(events.filter(event=>event.type==='turn/start').length,2,'only the new turn opens');
+  assert.equal(events.filter(event=>event.type==='turn/end').length,2);
 });
 
 test('replayed events carry the ZCode rows real createdAt, so Completed-in durations survive',async()=>{

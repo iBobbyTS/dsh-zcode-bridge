@@ -101,11 +101,13 @@ export class ConversationEventTranslator {
    * so a resumed conversation's first snapshot after a restart carries new keys for the very
    * same rows. Re-key the dedupe indexes to the new epoch instead of re-emitting the whole
    * visible window — a re-emission would duplicate the transcript and stamp the copies with
-   * sync-moment times (poisoning every duration and the list's lastPromptAt). */
-  rekeyEpoch(from,to){
+   * sync-moment times (poisoning every duration and the list's lastPromptAt). Every foreign
+   * epoch is normalized, not just the seed's first: a seed can legitimately carry several
+   * cohorts when a session stayed open across one restart and was resynced after a second. */
+  rekeyEpoch(to){
     const rekey=key=>{
       if(typeof key!=='string')return key;
-      try{const [epoch,id]=JSON.parse(key);return epoch===from?JSON.stringify([to,id]):key}catch{return key}
+      try{const [epoch,id]=JSON.parse(key);return epoch===to?key:JSON.stringify([to,id])}catch{return key}
     };
     this.users=new Set([...this.users].map(rekey));
     this.turns=new Map([...this.turns].map(([key,turn])=>[rekey(key),{...turn,steps:new Map([...turn.steps].map(([stepKey,step])=>[rekey(stepKey),step])),...(turn.pendingKey?{pendingKey:rekey(turn.pendingKey)}:{})}]));
@@ -211,7 +213,7 @@ export class ConversationEventTranslator {
     // snapshot reconciliation also mirrors meta.title into the session's title projection.
     if(typeof snapshot.meta?.title==='string')this.syncTitle(snapshot.meta.title);
     if(typeof snapshot.logEpoch==='string'&&this.epoch!==null&&this.epoch!==snapshot.logEpoch)
-      this.rekeyEpoch(this.epoch,snapshot.logEpoch);
+      this.rekeyEpoch(snapshot.logEpoch);
     const groups=new Map();for(const row of rowsFor(snapshot)){const key=eventRowKey(snapshot.logEpoch,row.turnId);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(row)}
     const cumulative=snapshot.usage?.cumulative;
     const candidates=[];
@@ -228,10 +230,24 @@ export class ConversationEventTranslator {
       const header=rows.find(row=>row.kind==='turnHeader'),end=turnEndReason(terminalState(rows,snapshot,turnKey===[...groups.keys()].at(-1)),snapshot.control.lastError);
       if(header&&!this.acceptInput(header))continue;
       const phase=terminalState(rows,snapshot,turnKey===[...groups.keys()].at(-1));
-      const turn=this.turn(turnKey,phase==='running'||phase==='prewarming');
+      const responses=responseGroups(rows,snapshot.logEpoch);
+      // A resync can find rows a previous import never delivered for a turn the persisted log
+      // already CLOSED (a still-running conversation backfilled by an older build settled a
+      // mid-stream partial and ended the turn). Appending to a closed turn corrupts the
+      // official session format, so a history fold re-opens such a turn under a fresh number
+      // and carries its late rows to the turn's true terminal state instead. Non-text row
+      // drift between reads re-delivers nothing and must NOT re-open the turn.
+      const late=this.history&&this.turns.get(turnKey)?.closed===true
+        &&(rows.some(row=>row.kind==='userInput'&&!this.users.has(eventRowKey(snapshot.logEpoch,row.rowId)))
+          ||[...responses].some(([key,visible])=>{
+            const previous=this.responses.get(key);
+            if(!previous||previous.interrupted)return true;
+            if(JSON.stringify(previous.rows)===JSON.stringify(visible))return false;
+            try{return this.continuation(visible,previous).length>0}catch{return false}
+          }));
+      const turn=this.turn(turnKey,phase==='running'||phase==='prewarming'||late);
       const accepted=rows.filter(row=>this.acceptInput({...row,sourceCommandId:row.sourceCommandId??header?.sourceCommandId}));
       this.syncInbox({...snapshot,rows:{...snapshot.rows,window:accepted}});
-      const responses=responseGroups(rows,snapshot.logEpoch);
       for(const row of rows){
         const rowKey=eventRowKey(snapshot.logEpoch,row.rowId);
         if(row.kind==='userInput'&&!this.users.has(rowKey)&&this.acceptInput({...row,sourceCommandId:row.sourceCommandId??header?.sourceCommandId})){
@@ -258,7 +274,18 @@ export class ConversationEventTranslator {
         if(previous&&JSON.stringify(previous.rows)===signature)continue;
         let delivered=visible;
         if(previous){
-          delivered=this.continuation(visible,previous);
+          try{delivered=this.continuation(visible,previous)}
+          catch(error){
+            if(!this.history||error?.code!=='event-stream-prefix-replaced')throw error;
+            // A history fold re-reads rows an earlier import may have captured mid-flight: when
+            // a turn settled while a row was still streaming (terminal header, lagging row),
+            // the durable text can end up REPLACING — not extending — that settled partial.
+            // The append-only store keeps the first durable copy; re-baseline to the fresh rows
+            // so the divergence never repeats, and let the sync complete around it.
+            this.responses.set(key,{...previous,rows:clean(visible)});
+            for(const row of visible)if(row.kind==='toolCall')this.tool(row,eventRowKey(snapshot.logEpoch,row.rowId),turn.turn,previous.data.step,!!end);
+            continue;
+          }
           if(!delivered.length){for(const row of visible)if(row.kind==='toolCall')this.tool(row,eventRowKey(snapshot.logEpoch,row.rowId),turn.turn,previous.data.step,!!end);continue}
           if(!this.streams.has(key)){if(turn.openStep!==null)this.append('step/end',{turn:turn.turn,step:turn.openStep});turn.openStep=null;turn.steps.delete(key)}
         }
