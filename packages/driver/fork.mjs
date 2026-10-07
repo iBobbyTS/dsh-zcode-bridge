@@ -17,6 +17,14 @@ function identity(value){
 }
 const order=rows=>[...rows].sort((a,b)=>a.createdAtSeq-b.createdAtSeq||a.rowId-b.rowId);
 const kinds=new Set(['turnHeader','userInput','assistantText','reasoning','toolCall']);
+const projectionKinds=new Set(['timelineMarker','hookInvocation','artifact','subagent']);
+function transcriptRows(rows){
+  // v4.mjs:2163-2174: these four cards do not become DSH transcript
+  // messages. Build the same view on BOTH sides before comparing or pairing
+  // indexes; never skip individual mismatches in the retained transcript.
+  if(rows.some(row=>!kinds.has(row.kind)&&!projectionKinds.has(row.kind)))throw deny('guard.forkTargetAmbiguous','unknown conversation row kind');
+  return rows.filter(row=>kinds.has(row.kind));
+}
 // Identity/action/timing fields are projection-local. Conversation content and tool
 // associations must agree; an unrelated or empty child cannot pass this proof.
 const content=row=>Object.fromEntries(['kind','text','origin','guided','state','model','toolCallId','toolName','inputText','status','output','error','attachments'].filter(field=>row[field]!==undefined).map(field=>[field,row[field]]));
@@ -63,8 +71,9 @@ export function forkProjection(binding,sourceRows,branchRows,branchSnapshot){
   const starts=binding.prefix.filter(event=>event.type==='turn/start');
   if(starts.some(event=>!event.data.zcode?.turnKey))throw deny('guard.forkTargetAmbiguous','unmapped inherited turn');
   const turnIds=new Set(starts.map(event=>identity(binding.resolve('turns',event.data.zcode.turnKey).key)[1]));
-  const expected=sourceRows.filter(row=>turnIds.has(row.turnId));
-  if(expected.some(row=>!kinds.has(row.kind))||expected.length!==branchRows.length||!isDeepStrictEqual(expected.map(content),branchRows.map(content)))throw deny('guard.forkTargetAmbiguous','ZCode branch history differs from DSH prefix');
+  const expected=transcriptRows(sourceRows.filter(row=>turnIds.has(row.turnId)));
+  branchRows=transcriptRows(branchRows);
+  if(expected.length!==branchRows.length||!isDeepStrictEqual(expected.map(content),branchRows.map(content)))throw deny('guard.forkTargetAmbiguous','ZCode branch history differs from DSH prefix');
   const turns=new Map(),owners=new Map();
   for(const [index,row] of expected.entries()){
     const childTurn=branchRows[index].turnId;
@@ -84,7 +93,7 @@ export function forkProjection(binding,sourceRows,branchRows,branchSnapshot){
       const kind=event.type==='user/message'?'users':event.type==='tool/call'?'calls':'results';
       if(!meta?.rowKey)throw deny('guard.forkTargetAmbiguous','unmapped inherited message');
       const current=binding.resolve(kind,meta.rowKey).key,rowId=identity(current)[1],child=paired.get(rowId),original=expected.find(row=>row.rowId===rowId);
-      if(!child||event.type==='user/message'&&event.data.content.filter(part=>part.type==='text').map(part=>part.text).join('\n')!==original.text)throw deny('guard.forkTargetAmbiguous');
+      if(!child||!original||event.type==='user/message'&&event.data.content.filter(part=>part.type==='text').map(part=>part.text).join('\n')!==original.text)throw deny('guard.forkTargetAmbiguous');
       add(kind,meta.rowKey,current,key(branchSnapshot.logEpoch,child.rowId));
     }
     if(event.type==='assistant/message'){
