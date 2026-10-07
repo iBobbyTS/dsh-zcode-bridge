@@ -339,6 +339,35 @@ test('replayed events carry the ZCode rows real createdAt, so Completed-in durat
   assert.equal(end.time,61_000,'turn/end closes at the terminal row time — the renderer computes 60s, not the sync moment');
 });
 
+test('turn duration ignores fork-lineage rows with stale createdAt and closes at the terminal updatedAt (ZCode parity)',async()=>{
+  const store=memoryStore(),persistence=fakePersistence(),sessions=fakeSessions();
+  const stale=1_000,hour=3_600_000;
+  const submitted=stale+11*hour,finalCreated=submitted+3*60_000+31_000,finalUpdated=submitted+3*60_000+55_000;
+  const rows=[
+    row('reasoning',10,{text:'carried from the fork lineage',turnId:'turn-1',assistantResponseId:'resp-1',createdAt:stale}),
+    row('toolCall',11,{toolCallId:'call-1',toolName:'Bash',inputText:'{}',status:'success',output:{text:'ok'},turnId:'turn-1',createdAt:stale+20}),
+    row('turnHeader',1,{origin:'userInput',state:'completedSuccess',startedAt:0,turnId:'turn-1',sourceCommandId:'cmd-1',createdAt:submitted}),
+    row('userInput',2,{origin:'realUser',text:'q-1',turnId:'turn-1',sourceCommandId:'cmd-1',createdAt:submitted}),
+    // rowsRange rows carry only createdAt; the task-level finalization time arrives as the
+    // catalog row's updatedAt.
+    row('assistantText',3,{text:'a-1',state:'complete',model:'m',turnId:'turn-1',assistantResponseId:'resp-1',createdAt:finalCreated}),
+  ];
+  const request=rowsRangeRequest(rows);
+  const directory=new LegacyDirectory({store,persistence,sessions,request,
+    listCatalog:async()=>[{sessionId:'zcode-old',workspacePath:'/workspace',title:'t',updatedAt:finalUpdated}],
+    listPersistedHeaders:async()=>[...persistence.records.values()].map(r=>r.header),
+  });
+  await directory.sync({});
+  await directory.ensureReadable('zcode-old');
+  const events=persistence.records.get('zcode-old').events;
+  const start=events.find(event=>event.type==='turn/start'),end=events.find(event=>event.type==='turn/end');
+  const user=events.find(event=>event.type==='user/message');
+  assert.equal(start.time,submitted,'turn/start anchors at the turnHeader row, never at a stale lineage row');
+  assert.equal(user.time,submitted);
+  assert.equal(end.time,finalUpdated,'the final turn closes at the catalog task updatedAt — the ZCode task-duration semantics');
+  assert.equal(end.time-start.time,3*60_000+55_000,'the renderer computes 3m 55s');
+});
+
 test('ensureReadable awaits an in-flight content sync and reports failure explicitly',async()=>{
   const store=memoryStore(),persistence=fakePersistence(),sessions=fakeSessions();
   const rows=historyRows(2);

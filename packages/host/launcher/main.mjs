@@ -59,7 +59,7 @@ control.on('line',line=>{
   if(m.operation==='execution'){
     if(line.length>1024*1024||Object.keys(m).some(key=>!['id','operation','nonce','method','params'].includes(key)))return;
     if(!Number.isSafeInteger(m.id)||m.nonce!==config.executionNonce||!executionRelay||state.auth!=='authenticated')return;
-    void executionRelay.request(m.method,m.params).then(value=>process.stdout.write(JSON.stringify({type:'launcher-read',id:m.id,ok:true,value})+'\n'),error=>process.stdout.write(JSON.stringify({type:'launcher-read',id:m.id,ok:false,code:error.code??'execution-command-failed',...(error.message&&error.message!==error.code?{message:error.message}:{}),...(typeof error.sent==='boolean'?{sent:error.sent}:{})})+'\n'));return;
+    void executionRelay.request(m.method,m.params).then(value=>process.stdout.write(JSON.stringify({type:'launcher-read',id:m.id,ok:true,value})+'\n'),error=>{try{appendFileSync(join(config.runRoot,'launcher-exec-errors.jsonl'),JSON.stringify({method:m.method,params:JSON.stringify(m.params??{}).slice(0,400),code:error.code??null,message:String(error?.message??'').slice(0,400),at:Date.now()})+'\n',{mode:0o600})}catch{}process.stdout.write(JSON.stringify({type:'launcher-read',id:m.id,ok:false,code:error.code??'execution-command-failed',...(error.message&&error.message!==error.code?{message:error.message}:{}),...(typeof error.sent==='boolean'?{sent:error.sent}:{})})+'\n')});return;
   }
   if(!Number.isSafeInteger(m.id)||!['catalog','models','preflight','observation','taskUsage','sendMinimalTask'].includes(m.operation)||Object.keys(m).some(k=>!['id','operation','address'].includes(k)))return;
   reading=reading.then(async()=>{

@@ -48,8 +48,8 @@ export function mergeEventWindows(windows){
  */
 export class ConversationEventTranslator {
   turns=new Map();responses=new Map();users=new Set();calls=new Map();results=new Map();streams=new Map();revision=0;nextTurn=1;tail=Promise.resolve();lifetime=new AbortController();generation=randomUUID();
-  constructor({session,dispatch,conversation,attachments=()=>undefined,input=()=>undefined,claim=()=>{},syncInbox=()=>{},acceptInput=()=>true,clock=Date.now}){
-    Object.assign(this,{session,dispatch,conversation,attachments,input,claim,syncInbox,acceptInput,clock});
+  constructor({session,dispatch,conversation,attachments=()=>undefined,input=()=>undefined,claim=()=>{},syncInbox=()=>{},acceptInput=()=>true,history=false,clock=Date.now}){
+    Object.assign(this,{session,dispatch,conversation,attachments,input,claim,syncInbox,acceptInput,history,clock});
     const events=session.snapshotEvents?.()??Array.from({length:session.seq},(_,seq)=>session.eventAt(seq));
     for(const event of events){
       const data=event.data,meta=data.zcode;
@@ -205,7 +205,7 @@ export class ConversationEventTranslator {
           const input=this.input(row.sourceCommandId??header?.sourceCommandId),first=rows.find(item=>['assistantText','reasoning','toolCall'].includes(item.kind));
           const responseKey=responses.keys().next().value??eventRowKey(snapshot.logEpoch,`${row.turnId}:pending`);
           this.step(turn,responseKey,snapshot,first?rows:[],{pending:!first});
-          const attachments=await renderAttachments(this.conversation,this.attachments(),row,{signal:this.lifetime.signal});
+          const attachments=await renderAttachments(this.conversation,this.attachments(),row,{signal:this.lifetime.signal,...(this.history?{lenient:true}:{})});
           this.lifetime.signal.throwIfAborted();
           const message={id:input?.id??`zcode-user:${rowKey}`,role:'user',source:input?.source??(row.origin==='realUser'||row.guided?{kind:'user'}:{kind:'zcode-context',origin:row.origin}),content:[{type:'text',text:row.text},...attachments],zcode:{rowKey}};
           this.claim(message.id);

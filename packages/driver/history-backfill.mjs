@@ -42,11 +42,13 @@ export function historySnapshots(sessionId,pages){
 
 /** Attachment leg for historical rows: the live V4Conversation read gate requires a subscription
  * and only authorizes refs it uploaded itself, so history reads the same authoritative row-scoped
- * carrier directly. `renderAttachments` then writes the bytes into the DSH attachment store. */
+ * carrier directly. `renderAttachments` then writes the bytes into the DSH attachment store. The
+ * app-server schema requires `limit` (current builds reject an omitted field), so it always
+ * carries the protocol chunk maximum unless the caller picked a smaller one. */
 export function historyAttachmentReader(request,sessionId){
   return {
-    async conversationAttachmentRead({ref,target,attachmentIndex,offset=0,limit,signal}={}){
-      const result=await request('v4/conversation/attachmentRead',{sessionId,ref,target,attachmentIndex,offset,...(limit===undefined?{}:{limit})},{signal});
+    async conversationAttachmentRead({ref,target,attachmentIndex,offset=0,limit=PROTOCOL_V4_LIMITS.attachmentChunkMaxBytes,signal}={}){
+      const result=await request('v4/conversation/attachmentRead',{sessionId,ref,target,attachmentIndex,offset,limit},{signal});
       return v4ConversationAttachmentReadResultSchema.parse(result);
     },
   };

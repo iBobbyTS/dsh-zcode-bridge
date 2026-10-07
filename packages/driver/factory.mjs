@@ -36,8 +36,9 @@ function cancellable(call,signal,abandoned=()=>{}){
 export class DriverFactory {
   accepting=true;transactions=new Set();
   gate={state:'open',fn:null,error:null,waiters:[]};
-  constructor(ctx,{transport,createScope,agentEvents,interruptedTurnClosers,beforeResume}){
+  constructor(ctx,{transport,createScope,agentEvents,interruptedTurnClosers,beforeResume,hostDiagnostics}){
     Object.assign(this,{ctx,transport,createScope,agentEvents,interruptedTurnClosers});
+    if(hostDiagnostics)this.hostDiagnostics=hostDiagnostics;
     if(beforeResume)this.gate={state:'bound',fn:beforeResume,error:null,waiters:[]};
   }
   /** Claim the legacy write gate synchronously when the factory becomes callable. Until the gate is
@@ -156,7 +157,13 @@ export class DriverFactory {
       if(agent.conversation)agent.track(agent.ready());
       options.signal?.removeEventListener('abort',callerAbort);
       return {agent,dispose};
-    }catch(error){await dispose().catch(()=>{});throw error}
+    }catch(error){
+      // Resume diagnostics: the official web host swallows factory failures silently, leaving the
+      // UI with a selected-but-dead session row. Surface the last failure on the shared host
+      // object so /zcode-bridge/status can pinpoint the intermittent open failures.
+      try{this.hostDiagnostics?.set?.('resume',{id,source,code:error?.code??null,message:String(error?.message??error).slice(0,300),stack:String(error?.stack??'').slice(0,800),at:Date.now()})}catch{}
+      await dispose().catch(()=>{});throw error
+    }
   }
   async dispose(){
     this.accepting=false;

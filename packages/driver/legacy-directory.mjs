@@ -4,40 +4,66 @@ import {collectHistoryPages,historySnapshots,historyAttachmentReader} from './hi
 const fault=(code,message)=>Object.assign(new Error(message??code),{code});
 const readEvents=session=>session.snapshotEvents?.()??Array.from({length:session.seq},(_,seq)=>session.eventAt(seq));
 
-/** Rewrite replayed events' `time` from the ZCode rows' own `createdAt`. The official
+/** Rewrite replayed events' `time` from the ZCode rows' own timestamps. The official
  * `Completed in …` turn header is computed from turn/start and turn/end times; without this the
  * replay would stamp everything with the sync moment and every turn would read "1s".
- * Mapping: user/tool events by row key, assistant messages by their canonical rows, turn
- * boundaries by the turn's first/last row. Unmappable events keep their stamped time. */
-export function retimeHistoryEvents(events,rows,epoch){
-  const rowTime=new Map(),turnTime=new Map();
+ * Mapping: user/tool events by row key, assistant messages by their canonical rows. Turn
+ * boundaries follow ZCode's own task-duration semantics:
+ * - turn/start ← the turn's `turnHeader` row createdAt (a fork/steer lineage can carry rows whose
+ *   createdAt predates the turn by hours, so a min-over-rows anchor would inflate the duration);
+ *   fallback: the turn's first user-message row, then the earliest row.
+ * - turn/end ← the max row time of the turn, and for the session's FINAL turn the catalog's task
+ *   `sessionUpdatedAt` when it is later (ZCode's own task duration counts the post-message task
+ *   finalization that no row carries; the rows API exposes only createdAt). Unmappable events
+ *   keep their stamped time. */
+export function retimeHistoryEvents(events,rows,epoch,{sessionUpdatedAt}={}){
+  const rowTime=new Map(),turnTime=new Map(),turnHeader=new Map();
   for(const row of rows){
     const at=typeof row.createdAt==='number'?row.createdAt:Date.parse(row.createdAt);
     if(!Number.isFinite(at))continue;
+    const updatedRaw=row.updatedAt===undefined?at:typeof row.updatedAt==='number'?row.updatedAt:Date.parse(row.updatedAt);
+    const updated=Number.isFinite(updatedRaw)?updatedRaw:at;
     rowTime.set(JSON.stringify([epoch,row.rowId]),at);
     const turnKey=JSON.stringify([epoch,row.turnId]);
     const turn=turnTime.get(turnKey)??{min:at,max:at};
-    turnTime.set(turnKey,{min:Math.min(turn.min,at),max:Math.max(turn.max,at)});
+    turnTime.set(turnKey,{min:Math.min(turn.min,at),max:Math.max(turn.max,updated)});
+    if(row.kind==='turnHeader'){
+      const header=turnHeader.get(turnKey);
+      if(header===undefined||at<header)turnHeader.set(turnKey,at);
+    }
   }
-  const responseTime=new Map(),turnKeyOf=new Map(),responseKeyOf=new Map();
+  const responseTime=new Map(),turnKeyOf=new Map(),responseKeyOf=new Map(),userStart=new Map();
+  let currentTurn;
   for(const event of events){
     const meta=event.data?.zcode;
     if(event.type==='assistant/message'){
       const list=meta?.rows??[];
       const times=list.map(row=>typeof row.createdAt==='number'?row.createdAt:Date.parse(row.createdAt)).filter(Number.isFinite);
       if(times.length)responseTime.set(meta.responseKey,{min:Math.min(...times),max:Math.max(...times)});
-    }else if(event.type==='turn/start')turnKeyOf.set(event.data.turn,meta?.turnKey);
-    else if(event.type==='step/start')responseKeyOf.set(event.data.turn+':'+event.data.step,meta?.responseKey);
+    }else if(event.type==='turn/start'){
+      turnKeyOf.set(event.data.turn,meta?.turnKey);
+      currentTurn=meta?.turnKey;
+    }else if(event.type==='turn/end'){
+      if(currentTurn&&currentTurn===(meta?.turnKey??currentTurn))currentTurn=undefined;
+    }else if(event.type==='user/message'&&currentTurn&&!userStart.has(currentTurn)){
+      const submitted=meta?.rowKey?rowTime.get(meta.rowKey):undefined;
+      if(submitted!==undefined)userStart.set(currentTurn,submitted);
+    }else if(event.type==='step/start')responseKeyOf.set(event.data.turn+':'+event.data.step,meta?.responseKey);
   }
-  return events.map(event=>{
+  const turnStart=turnKey=>turnHeader.get(turnKey)??userStart.get(turnKey)??turnTime.get(turnKey)?.min;
+  const lastTurnEndIndex=events.findLastIndex(event=>event.type==='turn/end');
+  return events.map((event,index)=>{
     const meta=event.data?.zcode;let time;
     if(meta?.rowKey)time=rowTime.get(meta.rowKey);
     else if(meta?.responseKey)time=responseTime.get(meta.responseKey)?.max;
-    else if(meta?.turnKey)time=event.type==='turn/end'?turnTime.get(meta.turnKey)?.max:turnTime.get(meta.turnKey)?.min;
-    else if(event.type==='turn/end')time=turnTime.get(turnKeyOf.get(event.data.turn))?.max;
+    else if(meta?.turnKey)time=event.type==='turn/end'
+      ?Math.max(turnTime.get(meta.turnKey)?.max??-Infinity,index===lastTurnEndIndex&&typeof sessionUpdatedAt==='number'?sessionUpdatedAt:-Infinity)
+      :turnStart(meta.turnKey);
+    else if(event.type==='turn/end')time=Math.max(turnTime.get(turnKeyOf.get(event.data.turn))?.max??-Infinity,index===lastTurnEndIndex&&typeof sessionUpdatedAt==='number'?sessionUpdatedAt:-Infinity);
+    else if(event.type==='turn/start')time=turnStart(turnKeyOf.get(event.data.turn));
     else if(event.type==='step/end')time=responseTime.get(responseKeyOf.get(event.data.turn+':'+event.data.step))?.max;
     else if(event.type==='step/start')time=responseTime.get(meta?.responseKey)?.min;
-    return time===undefined?event:{...event,time};
+    return !Number.isFinite(time)&&time!==undefined?event:time===undefined?event:{...event,time};
   });
 }
 
@@ -48,7 +74,7 @@ export function retimeHistoryEvents(events,rows,epoch){
  * every later open re-probes ZCode's tail and appends only what changed (the replay is idempotent
  * against already-persisted events). */
 export class LegacyDirectory {
-  rows=new Map();inflight=new Map();announced=new Map();opened=new Set();attached=new Set();headers=new Map();normalized=new Set();disposed=false;
+  rows=new Map();inflight=new Map();announced=new Map();announcing=new Map();opened=new Set();attached=new Set();headers=new Map();disposed=false;
   constructor({store,persistence,listCatalog,listPersistedHeaders,request,attachments=()=>undefined,sessions,workspaceRegistry,intervalMs=5000,onError=()=>{}}){
     Object.assign(this,{store,persistence,listCatalog,listPersistedHeaders,request,attachments,sessions,workspaceRegistry,intervalMs,onError});
   }
@@ -90,18 +116,39 @@ export class LegacyDirectory {
   ensureReadable(sessionId,{signal}={}){
     // The resume write gate runs before the factory prepares the session id; our announced
     // placeholder entry holds that id in the session store, so release it here or the factory's
-    // prepare would collide with "session already exists".
-    this.#release(sessionId);
-    const state=this.store.value.legacy[sessionId];
-    if(state?.state==='readable')return this.#probeFresh(sessionId,{signal});
-    const inflight=this.inflight.get(sessionId);
-    if(inflight)return inflight;
+    // prepare would collide with "session already exists". A poll announce in flight for the same
+    // id must land first: releasing mid-announce would let the announce's enter collide with the
+    // factory's prepare (or vice versa) and fail the open.
+    const announcing=this.announcing.get(sessionId);
+    const gate=(async()=>{
+      if(announcing)await announcing.catch(()=>{});
+      this.#release(sessionId);
+      const state=this.store.value.legacy[sessionId];
+      let task;
+      if(state?.state==='readable')task=this.#probeFresh(sessionId,{signal});
+      else{
+        const inflight=this.inflight.get(sessionId);
+        if(inflight)return inflight;
+        const row=this.rows.get(sessionId);
+        if(!row){
+          if(state)return Promise.reject(fault('legacy-backfill-unavailable',`the ZCode history for "${sessionId}" is not readable yet and its catalog row is unavailable`));
+          return Promise.resolve(undefined);
+        }
+        task=this.#ensure(row,{signal});
+      }
+    // A failed gate must not leave the row invisible: the release above already withdrew the
+    // announced placeholder, and the factory only re-enters the id when the gate resolves. On
+    // rejection the announcement is restored so list surfaces keep showing the session and the
+    // next open retries the sync.
+      if(task&&typeof task.then==='function')return await task.catch(error=>{this.#restore(sessionId);throw error});
+      return task;
+    })();
+    return gate;
+  }
+  #restore(sessionId){
+    this.opened.delete(sessionId);
     const row=this.rows.get(sessionId);
-    if(!row){
-      if(state)return Promise.reject(fault('legacy-backfill-unavailable',`the ZCode history for "${sessionId}" is not readable yet and its catalog row is unavailable`));
-      return Promise.resolve(undefined);
-    }
-    return this.#ensure(row,{signal});
+    if(row&&!this.disposed)void this.#announce(row).catch(()=>{});
   }
   /** One tail-page read decides whether the persisted history is already current. Fresh → cheap
    * return; newer rows → idempotent resync appends just the delta. A changed log epoch means the
@@ -161,9 +208,12 @@ export class LegacyDirectory {
    * The announced header must be observation-compatible with the persisted placeholder header
    * (0.2.1 session-query rejects a logical source whose live and persisted headers disagree), so
    * the createdAt/cwd come from the persisted header when one exists. */
-  async #announce(row){
+  #announce(row){
     const id=row.sessionId;
-    if(this.disposed)return;
+    if(this.disposed)return Promise.resolve();
+    const existing=this.announcing.get(id);
+    if(existing)return existing;
+    const flight=(async()=>{
     const persisted=this.headers.get(id);
     const cwd=persisted?.cwd??row.cwd??row.workspacePath;
     const root=typeof cwd==='string'&&cwd.startsWith('/')?cwd:undefined;
@@ -185,23 +235,10 @@ export class LegacyDirectory {
     if(this.opened.has(id)){await attach();return}
     const createdAt=persisted?.createdAt??(typeof row.updatedAt==='number'?row.updatedAt:typeof row.createdAt==='number'?row.createdAt:Date.now());
     const activityAt=typeof row.updatedAt==='number'?row.updatedAt:createdAt;
-    // A title-only placeholder created before the catalog carried task timestamps orders by the
-    // sync moment. Normalize it once (idempotent on time equality) so list surfaces rank the row
-    // by the task's real last activity; only title-only placeholders are touched, never a synced
-    // transcript.
-    if(typeof row.updatedAt==='number'&&this.store.value.legacy[id]?.state==='listed'&&!this.normalized.has(id)&&typeof row.title==='string'&&row.title.trim()){
-      this.normalized.add(id);
-      try{
-        const handle=await this.persistence.open(id,'write');
-        try{
-          const events=(await handle.read(0,undefined)).events;
-          const last=events.at(-1);
-          if(last?.type==='session/title'&&last.time!==activityAt){
-            await handle.append([{type:'session/title',data:{title:row.title,messageSeqs:[],source:{kind:'user'}},seq:events.length,time:activityAt}]);
-          }
-        }finally{await handle.close()}
-      }catch{}
-    }
+    // The directory never opens a placeholder write handle here: the resume write gate (and the
+    // factory's persistence.open(id,'write')) must not race a concurrent poll for the same id —
+    // a lease collision would abort the resume and drop the row from every list surface. The
+    // placeholder's persisted timestamps are already written correctly at creation.
     const seed=[];
     if(typeof row.title==='string'&&row.title.trim())seed.push({type:'session/title',data:{title:row.title,messageSeqs:[],source:{kind:'user'}},seq:0,time:activityAt});
     // Live-only visibility marker: 0.2.1 hides blank sessions ("no turn/start") from every list
@@ -222,6 +259,9 @@ export class LegacyDirectory {
       this.opened.add(id);
     }
     await attach();
+    })();
+    this.announcing.set(id,flight.finally(()=>this.announcing.delete(id)));
+    return flight;
   }
   #release(id){
     const entry=this.announced.get(id);
@@ -289,7 +329,7 @@ export class LegacyDirectory {
       const session=this.sessions.prepare(id,{meta:{cwd:row.cwd??row.workspacePath},seed:existing});
       const translator=new ConversationEventTranslator({
         session,dispatch:{emit(){}},conversation:historyAttachmentReader(this.request,id),
-        attachments:this.attachments,input:()=>undefined,claim:()=>{},syncInbox:()=>{},
+        attachments:this.attachments,input:()=>undefined,claim:()=>{},syncInbox:()=>{},history:true,
       });
       try{await translator.replay(windows)}finally{await translator.close()}
       const appended=readEvents(session).slice(existing.length);
@@ -301,7 +341,7 @@ export class LegacyDirectory {
       // Retime against the FULL merged window: a multi-page history puts only the oldest page in
       // `windows.at(-1)`, and rows outside the retime set would keep the sync-moment timestamp.
       const merged=mergeEventWindows(windows);
-      const retimed=retimeHistoryEvents(toAppend,merged.rows.window,merged.logEpoch);
+      const retimed=retimeHistoryEvents(toAppend,merged.rows.window,merged.logEpoch,{sessionUpdatedAt:typeof row.updatedAt==='number'?row.updatedAt:undefined});
       if(retimed.length)await handle.append(retimed);
       const tail=pages[0];
       return {appended:body.length,cursor:{logEpoch:tail.atLogEpoch,revision:tail.atRevision,seq:tail.atSeq,maxRowId:Math.max(0,...tail.rows.map(item=>item.rowId))}};

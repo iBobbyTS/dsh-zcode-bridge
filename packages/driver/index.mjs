@@ -57,7 +57,7 @@ export function armLlmRouteReadiness({replace,isReady,onReady=()=>{},intervalMs=
 export async function apply(ctx){
   const [{createScope},{agentEvents},{interruptedTurnClosers}]=await Promise.all([import('@deepseek-ai/dsh-scope'),import('@deepseek-ai/dsh-agent'),import('@deepseek-ai/dsh-session')]);
   const host=ctx.zcodeBridgeHost;
-  const driver=installDriver(ctx,{createScope,agentEvents,interruptedTurnClosers,transport:new DriverTransport(host)});
+  const driver=installDriver(ctx,{createScope,agentEvents,interruptedTurnClosers,transport:new DriverTransport(host),hostDiagnostics:host.driverDiagnostics??=new Map()});
   host.driverState=driver.state;
   if(driver.state.state==='occupied'){
     // The occupied driver owns the official catalog import. Retire the host mirror directory

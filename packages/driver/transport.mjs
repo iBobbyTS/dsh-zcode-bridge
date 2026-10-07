@@ -15,7 +15,7 @@ export class DriverTransport {
     signal?.throwIfAborted();
     const state=this.host.launcher?.state;
     if(state?.phase!=='ready'||state.auth!=='authenticated'||!state.executionWorkspace)throw fault('execution-unavailable');
-    if(cwd!==undefined&&cwd!==state.executionWorkspace)throw fault('driver-workspace-mismatch');
+    if(cwd!==undefined&&cwd!==state.executionWorkspace)throw Object.assign(fault('driver-workspace-mismatch'),{cwd,executionWorkspace:state.executionWorkspace});
     if(!this.peer){
       this.peer=new LauncherPeer(this.host.launcher);
       this.offRecovery=this.host.launcher.subscribe(state=>{if(state.phase!=='ready')this.handshake=null});
@@ -54,6 +54,10 @@ export class DriverTransport {
       clientId:'dsh-zcode-driver',clientMode:'desktop-continuous',runnable:true,managementAllowed:true,reconnectable:true,
     });
   }
-  async resume({zcodeConversationId,cwd,signal}){await this.ready(cwd,signal);return zcodeConversationId}
+  /** Resume only establishes the authenticated handshake: a resumed legacy/history session lives
+   * in ANY workspace (its own project dir), never the launcher's single execution workspace, so
+   * the create-side cwd equality check must not apply here. The conversation address carries the
+   * session's own workspace when a binding exists. */
+  async resume({zcodeConversationId,cwd,signal}){await this.ready(undefined,signal);return zcodeConversationId}
   dispose(){this.offRecovery?.();this.peer?.close()}
 }

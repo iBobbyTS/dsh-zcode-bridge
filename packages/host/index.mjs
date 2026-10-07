@@ -135,7 +135,7 @@ export function apply(ctx,config={}) {
       if(endpoint!=='status'&&endpoint!=='connect')return {ok:false,error:{code:'not-found',message:`Endpoint ${endpoint} not found`,details:{}}};
       if(payload!==null&&payload!==undefined&&!(typeof payload==='object'&&!Array.isArray(payload)&&Object.keys(payload).length===0))return {ok:false,error:{code:'invalid-payload',message:'This endpoint accepts no runtime commands',details:{}}};
       if(signal.aborted)return {ok:false,error:{code:'cancelled',message:'Cancelled',details:{}}};
-      return {ok:true,value:{...(endpoint==='connect'?await host.connect():host.status),driverState:host.driverState??{state:'unavailable',reason:'driver-not-loaded'}}};
+      return {ok:true,value:{...(endpoint==='connect'?await host.connect():host.status),driverState:host.driverState??{state:'unavailable',reason:'driver-not-loaded'},driverDiagnostics:host.driverDiagnostics instanceof Map?Object.fromEntries(host.driverDiagnostics):{}}};
     });
   });
 }
