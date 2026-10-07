@@ -5,8 +5,6 @@ import {resolve} from 'node:path';
 import vm from 'node:vm';
 import React from 'react';
 import {ParityController} from '../packages/client/parity.mjs';
-import {RuntimeControls} from '../packages/client/runtime.mjs';
-import {RuntimeLifecycleDock} from '../packages/client/runtime-controls.mjs';
 import {parityWorld,fixtures,tick,row} from './helpers/settings-panel-parity.mjs';
 const require=createRequire(import.meta.url),{buildSync}=require('esbuild'),{JSDOM}=require('jsdom'),{createRoot}=require('react-dom/client'),{Simulate}=require('react-dom/test-utils');
 function load(path){const code=buildSync({entryPoints:[resolve(path)],bundle:true,write:false,platform:'node',format:'cjs',external:['react']}).outputFiles[0].text,mod={exports:{}};vm.runInThisContext('(function(require,module,exports){'+code+'\n})')(require,mod,mod.exports);return mod.exports}
@@ -60,11 +58,6 @@ test('Preferences UI writes and reads official values; feedback click targets an
  const w=await parityWorld(),controller=new ParityController(w.rpc,{sessionId:w.id});let mounted;try{mounted=await mount(ui.PreferencesPanel,{controller});assert.ok(document.body.textContent.includes('active workspaces'));await mounted.click([...document.querySelectorAll('button')].find(b=>b.textContent==='Disable'));assert.equal(w.calls.find(c=>c.name==='update').args[0].askUserQuestionAutoResolutionEnabled,false);await mounted.close();mounted=null;
  const s=structuredClone(w.official.snapshot);s.seq++;s.rows.window=[row('assistantText',2,{text:'official answer',state:'complete'})];w.official.publish(s);await tick();mounted=await mount(ui.FeedbackPanel,{controller,snapshot:s});await mounted.click(mounted.button('Like'));const sent=w.official.calls.find(c=>c.params?.type==='setAssistantFeedback');assert.deepEqual(sent.params.payload,{target:{rowId:2,entityId:'row-2'},feedback:'like'});assert.equal(sent.params.baseRevision,s.revision);
  }finally{await mounted?.close();controller.dispose();await w.close()}
-});
-
-test('Native held queue dialog preserves native request identity on confirm and never sends a deletion command',async()=>{
- const w=await parityWorld();let mounted,controls;try{const s=structuredClone(w.official.snapshot);s.seq++;s.inputRouting.mode='choice';s.queue.autoDrain=false;s.queue.items=[{sourceCommandId:'source',queueItemId:'q',clientId:'gui',kind:'sendText',text:'Official queued',attachments:[],delivery:{requested:'queue',admitted:'queue'},order:{admissionSeq:1},steer:{state:'notRequested'},dispatch:{state:'queued'},admittedAt:0}];w.official.publish(s);await tick();w.runtime.agents.get(w.id).followup({id:'input',role:'user',source:{kind:'user',rpcId:'native-held'},content:[{type:'text',text:'Original held text'}]});await tick();await tick();controls=new RuntimeControls(w.rpc);await controls.info(w.id);mounted=await mount(RuntimeLifecycleDock,{controls,sessionId:w.id});assert.ok(document.querySelector('[aria-label="Paused queue disposition"]'));assert.ok(document.body.textContent.includes('Original held text'));await mounted.click(mounted.button('保留队列并发送'));assert.equal(document.querySelector('[aria-label="Paused queue disposition"]'),null);const sent=w.official.calls.find(c=>c.params?.type==='sendText');assert.equal(w.runtime.agents.get(w.id).commands.nativeRequestId(sent.params.commandId),'native-held');assert.equal(w.official.calls.some(c=>c.params?.type==='deleteQueueItem'),false);
- }finally{await mounted?.close();controls?.dispose();await w.close()}
 });
 
 test('Attachment file UI commits through v4 before input and shows no sent attachment when upload fails',async()=>{

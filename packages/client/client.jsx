@@ -6,7 +6,7 @@ import { statusText } from './status.mjs';
 import { StatusController } from './controller.mjs';
 import { installParityPanels } from './parity-controls.jsx';
 export { BridgeParityPage,BridgeSettingsPanel,AutomationPanel,PreferencesPanel,FeedbackPanel,AttachmentPanel,SessionParityPanel,DiagnosticsExtras } from './parity-controls.jsx';
-import { installRuntimeControls } from './runtime-controls.mjs';
+export { QueueSendNowControl,ZCodeInterlockBanner } from './session-dock-controls.jsx';
 import { CompatibilityStore } from './compatibility.mjs';
 export { CompatibilityStore } from './compatibility.mjs';
 export const inject=['slots','locale','connection','sessions','uiWorkspace'];
@@ -17,8 +17,10 @@ export function apply(ctx){
   // plugin opens. There is deliberately no manual Connect gate; failures surface through status.
   const connection=new StatusController(ctx.connection.rpc,ctx.connection.state);
   ctx.effect(()=>{connection.start();return ()=>connection.dispose()},'zcode-bridge: auto connection');
-  const controls=installRuntimeControls(ctx);
-  installParityPanels(ctx,connection,controls,StatusCard);
+  // Panels-only assembly: the retired co-existence painting layer (runtime hero/locked label/
+  // provider badge/lifecycle dock) is no longer mounted; the retained send-now entry lives in the
+  // session parity dock and the interlock notice in the parity page.
+  installParityPanels(ctx,connection,StatusCard);
   ctx.effect(()=>ctx.locale.register('zcodeBridge',{zh,en}),'zcode-bridge: locale');
 }
 /** R19 version banner and R20 fail-safe notices. Dismissal is a separate local preference and

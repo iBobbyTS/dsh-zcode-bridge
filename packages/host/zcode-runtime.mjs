@@ -7,9 +7,6 @@ import { mirrorLifecycle } from './mirror-lifecycle.mjs';
 import { MirrorState } from './mirror-state.mjs';
 import { randomUUID } from 'node:crypto';
 import { CommandLifecycle } from './command-lifecycle.mjs';
-import { installMirrorHistory } from './mirror-history.mjs';
-import { installMirrorGuards } from './mirror-guards.mjs';
-import { installZCodeLlm } from './zcode-llm.mjs';
 import { officialSelection, resolveDiscovered, selectionFailure } from './model-selection.mjs';
 import { LauncherPeer } from './launcher/execution.mjs';
 import { ZCodeAgent } from './zcode-agent.mjs';
@@ -308,8 +305,12 @@ export async function installZCodeRuntime(ctx,host,options={}){
   const {createScope}=options.createScope?options:await import('@deepseek-ai/dsh-scope');
   const {agentEvents}=options.agentEvents?options:await import('@deepseek-ai/dsh-agent');
   const runtime=new ZCodeRuntime(ctx,host,{...options,createScope,agentEvents});
-  await runtime.start();installMirrorGuards(ctx,runtime);installMirrorHistory(ctx,runtime);installZCodeLlm(ctx,{discover:()=>runtime.modelProviders()});
-  // Expose only the catalog read side to the in-process driver; the mirror publication chain is untouched.
+  await runtime.start();
+  // Product assembly is driver-only: the mirror guard/history wrappers and the llm route
+  // registration are retired from this host entry. The driver owns the official selection surface
+  // and registers the zcode llm route at occupancy (S03 re-home). Only the read-side discovery the
+  // driver consumes (catalog rows, provider/model groups) stays exposed on the shared host.
   host.zcodeCatalog=()=>runtime.catalogSnapshot();
+  host.zcodeModels=()=>runtime.modelProviders();
   return runtime;
 }

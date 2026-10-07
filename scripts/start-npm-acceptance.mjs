@@ -9,15 +9,10 @@ import {createServer} from 'node:net';
 import {randomUUID} from 'node:crypto';
 import {createLauncherConfig} from '../packages/host/launcher/config.mjs';
 
-const args=process.argv.slice(2),allowed=new Set(['--root','--port','--smoke','--prepare-only','--diagnose-version-seams']);
-let root,port=3208,smoke=false,prepareOnly=false,diagnose=false;
-for(let i=0;i<args.length;i++){
-  const arg=args[i];if(!allowed.has(arg))throw Error('Unknown option: '+arg);
-  if(arg==='--smoke')smoke=true;else if(arg==='--prepare-only')prepareOnly=true;else if(arg==='--diagnose-version-seams')diagnose=true;
-  else {const value=args[++i];if(!value||value.startsWith('--'))throw Error('Missing value for '+arg);if(arg==='--root')root=resolve(value);else port=Number(value)}
-}
-if(!Number.isInteger(port)||port<1024||port>65535)throw Error('Invalid port');
-if(smoke&&prepareOnly)throw Error('Choose --smoke or --prepare-only');
+import {parseAcceptanceArgs,assertAcceptanceArgs,profilePatchFor,pluginInstallTargets,driverModeProbe,runDriverLifecycleProbe} from './acceptance-driver-mode.mjs';
+
+const {root:_root,port,smoke,prepareOnly,diagnose,driverMode}=assertAcceptanceArgs(parseAcceptanceArgs(process.argv.slice(2),{resolve}));
+let root=_root;
 if(root){if(existsSync(root))throw Error('Root must be new; existing environments are never overwritten');mkdirSync(root,{recursive:true,mode:0o700})}
 else root=mkdtempSync(join(tmpdir(),'dsh-closure-acceptance-npm-'));
 const repo=resolve(fileURLToPath(new URL('..',import.meta.url))),parent=resolve(repo,'..');
@@ -38,7 +33,8 @@ try{
   const pkg=join(install,'node_modules/@deepseek-ai/dsh'),cli=join(pkg,'lib/bin.js');
   result.npmVersion=JSON.parse(readFileSync(join(pkg,'package.json'),'utf8')).version;
   run('bridge-build',process.execPath,[join(repo,'scripts/build.mjs')]);
-  const pluginArgs=[cli,'plugin','--profile','web','add','--ignore-scripts','file:'+repo,'file:'+join(repo,'packages/host'),'file:'+join(repo,'packages/client')];
+  const pluginArgs=[cli,'plugin','--profile','web','add','--ignore-scripts',...pluginInstallTargets({repo,driverMode})];
+  result.driverMode=driverMode;save();
   try{run('plugin-install',process.execPath,pluginArgs)}catch(error){
     const log=readFileSync(join(root,'plugin-install.log'),'utf8');
     const hostVersion=JSON.parse(readFileSync(join(repo,'packages/host/package.json'),'utf8')).version;
@@ -54,7 +50,8 @@ try{
   // Production validator retains HOME/socket/landings; no alternate isolation profile.
   createLauncherConfig(launcher);
   for(const path of [launcher.artifactRoot,launcher.electronPath,launcher.builtinConfig])if(!existsSync(path))throw Error('Missing launcher prerequisite: '+path);
-  writeFileSync(join(profile,'cordis.patch.yml'),JSON.stringify([{id:'zcode-bridge-host',config:{authorityMode:'host-backed',launcher}},{id:'session-title-llm',disabled:true}],null,2),{mode:0o600});
+  // The official agent-loop row is disabled only in this generated isolated profile for driver mode.
+  writeFileSync(join(profile,'cordis.patch.yml'),JSON.stringify(profilePatchFor({launcher,driverMode}),null,2),{mode:0o600});
   result.launcher={scratchRoot:launcher.scratchRoot,runId:launcher.runId};save();
   if(prepareOnly){result.outcome='prepared';save();console.log(JSON.stringify(result));process.exit(0)}
   // Refuse occupied ports. Never stop another server or reuse its health response.
@@ -87,14 +84,30 @@ try{
   do{
     const statusResponse=await fetch(result.baseURL+'/zcode-bridge/status',{method:'POST',headers:{cookie,'content-type':'application/json'},body:JSON.stringify({type:'client-request',rpcId:randomUUID(),method:'status',payload:{}}),signal:AbortSignal.timeout(5000)});
     result.bridgeStatusHttp=statusResponse.status;
-    try{const body=await statusResponse.json(),value=body.result?.value;result.bridgeStatus={ok:body.result?.ok??false,state:value?.state,reason:value?.reason,launcherPhase:value?.launcher?.phase,error:body.result?.error?.code}}catch{result.bridgeStatus={ok:false,error:'status-response-unavailable'}}
+    try{const body=await statusResponse.json(),value=body.result?.value;result.bridgeStatus={ok:body.result?.ok??false,state:value?.state,reason:value?.reason,launcherPhase:value?.launcher?.phase,driverState:value?.driverState,error:body.result?.error?.code}}catch{result.bridgeStatus={ok:false,error:'status-response-unavailable'}}
     if(!['starting','bootstrapping'].includes(result.bridgeStatus.launcherPhase)||exited)break;
     await new Promise(ok=>setTimeout(ok,1000));
   }while(Date.now()<statusDeadline);
   const logText=readFileSync(join(root,'web.log'),'utf8');
   result.pluginErrors=logText.split('\n').filter(line=>/TypeError|ReferenceError|ERR_MODULE_NOT_FOUND|Cannot find|not a function|failed to (load|apply)/i.test(line));
   result.runtimeReady=result.bridgeStatus.launcherPhase==='ready';
-  result.outcome=result.pluginErrors.length||!result.bridgeStatus.ok?'seam-differences-found':!result.runtimeReady?'web-booted-runtime-unconfirmed':result.versionExemption?'web-booted-with-diagnostic-exemption':'web-booted';save();
+  const probe=driverModeProbe({driverMode,bridgeStatus:result.bridgeStatus,pluginErrors:result.pluginErrors,launcherReady:result.runtimeReady});
+  result.driverModeProbe=probe;
+  // Opt-in lifecycle probe (create→prompt→stop→follow) over the authenticated bridge surface.
+  // Kept behind an explicit switch because it creates and drives a real official session.
+  if(driverMode&&process.env.DSH_ACCEPTANCE_LIFECYCLE==='1'){
+    try{
+      const bridgeCall=async(endpoint,payload)=>{
+        const response=await fetch(result.baseURL+'/zcode-bridge/'+endpoint,{method:'POST',headers:{cookie,'content-type':'application/json'},body:JSON.stringify({type:'client-request',rpcId:randomUUID(),method:endpoint,payload}),signal:AbortSignal.timeout(30000)});
+        const body=await response.json();
+        if(body.result?.ok!==true)throw Error(body.result?.error?.code??'bridge-call-failed');
+        return body.result.value;
+      };
+      result.driverLifecycleProbe=await runDriverLifecycleProbe(bridgeCall);
+    }catch(error){result.driverLifecycleProbe={ok:false,failure:error.message}}
+    if(!result.driverLifecycleProbe.ok)result.outcome='driver-lifecycle-probe-unconfirmed';
+  }
+  result.outcome=result.pluginErrors.length||!result.bridgeStatus.ok||!probe.ok?'seam-differences-found':!result.runtimeReady?'web-booted-runtime-unconfirmed':result.versionExemption?'web-booted-with-diagnostic-exemption':'web-booted';save();
   console.log(JSON.stringify({root,npmVersion:result.npmVersion,outcome:result.outcome,baseURL:result.baseURL,resultPath:join(root,'environment-result.json'),note:'Web boot only; parent owns read-only browser acceptance. Token is in local web.log.'}));
   if(smoke){await stop();result.webExitCode=exitCode;save();if(result.outcome==='seam-differences-found')process.exitCode=2}
   else {await done;result.webExitCode=exitCode;save();process.exitCode=exitCode??1}

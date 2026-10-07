@@ -3,6 +3,7 @@ import { ParityController } from './parity.mjs';
 import {HookReviewPanel} from './hook-review.jsx';
 import {UserInputCard} from './user-input-card.jsx';
 import {HistoryMutationsCard} from './history-mutations.jsx';
+import {QueueSendNowControl,ZCodeInterlockBanner} from './session-dock-controls.jsx';
 import { ZCodeCatalogPanel,catalogLocales } from './catalog-view.jsx';
 import { ZCodeInsightsPanel,insightsLocales } from './insights-view.jsx';
 import { ZCodeWorkflowPanel } from './workflow-view.jsx';
@@ -121,17 +122,24 @@ export function HistoryResourcesPanel({controller,snapshot}){
     {data&&read.value.kind==='fileRewindPreview'&&<><p>Official rewind preview · {data.canApply?'safe to apply':'cannot apply'}</p>{[['safeFiles','Safe files'],['unsafeFiles','Unsafe files'],['ignoredFiles','Ignored files']].map(([key,label])=><div key={key}><h5>{label}</h5><ul>{data[key].map(item=><li key={item.path}>{item.path} · {item.reason??item.action??'ignored'}</li>)}</ul></div>)}</>}
   </section>;
 }
-export function SessionParityPanel({rpc,sessionId,controls,connectionGeneration}){
+export function SessionParityPanel({rpc,sessionId,connectionGeneration}){
   const controller=useMemo(()=>new ParityController(rpc,{sessionId,connectionGeneration}),[rpc,sessionId,connectionGeneration]);
   useEffect(()=>()=>controller.dispose(),[controller]);
-  useSyncExternalStore(controls.subscribe,controls.getSnapshot,controls.getSnapshot);
-  const info=controls.infos.get(sessionId),read=useParityRead(controller);
-  useEffect(()=>{if(info?.runtime==='zcode'&&info.officialAddress?.sessionId)void read.run(()=>controller.call('snapshot','read'))},[controller,info?.runtime,info?.officialAddress?.sessionId]);
-  if(info?.runtime!=='zcode')return null;
+  const read=useParityRead(controller);
+  // Driver-only assembly: the dock family is gated by its own official projection probe, not by the
+  // retired mirror runtime-controls store. A session without a ZCode projection hides the dock.
+  const [available,setAvailable]=useState(null);
+  useEffect(()=>{
+    let cancelled=false;setAvailable(null);
+    controller.call('snapshot','read').then(()=>{if(!cancelled)setAvailable(true)},()=>{if(!cancelled)setAvailable(false)});
+    return ()=>{cancelled=true};
+  },[controller,sessionId]);
+  useEffect(()=>{if(available===true)void read.run(()=>controller.call('snapshot','read'))},[controller,available]);
+  if(available!==true)return null;
   const state=read.value,snapshot=state?.snapshot;
-  return <>{info.officialAddress?.sessionId&&<HookReviewPanel controller={controller}/>}{info.officialAddress?.sessionId&&<UserInputCard controller={controller}/>}{info.officialAddress?.sessionId&&<HistoryMutationsCard controller={controller}/>}<details data-zcode-session-parity="" style={{maxHeight:420,overflow:'auto'}}><summary>Zcode Bridge · workflows, feedback and attachments</summary><button disabled={read.busy} onClick={()=>void read.run(()=>controller.call('snapshot','read'))}>Refresh session capabilities</button><Result read={read}/>
+  return <><HookReviewPanel controller={controller}/><UserInputCard controller={controller}/><HistoryMutationsCard controller={controller}/><QueueSendNowControl controller={controller}/><details data-zcode-session-parity="" style={{maxHeight:420,overflow:'auto'}}><summary>Zcode Bridge · workflows, feedback and attachments</summary><button disabled={read.busy} onClick={()=>void read.run(()=>controller.call('snapshot','read'))}>Refresh session capabilities</button><Result read={read}/>
     {state&&<><ZCodeWorkflowPanel state={state} controller={controller}/><DiagnosticsExtras controller={controller} sessionId={sessionId} snapshot={snapshot}/><FeedbackPanel controller={controller} snapshot={snapshot}/><QueuePreferencesPanel controller={controller} snapshot={snapshot}/><HistoryResourcesPanel controller={controller} snapshot={snapshot}/><AttachmentPanel controller={controller} snapshot={snapshot}/></>}
-    {!info.officialAddress?.sessionId&&<p>The first text input creates the official session. Session-bound resources are available after its official projection arrives.</p>}
+    {!snapshot&&<p>The first text input creates the official session. Session-bound resources are available after its official projection arrives.</p>}
   </details></>;
 }
 export function WorkspacePresentationPanel({controller}){
@@ -148,13 +156,13 @@ export function WorkspacePresentationPanel({controller}){
     </article>)}
   </section>;
 }
-export function BridgeParityPage({controller:statusController,rpc,controls,connectionGeneration,t=fallback,view,settingsOnly=false,StatusComponent}){
+export function BridgeParityPage({controller:statusController,rpc,connectionGeneration,t=fallback,view,settingsOnly=false,StatusComponent}){
   const {status}=useSyncExternalStore(statusController.subscribe,statusController.getSnapshot,statusController.getSnapshot);
   const controller=useMemo(()=>new ParityController(rpc,{connectionGeneration}),[rpc,connectionGeneration]);
   useEffect(()=>()=>controller.dispose(),[controller]);
   const [tab,setTab]=useState(settingsOnly?'settings':'catalog');
   if(view==='summary')return t('title');
-  return <div style={{...style,overflow:'auto'}}><BridgeSettingsPanel rpc={rpc} status={status} t={t} onDiagnostics={()=>setTab('insights')}/>{StatusComponent&&!settingsOnly&&<details open={status?.failSafe?.incompatible||['newer-unverified','identity-mismatch'].includes(status?.compatibility?.state)}><summary>{t('connection')}</summary><StatusComponent controller={statusController}/></details>}
+  return <div style={{...style,overflow:'auto'}}><ZCodeInterlockBanner status={status}/><BridgeSettingsPanel rpc={rpc} status={status} t={t} onDiagnostics={()=>setTab('insights')}/>{StatusComponent&&!settingsOnly&&<details open={status?.failSafe?.incompatible||['newer-unverified','identity-mismatch'].includes(status?.compatibility?.state)}><summary>{t('connection')}</summary><StatusComponent controller={statusController}/></details>}
     {(!settingsOnly||tab!=='settings')&&<><nav aria-label="Zcode Bridge panels">{['catalog','insights','automation','workflows','workspace','preferences'].map(key=><button type="button" key={key} aria-pressed={tab===key} onClick={()=>setTab(key)}>{t(key)}</button>)}</nav>
       {tab==='catalog'&&<ZCodeCatalogPanel sources={controller.catalog} t={key=>t('catalog.'+key)}/>}
       {tab==='insights'&&<><ZCodeInsightsPanel sources={controller.insights} t={key=>t('insights.'+key)}/><DiagnosticsExtras controller={controller}/></>}
@@ -165,9 +173,9 @@ export function BridgeParityPage({controller:statusController,rpc,controls,conne
     </>}
   </div>;
 }
-export function installParityPanels(ctx,statusController,controls,StatusComponent){
+export function installParityPanels(ctx,statusController,StatusComponent){
   ctx.effect(()=>ctx.locale.register('zcodeBridgeParity',parityLocales),'zcode-bridge: parity locale');
-  const injected=()=>({controller:statusController,rpc:ctx.connection.rpc,controls,connectionGeneration:ctx.connection.generation,StatusComponent});
+  const injected=()=>({controller:statusController,rpc:ctx.connection.rpc,connectionGeneration:ctx.connection.generation,StatusComponent});
   ctx.slots.inject('plugins.bundle.config',()=>ctx.slots.register({name:'plugins.bundle.config',id:'zcode-bridge-status',key:'@dsh-zcode/bridge',locale:'zcodeBridgeParity',inject:injected},BridgeParityPage));
   ctx.slots.inject('settings.section',()=>ctx.slots.register({name:'settings.section',id:'zcode-bridge',order:60,label:'Zcode Bridge',locale:'zcodeBridgeParity',inject:()=>({...injected(),settingsOnly:true})},BridgeParityPage));
   ctx.slots.inject('conversation.input.dock',()=>ctx.slots.register({name:'conversation.input.dock',id:'zcode-parity',order:22,registrant:'zcode-parity',inject:sessionId=>({...injected(),sessionId})},SessionParityPanel));

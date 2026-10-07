@@ -5,7 +5,6 @@ import {PassThrough} from 'node:stream';
 import {ProtocolPeer} from '../packages/host/protocol.mjs';
 import {V4Conversation,newCommandId} from '../packages/host/conversation.mjs';
 import {requestWorkflow} from '../packages/host/workflow.mjs';
-import {RemoteConversation} from '../packages/client/remote-conversation.mjs';
 const load=name=>JSON.parse(readFileSync(`tests/fixtures/workflow-management/${name}.json`));
 const lifecycle=load('lifecycle'),empty=load('empty');
 const tick=()=>new Promise(r=>setTimeout(r,5));
@@ -86,10 +85,6 @@ test('Workflow management cancellation ACK waits for workflow projection; observ
 });
 test('Workflow management read failure and write admission never imply a saved definition or available runtime',async()=>{
  const f=owner({managementAllowed:false});try{await f.open();await assert.rejects(f.conversation.workflowManage('delete',{name:'x'}),/management-unverified/);const p=f.conversation.workflowRead('runArtifactRead',{runId:'foreign',artifactId:'a',version:1,offset:0,limit:1024});f.input.write(JSON.stringify({id:f.sent.at(-1).id,error:{code:-32603,message:'not authorized'}})+'\n');await assert.rejects(p,e=>e.protocolCode===-32603);assert.equal(f.conversation.state.admission.allowed,false)}finally{f.close()}
-});
-test('Workflow management remote carrier sends only handle, kind and params; model command remains a server decision',async()=>{
- const calls=[];const rpc={call:async(_channel,_endpoint,payload)=>{calls.push(payload);return {ok:true,value:payload.operation==='open'?{handle:'owned',state:{status:'live',commands:[]}}:{runs:[]}}}};
- const remote=new RemoteConversation(rpc,{runtime:'zcode',authority:'a',workspace:'w',sessionId:'s'});try{await remote.connect();await remote.workflowRead('runs',{});assert.deepEqual(calls.at(-1),{operation:'workflowRead',handle:'owned',kind:'runs',params:{}});await remote.workflowManage('get',{name:'same',scope:'global'});assert.equal(calls.at(-1).params.scope,'global')}finally{await remote.cancel()}
 });
 test('Workflow management direct request does not accept array params or unknown prototypes',async()=>{
  const peer={request:()=>assert.fail('unexpected wire')};await assert.rejects(requestWorkflow(peer,{kind:'runs',params:[],sessionId:'s'}),/workflow-params-invalid/);await assert.rejects(requestWorkflow(peer,{kind:'constructor',sessionId:'s'}),/workflow-carrier-unavailable/);

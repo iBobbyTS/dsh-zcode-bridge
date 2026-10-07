@@ -3,6 +3,7 @@ export {compactAgent,installCompactCommand} from './compact.mjs';
 import {join} from 'node:path';
 import {homedir} from 'node:os';
 import {installDriver} from './factory.mjs';
+import {installZCodeLlm} from '../host/zcode-llm.mjs';
 import {DriverTransport} from './transport.mjs';
 import {installSessionCommandSeams} from './session-commands.mjs';
 import {installDefaultModelCover,installModelSeat} from './model-seat.mjs';
@@ -34,6 +35,15 @@ export async function apply(ctx){
     const gateTimeout=setTimeout(()=>driver.factory.failWriteGate(Object.assign(new Error('legacy write gate initialization timed out'),{code:'legacy-write-gate-timeout'})),30000);
     gateTimeout.unref?.();
     ctx.effect(()=>()=>clearTimeout(gateTimeout),'zcode-driver: legacy write gate timeout');
+    // The zcode llm route is registered here, not in the retired host mirror wiring: the picker
+    // catalog and the deployment-default cover both depend on the adapter being present whenever
+    // the driver occupies the factory.
+    const llmSeam=ctx.inject(['llm'],llmCtx=>{
+      if(typeof host.zcodeModels!=='function'){host.llmRouteState={state:'unavailable',reason:'model-discovery-missing'};return}
+      try{installZCodeLlm(llmCtx,{discover:()=>host.zcodeModels()});host.llmRouteState={state:'registered'}}
+      catch(error){host.llmRouteState={state:'failed',error:error?.code??String(error)}}
+    });
+    if(ctx.get('llm'))await llmSeam.await();
     // The model seat lives beside the S02 command seams on the same official controller object,
     // but does not need the title service; resolve it from the already-injected scope.
     const seams=ctx.inject(['sessionController','sessionTitle'],async seamCtx=>{

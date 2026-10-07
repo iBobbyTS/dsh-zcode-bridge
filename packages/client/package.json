@@ -39,8 +39,6 @@
   "files": [
     "index.mjs",
     "lib/client.js",
-    "runtime.mjs",
-    "runtime-controls.mjs",
     "controller.mjs",
     "status.mjs",
     "compatibility.mjs"
