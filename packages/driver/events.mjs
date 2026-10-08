@@ -231,13 +231,14 @@ export class ConversationEventTranslator {
       if(header&&!this.acceptInput(header))continue;
       const phase=terminalState(rows,snapshot,turnKey===[...groups.keys()].at(-1));
       const responses=responseGroups(rows,snapshot.logEpoch);
-      // A resync can find rows a previous import never delivered for a turn the persisted log
+      // A resync can find rows a previous pass never delivered for a turn the persisted log
       // already CLOSED (a still-running conversation backfilled by an older build settled a
-      // mid-stream partial and ended the turn). Appending to a closed turn corrupts the
-      // official session format, so a history fold re-opens such a turn under a fresh number
-      // and carries its late rows to the turn's true terminal state instead. Non-text row
-      // drift between reads re-delivers nothing and must NOT re-open the turn.
-      const late=this.history&&this.turns.get(turnKey)?.closed===true
+      // mid-stream partial and ended the turn, or a live translator's disposal closed a turn
+      // that a restarted ZCode process kept writing under a fresh log epoch). Appending to a
+      // closed turn corrupts the official session format, so such a turn re-opens under a
+      // fresh number and carries its late rows to the turn's true terminal state instead.
+      // Non-text row drift between reads re-delivers nothing and must NOT re-open the turn.
+      const late=this.turns.get(turnKey)?.closed===true
         &&(rows.some(row=>row.kind==='userInput'&&!this.users.has(eventRowKey(snapshot.logEpoch,row.rowId)))
           ||[...responses].some(([key,visible])=>{
             const previous=this.responses.get(key);
@@ -278,7 +279,9 @@ export class ConversationEventTranslator {
         const triggerKey=eventRowKey(snapshot.logEpoch,`trigger:${header.turnId??rows[0]?.turnId}`);
         if(!this.responses.has(triggerKey)){
           const step=this.step(turn,triggerKey,snapshot,[]);
-          this.settle(triggerKey,[{rowId:-1,kind:'assistantText',turnId:header.turnId,text:header.origin==='backgroundResult'?'⟳ ZCode 后台任务结果触发':'⟳ ZCode 自动继续',state:'complete',model:'zcode'}],turn.turn,step,{});
+          // createdAt lets history re-timing map the marker's events to the turn's own start;
+          // without it they keep the import moment and inflate the turn's span to days.
+          this.settle(triggerKey,[{rowId:-1,kind:'assistantText',turnId:header.turnId,text:header.origin==='backgroundResult'?'⟳ ZCode 后台任务结果触发':'⟳ ZCode 自动继续',state:'complete',model:'zcode',...(header.createdAt!==undefined?{createdAt:header.createdAt}:{})}],turn.turn,step,{});
         }
       }
       for(const [key,visible] of responses){

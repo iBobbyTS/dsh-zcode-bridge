@@ -328,6 +328,54 @@ test('an automation-origin turn without a user row gets one synthetic trigger ma
   await f.translator.close();
 });
 
+test('a live log-epoch flip reviving a disposal-closed turn re-opens under a fresh number',async()=>{
+  const f=fixture();
+  const snap=(epoch,rows)=>({protocolVersion:3,sessionId:'live-flip',logEpoch:epoch,seq:5,revision:1,
+    control:{phase:'idle',canStop:false,activeWorks:[],lastError:null},
+    availability:{},inputRouting:{mode:'startNow'},queue:{items:[],autoDrain:true},pendingInteractions:[],
+    rows:{window:rows}});
+  const early=[
+    {rowId:1,kind:'turnHeader',turnId:'t1',origin:'userInput',state:'completedSuccess',startedAt:0,createdAtSeq:1},
+    {rowId:2,kind:'userInput',turnId:'t1',text:'问一个问题',createdAtSeq:2},
+    {rowId:3,kind:'assistantText',turnId:'t1',assistantResponseId:'r1',text:'先查证。',state:'complete',model:'m',createdAtSeq:3},
+  ];
+  // The live translator delivers and closes the turn, then the transport drops.
+  await f.translator.enqueue(snap('ep1',early));
+  // A reconnected translator replays the persisted log (seeding its epoch) and sees the same
+  // turnId grown under a RESTARTED ZCode process's new epoch — it must not append into the
+  // closed turn; the revived rows re-open under a fresh number.
+  const reconnected=new ConversationEventTranslator({session:f.session,clock:()=>1,dispatch:{emit(){}}});
+  await reconnected.enqueue(snap('ep2',[...early,
+    {rowId:4,kind:'assistantText',turnId:'t1',assistantResponseId:'r2',text:'最终答案。',state:'complete',model:'m',createdAtSeq:4},
+  ]));
+  const stepStarts=f.events.filter(event=>event.type==='step/start').map(event=>`${event.data.turn}:${event.data.step}`);
+  assert.deepEqual(stepStarts,['1:1','2:1'],'revived rows open a fresh turn instead of appending to the closed one');
+  const starts=f.events.filter(event=>event.type==='turn/start').map(event=>event.data.turn);
+  assert.deepEqual(starts,[1,2]);
+  const answers=f.events.filter(event=>event.type==='assistant/message').map(event=>event.data.message.content.map(block=>block.text).join(''));
+  assert.deepEqual(answers,['先查证。','最终答案。'],'already-delivered rows are not re-emitted');
+  sequence(f);await f.translator.close();await reconnected.close();
+});
+
+test('history re-timing maps the synthetic marker to the turn header time',async()=>{
+  const {retimeHistoryEvents}=await import('../packages/driver/legacy-directory.mjs');
+  const f=fixture(),at=Date.UTC(2026,9,5,13,35,46),done=at+21_000;
+  const window=[
+    {rowId:1,kind:'turnHeader',turnId:'turn-bg',origin:'backgroundResult',state:'completedSuccess',startedAt:0,createdAtSeq:1,sourceCommandId:'cmd-bg',createdAt:at},
+    {rowId:2,kind:'assistantText',turnId:'turn-bg',assistantResponseId:'resp-bg',text:'monitoring result',state:'complete',model:'model_a',createdAtSeq:2,createdAt:done},
+  ];
+  const snapshot=automationSnapshot();snapshot.rows.window=window;
+  await f.translator.enqueue(snapshot);
+  const retimed=retimeHistoryEvents(f.events,window,'epoch-x');
+  const marker=retimed.find(event=>event.type==='assistant/message'&&event.data.message.content[0]?.text.startsWith('⟳'));
+  const markerStart=retimed.find(event=>event.type==='step/start'&&String(event.data.zcode?.responseKey).includes('trigger:'));
+  assert.equal(marker?.time,at,'the marker message lands at the turn start, not the import moment');
+  assert.equal(markerStart?.time,at,'the marker step opens at the turn start');
+  const work=retimed.find(event=>event.type==='assistant/message'&&event.data.message.content.some(block=>block.text==='monitoring result'));
+  assert.equal(work?.time,done,'the real work keeps its own row time');
+  sequence(f);await f.translator.close();
+});
+
 test('the official ui-chat consumer renders the synthetic trigger marker as a user node',real,async()=>{
   const [{Context},{SessionStore},{default:Projections}]=await Promise.all(['cordis','dsh-session','dsh-session-projection'].map(loadOfficial));
   const ctx=new Context();new SessionStore(ctx);new Projections(ctx);ctx.sessionProjections.register(turnBoundaryProjectionDefinition);ctx.sessionProjections.register(inboxProjectionDefinition);
