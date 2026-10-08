@@ -8,11 +8,36 @@ import {withControlReceipts} from './control-receipts.mjs';
  * at its official command entry, before the native service is allowed to append.
  */
 export function installSessionCommandSeams(ctx,factory,{normalizeSessionTitle,RemoteError}){
-  const controller=ctx.get('sessionController'),titles=ctx.get('sessionTitle');
+  const controller=ctx.get('sessionController'),titles=ctx.get('sessionTitle'),registry=ctx.get('workspaceRegistry');
   const commands=controller?.commands;
-  if(!commands||typeof commands.rename!=='function'||typeof commands.updateQueue!=='function'||typeof commands.cancel!=='function'||typeof controller.resolveAgent!=='function')throw commandFault('driver-session-command-contract-unavailable');
+  if(!commands||typeof commands.rename!=='function'||typeof commands.updateQueue!=='function'||typeof commands.cancel!=='function'||typeof commands.create!=='function'||typeof controller.resolveAgent!=='function')throw commandFault('driver-session-command-contract-unavailable');
   const owned=agent=>agent instanceof DriverAgent&&agent.transport===factory.transport;
-  const rename=commands.rename,updateQueue=commands.updateQueue,cancel=commands.cancel;
+  const rename=commands.rename,updateQueue=commands.updateQueue,cancel=commands.cancel,create=commands.create;
+  /** The official executor is pinned to the launcher's single sandboxed execution workspace: a
+   * create picked elsewhere can never host the official session there and would fault
+   * driver-workspace-mismatch at the factory. Redirect such creates to the execution workspace
+   * (the established picker-choice semantics: the picked workspace governs native sessions only).
+   * A live driver session keeps its own request untouched — that create is an idempotent
+   * adoption, and its resume path already accepts any session workspace. */
+  const wrappedCreate=async function(request){
+    if(!factory.accepting)return create.call(this,request);
+    const sessionId=request?.sessionId;
+    if(sessionId!==undefined&&owned(ctx.agents.get(sessionId)))return create.call(this,request);
+    let target;
+    if(request?.workspaceId!==undefined){const workspace=registry?.get?.(request.workspaceId);if(!workspace)return create.call(this,request);target=workspace.path}
+    else if(request?.cwd!==undefined)target=request.cwd;
+    let execution;
+    try{execution=await factory.transport.ready(undefined)}catch{return create.call(this,request)}
+    if(target===execution)return create.call(this,request);
+    const rewritten={...request};
+    // A foreign sessionId can only be a blank reuse or a stale adoption; a driver session is
+    // never created under the picked cwd, so drop it and mint the session fresh.
+    if(sessionId!==undefined)delete rewritten.sessionId;
+    delete rewritten.cwd;
+    let row;try{row=await registry.resolveByPath(execution);row??=await registry.create(execution,'ZCode')}catch{}
+    if(row)rewritten.workspaceId=row.id;else rewritten.cwd=execution;
+    return create.call(this,rewritten);
+  };
   const wrappedRename=async function(request){
     const found=await controller.resolveAgent(request.sessionId);
     if(found.error)throw found.error;
@@ -48,10 +73,10 @@ export function installSessionCommandSeams(ctx,factory,{normalizeSessionTitle,Re
     return withControlReceipts(agent,'stop',()=>cancel.call(this,request));
   };
   return ctx.effect(()=>{
-    const descriptors=new Map(['rename','updateQueue','cancel'].map(name=>[name,Object.getOwnPropertyDescriptor(commands,name)]));
-    commands.rename=wrappedRename;commands.updateQueue=wrappedUpdateQueue;commands.cancel=wrappedCancel;
+    const descriptors=new Map(['rename','updateQueue','cancel','create'].map(name=>[name,Object.getOwnPropertyDescriptor(commands,name)]));
+    commands.rename=wrappedRename;commands.updateQueue=wrappedUpdateQueue;commands.cancel=wrappedCancel;commands.create=wrappedCreate;
     return ()=>{
-      for(const [name,wrapper] of [['rename',wrappedRename],['updateQueue',wrappedUpdateQueue],['cancel',wrappedCancel]]){
+      for(const [name,wrapper] of [['rename',wrappedRename],['updateQueue',wrappedUpdateQueue],['cancel',wrappedCancel],['create',wrappedCreate]]){
         if(commands[name]!==wrapper)continue;
         const descriptor=descriptors.get(name);
         if(descriptor)Object.defineProperty(commands,name,descriptor);else delete commands[name];

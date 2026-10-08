@@ -201,7 +201,7 @@ test('apply() installs the model seat and the lazy default cover onto the live c
     hooksRegistered=true;
   }
   const {apply}=await import('../packages/driver/index.mjs');
-  const originals={rename:async()=>({title:'t',seq:1}),updateQueue:async()=>({accepted:true}),cancel:async()=>({accepted:true}),selectModel:async request=>({selected:{provider:request.provider,model:request.model}})};
+  const originals={rename:async()=>({title:'t',seq:1}),updateQueue:async()=>({accepted:true}),cancel:async()=>({accepted:true}),selectModel:async request=>({selected:{provider:request.provider,model:request.model}}),create:async request=>({sessionId:request?.sessionId??'session-stub'})};
   const commands={...originals};
   const controller={commands,resolveAgent:async()=>({agent:{id:'none'}})};
   const titles={config:{maxTitleBytes:120},rename:()=>({title:'t',eventSeq:1})};
