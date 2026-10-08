@@ -3,6 +3,9 @@ packages/client/lib/
 *.tgz
 *.DS_Store
 
+# reference projects (independent read-only repos)
+/reference
+
 # AI Agent
 .codegraph
 .zcodeignore
