@@ -268,6 +268,19 @@ export class ConversationEventTranslator {
           this.append('user/message',message,'append');this.users.add(rowKey);
         }
       }
+      // An automation-origin turn (backgroundResult/goalContinuation) has no user row of its
+      // own — its trigger text is not a v4 row — so the turn would render headless, as work
+      // appearing out of nowhere. Synthesize one assistant marker per turn announcing the
+      // trigger: official chat hides plain context nodes, but assistant text renders, and a
+      // synthetic context node has no reliable inbox-claim path to the visible turn-trigger
+      // row. Keyed by turn identity, replay-safe through `responses`.
+      if(header&&['backgroundResult','goalContinuation'].includes(header.origin)&&!rows.some(row=>row.kind==='userInput')){
+        const triggerKey=eventRowKey(snapshot.logEpoch,`trigger:${header.turnId??rows[0]?.turnId}`);
+        if(!this.responses.has(triggerKey)){
+          const step=this.step(turn,triggerKey,snapshot,[]);
+          this.settle(triggerKey,[{rowId:-1,kind:'assistantText',turnId:header.turnId,text:header.origin==='backgroundResult'?'⟳ ZCode 后台任务结果触发':'⟳ ZCode 自动继续',state:'complete',model:'zcode'}],turn.turn,step,{});
+        }
+      }
       for(const [key,visible] of responses){
         const previous=this.responses.get(key);
         const signature=JSON.stringify(visible);

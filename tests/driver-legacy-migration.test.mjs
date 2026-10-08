@@ -52,9 +52,9 @@ function fakeSessions(){
   // not match the open turn and next step"); appends through a detached fold do NOT. Enforce
   // the same shape here so a corrupt event order fails the test, not a later production load.
   const replayState=events=>{
-    let openTurn=null;const nextStep=new Map();
+    let openTurn=null,openStep=null;const nextStep=new Map();
     for(const event of events){const data=event.data??{};
-      if(event.type==='turn/start'){openTurn=data.turn;nextStep.set(data.turn,1)}
+      if(event.type==='turn/start'){openTurn=data.turn;openStep=null;nextStep.set(data.turn,1)}
       else if(event.type==='step/start')nextStep.set(data.turn,Math.max(nextStep.get(data.turn)??1,data.step+1));
       else if(event.type==='turn/end'&&openTurn===data.turn)openTurn=null;
     }
@@ -64,16 +64,21 @@ function fakeSessions(){
     // The official SessionStore re-prepares the same id on every resume; a re-sync does too.
     const events=structuredClone(seed);
     let {openTurn,nextStep}=replayState(events);
+    let openStep=null;
     const session={id,header:{version:4,id,createdAt:1,isSeeded:false,delegationDepth:0,...(meta.cwd?{cwd:meta.cwd}:{})},inheritedEventCount:0,
       get seq(){return events.length},eventAt:seq=>events[seq],snapshotEvents:()=>events,
       append(type,data){
-        if(type==='turn/start'){if(openTurn!==null)throw new Error('turn/start with an open turn');openTurn=data.turn;nextStep.set(data.turn,1)}
-        else if(type==='turn/end'){if(openTurn!==data.turn)throw new Error('turn/end does not close the open turn');openTurn=null}
+        if(type==='turn/start'){if(openTurn!==null)throw new Error('turn/start with an open turn');openTurn=data.turn;openStep=null;nextStep.set(data.turn,1)}
+        else if(type==='turn/end'){if(openTurn!==data.turn)throw new Error('turn/end does not close the open turn');openTurn=null;openStep=null}
         else if(type==='step/start'){
           if(openTurn!==data.turn)throw new Error(`step/start outside the open turn (${data.turn} vs ${openTurn})`);
           const expected=nextStep.get(data.turn)??1;
           if(data.step!==expected)throw new Error(`step/start does not match the open turn and next step (expected ${expected}, got ${data.step})`);
-          nextStep.set(data.turn,data.step+1);
+          nextStep.set(data.turn,data.step+1);openStep=data.step;
+        }
+        else if(type==='step/end'){if(openTurn!==data.turn||openStep!==data.step)throw new Error(`step/end does not close the open step (${data.turn}/${data.step} vs ${openTurn}/${openStep})`);openStep=null}
+        else if(type==='assistant/message'||type==='tool/call'||type==='tool/result'){
+          if(openTurn!==data.turn||openStep!==data.step)throw new Error(`${type} does not match the open turn and step (${data.turn}/${data.step} vs ${openTurn}/${openStep})`);
         }
         const event=Object.freeze({type,data:structuredClone(data),seq:events.length,time:1});events.push(event);return event}};
     live.set(id,session);return session;

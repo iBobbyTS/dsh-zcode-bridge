@@ -275,8 +275,7 @@ test('a restarted runtime re-keys dedupe indexes to the fresh log epoch instead 
   await f.translator.close();
 });
 
-test('a seed spanning several log epochs normalizes every cohort on the next snapshot',async()=>{
-  const f=fixture();
+test('a seed spanning several log epochs normalizes every cohort on the next snapshot',async()=>{  const f=fixture();
   // First process lifetime: the turn streams under the original epoch.
   await f.translator.enqueue(frozen.snapshots[1]);
   // A restart mints a new epoch; the same rows come back completed plus the turn's tail —
@@ -297,4 +296,51 @@ test('a seed spanning several log epochs normalizes every cohort on the next sna
   assert.equal(f.events.length,before,'a third epoch re-keys every cohort instead of re-emitting');
   sequence(f);
   await restored.close();
+});
+
+const automationSnapshot=({origin='backgroundResult',epoch='epoch-x',turnId='turn-bg'}={})=>{
+  const window=[
+    {rowId:1,kind:'turnHeader',turnId,origin,state:'completedSuccess',startedAt:0,createdAtSeq:1,sourceCommandId:'cmd-bg'},
+    {rowId:2,kind:'assistantText',turnId,assistantResponseId:'resp-bg',text:'monitoring result',state:'complete',model:'model_a',createdAtSeq:2},
+  ];
+  return {protocolVersion:3,sessionId:'automation',logEpoch:epoch,seq:5,revision:1,
+    control:{phase:'completedSuccess',canStop:false,activeWorks:[],lastError:null},
+    availability:{},inputRouting:{mode:'startNow'},queue:{items:[],autoDrain:true},pendingInteractions:[],
+    rows:{window}};
+};
+
+test('an automation-origin turn without a user row gets one synthetic trigger marker, replay-safe',async()=>{
+  const f=fixture();
+  await f.translator.enqueue(automationSnapshot());
+  const markers=f.events.filter(event=>event.type==='assistant/message'&&event.data.message.content[0].text.startsWith('⟳'));
+  assert.equal(markers.length,1,'exactly one trigger marker');
+  assert.equal(markers[0].data.message.source.provider,'zcode');
+  assert.equal(markers[0].data.message.content[0].text,'⟳ ZCode 后台任务结果触发');
+  const work=f.events.findIndex(event=>event.type==='assistant/message'&&event.data.message.content.some(block=>block.text==='monitoring result'));
+  assert.ok(f.events.indexOf(markers[0])<work,'the marker precedes the turn content');
+  // A replay of the same window adds nothing; a goalContinuation turn gets its own wording.
+  await f.translator.enqueue(automationSnapshot());
+  assert.equal(f.events.filter(event=>event.type==='assistant/message'&&event.data.message.content[0]?.text.startsWith('⟳')).length,1,'the marker never duplicates');
+  await f.translator.enqueue(automationSnapshot({origin:'goalContinuation',turnId:'turn-goal'}));
+  const texts=f.events.filter(event=>event.type==='assistant/message'&&event.data.message.content[0]?.text.startsWith('⟳')).map(event=>event.data.message.content[0].text);
+  assert.deepEqual(texts,['⟳ ZCode 后台任务结果触发','⟳ ZCode 自动继续']);
+  sequence(f);
+  await f.translator.close();
+});
+
+test('the official ui-chat consumer renders the synthetic trigger marker as a user node',real,async()=>{
+  const [{Context},{SessionStore},{default:Projections}]=await Promise.all(['cordis','dsh-session','dsh-session-projection'].map(loadOfficial));
+  const ctx=new Context();new SessionStore(ctx);new Projections(ctx);ctx.sessionProjections.register(turnBoundaryProjectionDefinition);ctx.sessionProjections.register(inboxProjectionDefinition);
+  const consumer=await officialChatConsumer(ctx),session=ctx.sessions.prepare('trigger-marker');ctx.sessions.enter(session);
+  ctx.on('session/event',(owner,event)=>{if(owner===session)consumer.durable(event)});
+  const translator=new ConversationEventTranslator({session,dispatch:{emit(){}}});
+  try{
+    await translator.enqueue(automationSnapshot());
+    const live=consumer.snapshot().legacy.nodes;
+    assert.ok(live.some(node=>node.kind==='assistant'&&node.blocks.some(block=>block.kind==='text'&&block.text==='⟳ ZCode 后台任务结果触发')),'the marker renders as a visible assistant node');
+    assert.ok(live.some(node=>node.kind==='assistant'),'the turn content still renders');
+    const restored=ctx.sessions.prepare('trigger-cold',{seed:session.snapshotEvents()});
+    const cold=consumer.read(restored.snapshotEvents());
+    assert.ok(cold.legacy.nodes.some(node=>node.kind==='assistant'&&node.blocks.some(block=>block.kind==='text'&&block.text==='⟳ ZCode 后台任务结果触发')),'cold reads keep the marker');
+  }finally{await translator.close();await consumer.close();await ctx.fiber.dispose()}
 });
