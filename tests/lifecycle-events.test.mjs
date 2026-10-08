@@ -312,17 +312,17 @@ const automationSnapshot=({origin='backgroundResult',epoch='epoch-x',turnId='tur
 test('an automation-origin turn without a user row gets one synthetic trigger marker, replay-safe',async()=>{
   const f=fixture();
   await f.translator.enqueue(automationSnapshot());
-  const markers=f.events.filter(event=>event.type==='assistant/message'&&event.data.message.content[0].text.startsWith('⟳'));
+  const markers=f.events.filter(event=>event.type==='user/message'&&event.data.content[0].text.startsWith('⟳'));
   assert.equal(markers.length,1,'exactly one trigger marker');
-  assert.equal(markers[0].data.message.source.provider,'zcode');
-  assert.equal(markers[0].data.message.content[0].text,'⟳ 后台任务结果触发');
+  assert.equal(markers[0].data.source.kind,'user','the trigger presents as a user-sent message');
+  assert.equal(markers[0].data.content[0].text,'⟳ 后台任务结果触发');
   const work=f.events.findIndex(event=>event.type==='assistant/message'&&event.data.message.content.some(block=>block.text==='monitoring result'));
   assert.ok(f.events.indexOf(markers[0])<work,'the marker precedes the turn content');
   // A replay of the same window adds nothing; a goalContinuation turn gets its own wording.
   await f.translator.enqueue(automationSnapshot());
-  assert.equal(f.events.filter(event=>event.type==='assistant/message'&&event.data.message.content[0]?.text.startsWith('⟳')).length,1,'the marker never duplicates');
+  assert.equal(f.events.filter(event=>event.type==='user/message'&&event.data.content[0]?.text.startsWith('⟳')).length,1,'the marker never duplicates');
   await f.translator.enqueue(automationSnapshot({origin:'goalContinuation',turnId:'turn-goal'}));
-  const texts=f.events.filter(event=>event.type==='assistant/message'&&event.data.message.content[0]?.text.startsWith('⟳')).map(event=>event.data.message.content[0].text);
+  const texts=f.events.filter(event=>event.type==='user/message'&&event.data.content[0]?.text.startsWith('⟳')).map(event=>event.data.content[0].text);
   assert.deepEqual(texts,['⟳ 后台任务结果触发','⟳ Goal 自动继续']);
   sequence(f);
   await f.translator.close();
@@ -362,7 +362,7 @@ test('a backgroundResult header with originMeta names the finished task in the m
   await f.translator.enqueue(automationSnapshot({originMeta:{backgroundSource:'bash',title:'容器内全量测试',workId:'exec_1'}}));
   await f.translator.enqueue(automationSnapshot({turnId:'turn-bg2',originMeta:{backgroundSource:'subagent',title:'A 槽单点复核 PLAN 修复',workId:'agent_1'}}));
   await f.translator.enqueue(automationSnapshot({turnId:'turn-bg3',originMeta:{backgroundSource:'bash',title:'   ',workId:'exec_2'}}));
-  const texts=f.events.filter(event=>event.type==='assistant/message'&&event.data.message.content[0]?.text.startsWith('⟳')).map(event=>event.data.message.content[0].text);
+  const texts=f.events.filter(event=>event.type==='user/message'&&event.data.content[0]?.text.startsWith('⟳')).map(event=>event.data.content[0].text);
   assert.deepEqual(texts,['⟳ 后台终端命令完成：容器内全量测试','⟳ 后台Subagent完成：A 槽单点复核 PLAN 修复','⟳ 后台任务结果触发'],'the header title names the task; a blank title falls back to the generic wording');
   sequence(f);await f.translator.close();
 });
@@ -377,10 +377,8 @@ test('history re-timing maps the synthetic marker to the turn header time',async
   const snapshot=automationSnapshot();snapshot.rows.window=window;
   await f.translator.enqueue(snapshot);
   const retimed=retimeHistoryEvents(f.events,window,'epoch-x');
-  const marker=retimed.find(event=>event.type==='assistant/message'&&event.data.message.content[0]?.text.startsWith('⟳'));
-  const markerStart=retimed.find(event=>event.type==='step/start'&&String(event.data.zcode?.responseKey).includes('trigger:'));
+  const marker=retimed.find(event=>event.type==='user/message'&&event.data.content[0]?.text.startsWith('⟳'));
   assert.equal(marker?.time,at,'the marker message lands at the turn start, not the import moment');
-  assert.equal(markerStart?.time,at,'the marker step opens at the turn start');
   const work=retimed.find(event=>event.type==='assistant/message'&&event.data.message.content.some(block=>block.text==='monitoring result'));
   assert.equal(work?.time,done,'the real work keeps its own row time');
   sequence(f);await f.translator.close();
@@ -395,10 +393,10 @@ test('the official ui-chat consumer renders the synthetic trigger marker as a us
   try{
     await translator.enqueue(automationSnapshot());
     const live=consumer.snapshot().legacy.nodes;
-    assert.ok(live.some(node=>node.kind==='assistant'&&node.blocks.some(block=>block.kind==='text'&&block.text==='⟳ 后台任务结果触发')),'the marker renders as a visible assistant node');
+    assert.ok(live.some(node=>node.kind==='user'&&node.source?.kind==='user'&&node.content.some(block=>block.type==='text'&&block.text==='⟳ 后台任务结果触发')),'the marker renders as a user-sent bubble');
     assert.ok(live.some(node=>node.kind==='assistant'),'the turn content still renders');
     const restored=ctx.sessions.prepare('trigger-cold',{seed:session.snapshotEvents()});
     const cold=consumer.read(restored.snapshotEvents());
-    assert.ok(cold.legacy.nodes.some(node=>node.kind==='assistant'&&node.blocks.some(block=>block.kind==='text'&&block.text==='⟳ 后台任务结果触发')),'cold reads keep the marker');
+    assert.ok(cold.legacy.nodes.some(node=>node.kind==='user'&&node.content.some(block=>block.type==='text'&&block.text==='⟳ 后台任务结果触发')),'cold reads keep the marker');
   }finally{await translator.close();await consumer.close();await ctx.fiber.dispose()}
 });

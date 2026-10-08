@@ -55,6 +55,9 @@ export function retimeHistoryEvents(events,rows,epoch,{sessionUpdatedAt}={}){
   return events.map((event,index)=>{
     const meta=event.data?.zcode;let time;
     if(meta?.rowKey)time=rowTime.get(meta.rowKey);
+    // The synthetic trigger message carries a synthetic rowKey with no row; its turnKey still
+    // anchors it to the turn's own start instead of the import moment.
+    if(time===undefined&&meta?.turnKey&&event.type!=='turn/end')time=turnStart(meta.turnKey);
     else if(meta?.responseKey)time=responseTime.get(meta.responseKey)?.max;
     else if(meta?.turnKey)time=event.type==='turn/end'
       ?Math.max(turnTime.get(meta.turnKey)?.max??-Infinity,index===lastTurnEndIndex&&typeof sessionUpdatedAt==='number'?sessionUpdatedAt:-Infinity)
