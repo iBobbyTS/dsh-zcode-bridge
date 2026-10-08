@@ -274,14 +274,22 @@ export class ConversationEventTranslator {
       // appearing out of nowhere. Synthesize one assistant marker per turn announcing the
       // trigger: official chat hides plain context nodes, but assistant text renders, and a
       // synthetic context node has no reliable inbox-claim path to the visible turn-trigger
-      // row. Keyed by turn identity, replay-safe through `responses`.
+      // row. Keyed by turn identity, replay-safe through `responses`. A backgroundResult
+      // header can carry originMeta {backgroundSource, title, workId}; the title names the
+      // finished task, which beats the generic wording whenever ZCode provides it.
       if(header&&['backgroundResult','goalContinuation'].includes(header.origin)&&!rows.some(row=>row.kind==='userInput')){
         const triggerKey=eventRowKey(snapshot.logEpoch,`trigger:${header.turnId??rows[0]?.turnId}`);
         if(!this.responses.has(triggerKey)){
           const step=this.step(turn,triggerKey,snapshot,[]);
+          const meta=header.originMeta;
+          const source=meta?.backgroundSource==='subagent'?'后台代理':meta?.backgroundSource==='bash'?'后台命令':meta?.backgroundSource==='workflow'?'后台工作流':null;
+          const title=typeof meta?.title==='string'?meta.title.trim():'';
+          const text=header.origin==='goalContinuation'?'⟳ ZCode 自动继续'
+            :source!==null&&title!==''?`⟳ ${source}完成：${title.slice(0,40)}`
+            :'⟳ ZCode 后台任务结果触发';
           // createdAt lets history re-timing map the marker's events to the turn's own start;
           // without it they keep the import moment and inflate the turn's span to days.
-          this.settle(triggerKey,[{rowId:-1,kind:'assistantText',turnId:header.turnId,text:header.origin==='backgroundResult'?'⟳ ZCode 后台任务结果触发':'⟳ ZCode 自动继续',state:'complete',model:'zcode',...(header.createdAt!==undefined?{createdAt:header.createdAt}:{})}],turn.turn,step,{});
+          this.settle(triggerKey,[{rowId:-1,kind:'assistantText',turnId:header.turnId,text,state:'complete',model:'zcode',...(header.createdAt!==undefined?{createdAt:header.createdAt}:{})}],turn.turn,step,{});
         }
       }
       for(const [key,visible] of responses){

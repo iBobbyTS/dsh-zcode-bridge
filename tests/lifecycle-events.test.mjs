@@ -298,9 +298,9 @@ test('a seed spanning several log epochs normalizes every cohort on the next sna
   await restored.close();
 });
 
-const automationSnapshot=({origin='backgroundResult',epoch='epoch-x',turnId='turn-bg'}={})=>{
+const automationSnapshot=({origin='backgroundResult',epoch='epoch-x',turnId='turn-bg',originMeta}={})=>{
   const window=[
-    {rowId:1,kind:'turnHeader',turnId,origin,state:'completedSuccess',startedAt:0,createdAtSeq:1,sourceCommandId:'cmd-bg'},
+    {rowId:1,kind:'turnHeader',turnId,origin,state:'completedSuccess',startedAt:0,createdAtSeq:1,sourceCommandId:'cmd-bg',...(originMeta?{originMeta}:{})},
     {rowId:2,kind:'assistantText',turnId,assistantResponseId:'resp-bg',text:'monitoring result',state:'complete',model:'model_a',createdAtSeq:2},
   ];
   return {protocolVersion:3,sessionId:'automation',logEpoch:epoch,seq:5,revision:1,
@@ -355,6 +355,16 @@ test('a live log-epoch flip reviving a disposal-closed turn re-opens under a fre
   const answers=f.events.filter(event=>event.type==='assistant/message').map(event=>event.data.message.content.map(block=>block.text).join(''));
   assert.deepEqual(answers,['先查证。','最终答案。'],'already-delivered rows are not re-emitted');
   sequence(f);await f.translator.close();await reconnected.close();
+});
+
+test('a backgroundResult header with originMeta names the finished task in the marker',async()=>{
+  const f=fixture();
+  await f.translator.enqueue(automationSnapshot({originMeta:{backgroundSource:'bash',title:'容器内全量测试',workId:'exec_1'}}));
+  await f.translator.enqueue(automationSnapshot({turnId:'turn-bg2',originMeta:{backgroundSource:'subagent',title:'A 槽单点复核 PLAN 修复',workId:'agent_1'}}));
+  await f.translator.enqueue(automationSnapshot({turnId:'turn-bg3',originMeta:{backgroundSource:'bash',title:'   ',workId:'exec_2'}}));
+  const texts=f.events.filter(event=>event.type==='assistant/message'&&event.data.message.content[0]?.text.startsWith('⟳')).map(event=>event.data.message.content[0].text);
+  assert.deepEqual(texts,['⟳ 后台命令完成：容器内全量测试','⟳ 后台代理完成：A 槽单点复核 PLAN 修复','⟳ ZCode 后台任务结果触发'],'the header title names the task; a blank title falls back to the generic wording');
+  sequence(f);await f.translator.close();
 });
 
 test('history re-timing maps the synthetic marker to the turn header time',async()=>{
