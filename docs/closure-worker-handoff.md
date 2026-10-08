@@ -9,7 +9,7 @@ Base `c151d76da9d6c37cbb791d098d37fb05df090389`; branch `feat/official-dsh-runti
 - [28-row successor handoff](closure-gap-handoff.md): 26 partial + 2 unimplemented. Counts by successor group: history hydration 4; background work 4; session diagnostics 1; automation fields 2; interaction mapping 3; hook trust 5; history mutations 9. Original mandatory/approved-owner columns stay unchanged. No full-parity completion or requirement waiver is claimed.
 - official-runtime-install temporary skips were already restored in accepted session-create/conversation-runtime. Confirmed active CB4/CB5/CB6/CB14 rebinds and zero active skip declarations; replaced the unused obsolete skip constant with restoration evidence annotations. No previously live test was disabled or discarded.
 - [Residual NIT ledger](closure-residual-nits.md), with historical details explicitly unverified where absent.
-- [150-entry report skeleton](closure-entry-report.md), generated from status-annotated PROTOCOL-COVERAGE by `scripts/generate-closure-report.mjs`. All five table counts, original names, mandatory flags and approved owners are retained. Both browser evidence columns are empty. Bridge/root coverage copies remain identical. Current mandatory implementation totals: **82 implemented / 26 partial / 2 unimplemented**.
+- [150-entry report skeleton](closure-entry-report.md), generated from status-annotated docs/protocol-coverage.md by `scripts/generate-closure-report.mjs`. All five table counts, original names, mandatory flags and approved owners are retained. Both browser evidence columns are empty. Bridge/root coverage copies remain identical. Current mandatory implementation totals: **82 implemented / 26 partial / 2 unimplemented**.
 
 ## npm run outcome
 

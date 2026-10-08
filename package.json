@@ -29,7 +29,7 @@
   "files": [
     "cordis.patch.yml",
     "README.md",
-    "PROTOCOL-COVERAGE.md",
+    "docs/protocol-coverage.md",
     "packages/host/package.json",
     "packages/host/*.mjs",
     "packages/host/launcher",

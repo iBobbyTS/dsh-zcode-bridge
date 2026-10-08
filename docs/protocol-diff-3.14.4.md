@@ -34,7 +34,7 @@ The inline shape comparison, dependency bindings and real metadata render are re
 
 ## Per-row differences
 
-`none` explicitly means no missing/key/wire-name delta for constants, or no key/inline-payload-shape delta for commands. All 150 source-line/OldOwner tuples are preserved in [PROTOCOL-COVERAGE](../PROTOCOL-COVERAGE.md); the source property names below are retained even where the ledger displays a wire literal.
+`none` explicitly means no missing/key/wire-name delta for constants, or no key/inline-payload-shape delta for commands. All 150 source-line/OldOwner tuples are preserved in [PROTOCOL-COVERAGE](protocol-coverage.md); the source property names below are retained even where the ledger displays a wire literal.
 
 ### legacy-methods
 
@@ -470,7 +470,7 @@ The absence of source/installed declaration differences does **not** mean every 
 
 Wire spellings above match source and installed. The ledger binds the string wire, while the **source property's symbolic name** may be different (for example `pluginsOverview`, `pluginsCancelOperation`, `pluginsResetConfig`). These are property versus value identities, not protocol renames. [Host parity routing](../packages/host/launcher/parity.mjs) is the authoritative bridge translation table.
 
-The current implementation ledger has **110 mandatory rows: 77 implemented, 31 partial, 2 unimplemented**, each with its approved owner and code/test evidence. Partial includes remaining old helpers whose current launcher carrier denies the request, not merely unfinished live verification. [Coverage status and evidence](../PROTOCOL-COVERAGE.md#protocol-coverage-index) records each gap. protocol-audit made no feature, route, isolation, compatibility-policy or verified-tuple changes.
+The current implementation ledger has **110 mandatory rows: 77 implemented, 31 partial, 2 unimplemented**, each with its approved owner and code/test evidence. Partial includes remaining old helpers whose current launcher carrier denies the request, not merely unfinished live verification. [Coverage status and evidence](protocol-coverage.md#protocol-coverage-index) records each gap. protocol-audit made no feature, route, isolation, compatibility-policy or verified-tuple changes.
 
 ## Upgrade exercise and current installed check
 

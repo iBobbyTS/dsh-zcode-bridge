@@ -89,7 +89,7 @@ node scripts/start-npm-acceptance.mjs --prepare-only --diagnose-version-seams --
 
 - 官方 `SessionController.rename/updateQueue` 的 Remote 方法委托给同一 `commands` 对象（源码 `$DSH/packages/api/session-controller/src/index.ts:410` 及 updateQueue 委托；npm rc.2 `dsh-api-session-controller/lib/index.js:3077/:3113`）。driver 在该异步命令边界安装可释放包装。`sessionTitle.rename` 保留同步原签名；rename 先复用官方 `normalizeSessionTitle` 和标题服务的 `config.maxTitleBytes`，再取得 ZCode ACK 与强制 snapshot 回读，最后调用原 sessionTitle 服务写 DSH。ZCode 拒绝、歧义结果或回读标题不一致均报明确错误，DSH 标题不提前写入。此进程内 seam 依赖经实物核验的 rc.2 `commands` 和 `config` 字段；相关可选 peer 精确钉为 rc.2，服务缺席时 injector 等待，不抢占其注册。
 - 官方 `updateQueue {kind:'steer'}` 的 `remove → steer` 复合调用继续经过原守卫（`$DSH/packages/api/session-controller/src/commands.ts:475/:495`）。driver 使用按异步请求隔离、单次使用的 transfer 上下文：确认 queueItemId 且运行中时调用 `sendQueuedNow`，保留队列项直到官方 snapshot 确认消费；仅本地未派发时以 durable splice 移至 next-step，并按原确定性 commandId 发 `sendText(requestedDelivery:'guide')`。普通 remove 请求不获得该上下文，继续拒绝。
-- `deleteQueueItem` 是 ZCode 已定义的协议命令（`packages/host/vendor/zcode/v4.mjs:8676`）。删除入口限制来自 `PROTOCOL-COVERAGE.md:177` 的 DSH 产品裁决，不能表述成“ZCode 协议不支持删除”。
+- `deleteQueueItem` 是 ZCode 已定义的协议命令（`packages/host/vendor/zcode/v4.mjs:8676`）。删除入口限制来自 `docs/protocol-coverage.md:177` 的 DSH 产品裁决，不能表述成“ZCode 协议不支持删除”。
 - `ready()` 成功且未知在途命令完成同 ID query 后，重新派发仍在 inbox、尚未进入 V4 账本且未关联远端队列的 inputs。派发期间复用单个 flight，commandId 不变；失败时保留 pending input 并派发 `agent/error`。V4 已跟踪的命令继续由原账本和 query 负责，不重新发送。launcher 恢复 ready 时也触发此恢复屏障。
 - snapshot 错误、暂不支持的 interaction 和不可映射的队列内容均设置 lastError 并通过 `agent/error` 通知；不改 DSH 事件翻译管道。
 
@@ -97,7 +97,7 @@ node scripts/start-npm-acceptance.mjs --prepare-only --diagnose-version-seams --
 
 冻结映射：`confirmed queueItemId + running → sendQueuedNow`；`local-only undispatched input + running → native splice + sendText(guide)`。
 
-证据为既有 `packages/host/zcode-agent.mjs:264-269` 的 queueAction/sendNow 路由、`PROTOCOL-COVERAGE.md:174` 的已接入立即发送行为、V4 的 queueItemId schema 与 availability 守卫，以及 `tests/fixtures/transport-v4/success.json` 的 `sendQueuedNowRequiresRunning`。`tests/fixtures/queue-guide-goal/busy.json:80` 有 allowed:true，但其 provenance（同文件第 2–8 行）明确为真实空 capture 上注入的 busy 状态。`docs/handoff/queue-guide-goal-HANDOFF.md:31/:50` 说明 reserve/promote 保留原 input intent，并明确真实 busy promotion NOT_RUN。
+证据为既有 `packages/host/zcode-agent.mjs:264-269` 的 queueAction/sendNow 路由、`docs/protocol-coverage.md:174` 的已接入立即发送行为、V4 的 queueItemId schema 与 availability 守卫，以及 `tests/fixtures/transport-v4/success.json` 的 `sendQueuedNowRequiresRunning`。`tests/fixtures/queue-guide-goal/busy.json:80` 有 allowed:true，但其 provenance（同文件第 2–8 行）明确为真实空 capture 上注入的 busy 状态。`docs/handoff/queue-guide-goal-HANDOFF.md:31/:50` 说明 reserve/promote 保留原 input intent，并明确真实 busy promotion NOT_RUN。
 
 **EVIDENCE_GAP**：以上支持运行态投递原语与官方 steer 前置对齐，尚不能证明 sendQueuedNow 必然注入当前 guide，或必然开启新 product turn。测试注释冻结该证据等级，待 **S05 隔离验收 --driver-mode 实证** 补齐；本次不发真实模型输入。
 

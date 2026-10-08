@@ -2,7 +2,7 @@ import {readFileSync,writeFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {resolve} from 'node:path';
 const repo=fileURLToPath(new URL('..',import.meta.url));
-const coverage=readFileSync(resolve(repo,'PROTOCOL-COVERAGE.md'),'utf8');
+const coverage=readFileSync(resolve(repo,'docs/protocol-coverage.md'),'utf8');
 const expected={'legacy-methods':74,'legacy-notifications':7,'v4-methods':31,'v4-notifications':4,'v4-commands':34};
 const rows=[];let section;
 for(const line of coverage.split('\n')){
@@ -62,21 +62,21 @@ function location(row){
   return 'ZCode session → native conversation transcript/projection';
 }
 const lines=['# Closure per-entry acceptance report skeleton','',
-  'Generated from `PROTOCOL-COVERAGE.md` by `node scripts/generate-closure-report.mjs`. All 150 declaration rows are retained by table and name. Status is implementation evidence, not live acceptance. Mandatory flags/approved owners remain unchanged. All browser evidence/result columns are intentionally empty for the parent. Writes remain human-owned; this file is not a manual execution checklist. Internal entries are subordinate carriers, not invented GUI buttons.','',
+  'Generated from `docs/protocol-coverage.md` by `node scripts/generate-closure-report.mjs`. All 150 declaration rows are retained by table and name. Status is implementation evidence, not live acceptance. Mandatory flags/approved owners remain unchanged. All browser evidence/result columns are intentionally empty for the parent. Writes remain human-owned; this file is not a manual execution checklist. Internal entries are subordinate carriers, not invented GUI buttons.','',
   '| Table | App-server entry | Implementation status | Mandatory / owner | DSH-side entry location | Code / gap evidence | Browser read-only evidence | Browser result |',
   '|---|---|---|---|---|---|---|---|'];
 for(const row of rows){
   const legacyIdx = '(#protocol-coverage-index)', closureIdx = '(#closure-evidence)';
-  const evidence=row.evidence.replaceAll(legacyIdx,'(../PROTOCOL-COVERAGE.md#protocol-coverage-index)').replaceAll(closureIdx,'(../PROTOCOL-COVERAGE.md#closure-evidence)');
+  const evidence=row.evidence.replaceAll(legacyIdx,'(protocol-coverage.md#protocol-coverage-index)').replaceAll(closureIdx,'(protocol-coverage.md#closure-evidence)');
   lines.push(`| ${row.section} | ${row.entry} | ${row.status}${gaps.includes(row)?' · deferred to successor':''} | ${row.mandatory} / ${row.owner} | ${location(row)} | ${evidence} |  |  |`);
 }
 writeFileSync(resolve(repo,'docs/closure-entry-report.md'),lines.join('\n')+'\n');
 const handoff=['# Closure mandatory-gap successor handoff','',
-  'Worker-support reconciliation from accepted protocol `c151d76`: 31 partial + 2 unimplemented = 33 declaration rows. Closure closes 5 rows (mode legacy/v4, plans, file changes, rewind preview); 28 rows transfer to successor work: 26 partial + 2 unimplemented. No full-parity completion is claimed. Original mandatory/approved-owner fields stay in PROTOCOL-COVERAGE; this explicit handoff does not grant plan acceptance or waive a blocking requirement. Parent owns final requirement-level closure and admission.','',
+  'Worker-support reconciliation from accepted protocol `c151d76`: 31 partial + 2 unimplemented = 33 declaration rows. Closure closes 5 rows (mode legacy/v4, plans, file changes, rewind preview); 28 rows transfer to successor work: 26 partial + 2 unimplemented. No full-parity completion is claimed. Original mandatory/approved-owner fields stay in docs/protocol-coverage.md; this explicit handoff does not grant plan acceptance or waive a blocking requirement. Parent owns final requirement-level closure and admission.','',
   'Successor groups below are proposed work packets, not invented accepted plans. They inherit the unchanged no-delete/no-removal-entry rule, official storage authority, sandbox/HOME/process isolation, and no automatic replay. No real writes were executed.','',
   '| App-server entry | Approved owner | Retained implementation status | Successor group | Remaining work / reason | Evidence |',
   '|---|---|---|---|---|---|'];
-for(const row of gaps){const [group,reason]=deferredReason(row.name);handoff.push(`| ${row.entry} | ${row.owner} | ${row.status} | ${group} | ${reason} | [Coverage row](../PROTOCOL-COVERAGE.md) · ${row.evidence.replace(/\[E\d+\]\([^)]*\)；?/,'')} |`)}
+for(const row of gaps){const [group,reason]=deferredReason(row.name);handoff.push(`| ${row.entry} | ${row.owner} | ${row.status} | ${group} | ${reason} | [Coverage row](protocol-coverage.md) · ${row.evidence.replace(/\[E\d+\]\([^)]*\)；?/,'')} |`)}
 handoff.push('', 'Acceptance boundary: npm release seams and cross-process queue/approval winner detection remain separate constraints, not NITs. Existing deletion/deferral decisions remain approved as recorded; these 28 mandatory residuals remain partial/unimplemented and must not be counted as implemented or not applicable.');
 writeFileSync(resolve(repo,'docs/closure-gap-handoff.md'),handoff.join('\n')+'\n');
 console.log(JSON.stringify({declarations:rows.length,mandatory:mandatory.length,implemented:mandatory.length-gaps.length,deferred:gaps.length,partial:gaps.filter(row=>row.status.startsWith('部分')).length,unimplemented:gaps.filter(row=>row.status.startsWith('未实现')).length}));

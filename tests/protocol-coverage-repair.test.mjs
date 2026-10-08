@@ -25,8 +25,8 @@ test('Protocol repair A-M1 workspace presentation is admitted and read-only for 
  }finally{await mounted?.close();controller.dispose();await w.close()}
 });
 
-test('settings-panel repair both protocol copies assign readPresentation mandatory settings-panel and retain historical owner',()=>{
- for(const file of ['PROTOCOL-COVERAGE.md','../PROTOCOL-COVERAGE.md']){const text=readFileSync(file,'utf8'),row=text.split('\n').find(line=>line.startsWith('| `workspace/readPresentation`'));assert.match(row,/\| 3600 \| queue-guide-goal \|/);assert.deepEqual(row.split('|').slice(5,9).map(cell=>cell.trim()),['Y','Y','Y','settings-panel']);assert.equal(row.includes('延期'),false)}
+test('settings-panel repair protocol ledger assigns readPresentation mandatory settings-panel and retain historical owner',()=>{
+ for(const file of ['docs/protocol-coverage.md']){const text=readFileSync(file,'utf8'),row=text.split('\n').find(line=>line.startsWith('| `workspace/readPresentation`'));assert.match(row,/\| 3600 \| queue-guide-goal \|/);assert.deepEqual(row.split('|').slice(5,9).map(cell=>cell.trim()),['Y','Y','Y','settings-panel']);assert.equal(row.includes('延期'),false)}
 });
 
 test('Protocol repair B-M1 attachment disposition rechecks original source identity after paused persistence',async()=>{

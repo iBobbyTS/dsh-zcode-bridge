@@ -130,4 +130,4 @@ Notifications below are STATIC classifications of the shared definitions; only s
 | v4 | `v4/telemetry/local-ttft` | app-server stdio notification / Host service forwarding; direction follows emitting handler, never a unary CLI request |
 | v4 | `v4/cua/permission-observation` | app-server stdio notification / Host service forwarding; direction follows emitting handler, never a unary CLI request |
 
-The 34 command keys use the `v4/command` envelope and its CLI dispatch (server.ts:565); they are not 34 extra stdio methods. Detailed per-command business owners remain in parent PROTOCOL-COVERAGE.md and later sections.
+The 34 command keys use the `v4/command` envelope and its CLI dispatch (server.ts:565); they are not 34 extra stdio methods. Detailed per-command business owners remain in docs/protocol-coverage.md and later sections.
