@@ -282,11 +282,11 @@ export class ConversationEventTranslator {
         if(!this.responses.has(triggerKey)){
           const step=this.step(turn,triggerKey,snapshot,[]);
           const meta=header.originMeta;
-          const source=meta?.backgroundSource==='subagent'?'后台代理':meta?.backgroundSource==='bash'?'后台命令':meta?.backgroundSource==='workflow'?'后台工作流':null;
+          const source=meta?.backgroundSource==='subagent'?'后台Subagent':meta?.backgroundSource==='bash'?'后台终端命令':meta?.backgroundSource==='workflow'?'后台Workflow':null;
           const title=typeof meta?.title==='string'?meta.title.trim():'';
-          const text=header.origin==='goalContinuation'?'⟳ ZCode 自动继续'
+          const text=header.origin==='goalContinuation'?'⟳ Goal 自动继续'
             :source!==null&&title!==''?`⟳ ${source}完成：${title.slice(0,40)}`
-            :'⟳ ZCode 后台任务结果触发';
+            :'⟳ 后台任务结果触发';
           // createdAt lets history re-timing map the marker's events to the turn's own start;
           // without it they keep the import moment and inflate the turn's span to days.
           this.settle(triggerKey,[{rowId:-1,kind:'assistantText',turnId:header.turnId,text,state:'complete',model:'zcode',...(header.createdAt!==undefined?{createdAt:header.createdAt}:{})}],turn.turn,step,{});
