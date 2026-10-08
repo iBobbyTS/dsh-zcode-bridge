@@ -97,7 +97,7 @@ node scripts/start-npm-acceptance.mjs --prepare-only --diagnose-version-seams --
 
 冻结映射：`confirmed queueItemId + running → sendQueuedNow`；`local-only undispatched input + running → native splice + sendText(guide)`。
 
-证据为既有 `packages/host/zcode-agent.mjs:264-269` 的 queueAction/sendNow 路由、`docs/protocol-coverage.md:174` 的已接入立即发送行为、V4 的 queueItemId schema 与 availability 守卫，以及 `tests/fixtures/transport-v4/success.json` 的 `sendQueuedNowRequiresRunning`。`tests/fixtures/queue-guide-goal/busy.json:80` 有 allowed:true，但其 provenance（同文件第 2–8 行）明确为真实空 capture 上注入的 busy 状态。`docs/handoff/queue-guide-goal-HANDOFF.md:31/:50` 说明 reserve/promote 保留原 input intent，并明确真实 busy promotion NOT_RUN。
+证据为既有 `packages/host/zcode-agent.mjs:264-269` 的 queueAction/sendNow 路由、`docs/protocol-coverage.md:174` 的已接入立即发送行为、V4 的 queueItemId schema 与 availability 守卫，以及 `tests/fixtures/transport-v4/success.json` 的 `sendQueuedNowRequiresRunning`。`tests/fixtures/queue-guide-goal/busy.json:80` 有 allowed:true，但其 provenance（同文件第 2–8 行）明确为真实空 capture 上注入的 busy 状态。queue-guide-goal 交付记录（已随过程产物归档至 `.agent-work/archive/`）说明 reserve/promote 保留原 input intent，并明确真实 busy promotion NOT_RUN；证据等级以 `docs/protocol-coverage.md:174` 行内记录为准。
 
 **EVIDENCE_GAP**：以上支持运行态投递原语与官方 steer 前置对齐，尚不能证明 sendQueuedNow 必然注入当前 guide，或必然开启新 product turn。测试注释冻结该证据等级，待 **S05 隔离验收 --driver-mode 实证** 补齐；本次不发真实模型输入。
 

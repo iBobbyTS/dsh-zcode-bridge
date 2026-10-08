@@ -3,7 +3,7 @@ import {createRequire} from 'node:module';
 import {readFileSync,writeFileSync,mkdirSync} from 'node:fs';
 import {resolve,join} from 'node:path';
 const {chromium}=createRequire(resolve('../dsh/apps/web/package.json'))('playwright');
-const out=resolve(process.env.DIRECTORY_VISUAL_OUTPUT??'docs/probes/checks/launcher-recovery-resume/visual');mkdirSync(out,{recursive:true});
+const out=resolve(process.env.DIRECTORY_VISUAL_OUTPUT??'.agent-work/tmp/check-directory-visual/launcher-recovery-resume/visual');mkdirSync(out,{recursive:true});
 const url=readFileSync('/private/tmp/conversation-web-server-final.log','utf8').match(/dsh web: (http:\/\/127\.0\.0\.1:3092\/\?token=[^\s]+)/)?.[1];
 if(!url)throw Error('web-url-unavailable');
 const browser=await chromium.launch({executablePath:'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:true}),checks=[];

@@ -7,7 +7,7 @@ import { resolve,join } from 'node:path';
 import { createRequire } from 'node:module';
 import { realpathSync } from 'node:fs';
 const scratch=resolve('../.agent-work/tmp/host-reuse-probe');
-const output=resolve(process.env.SCRATCH_LAUNCHER_OUTPUT??'docs/probes/checks/scratch-host-launcher/installed');await mkdir(output,{recursive:true});
+const output=resolve(process.env.SCRATCH_LAUNCHER_OUTPUT??'.agent-work/tmp/capture-scratch-launcher/scratch-host-launcher/installed');await mkdir(output,{recursive:true});
 const source=await mkdtemp(resolve(scratch,'scratch-package-')),profile=await mkdtemp(resolve(scratch,'scratch-profile-'));
 const context={profile:'scratch-isolated',dir:profile,installAnchor:resolve('../dsh/apps/cli/package.json'),cwd:resolve('.')};
 const exists=async(p:string)=>{try{await access(p);return true}catch{return false}};

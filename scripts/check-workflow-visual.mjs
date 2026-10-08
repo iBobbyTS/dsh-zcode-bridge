@@ -1,11 +1,11 @@
 // Isolated webui render. Synthetic lifecycle is labelled; no workflow is executed.
 import {build} from 'esbuild';
-import {readFile,writeFile,mkdtemp,rm} from 'node:fs/promises';
+import {readFile,writeFile,mkdir,mkdtemp,rm} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 import {tmpdir} from 'node:os';
 import {resolve,join} from 'node:path';
 const {chromium}=createRequire(resolve('../dsh/apps/web/package.json'))('playwright');
-const dir=await mkdtemp(join(tmpdir(),'workflow-management-visual-'));let browser;
+const dir=await mkdtemp(join(tmpdir(),'workflow-management-visual-'));await mkdir('.agent-work/tmp/check-workflow-visual',{recursive:true});let browser;
 try{
  const fixture=JSON.parse(await readFile('tests/fixtures/workflow-management/lifecycle.json','utf8'));
  const official=JSON.parse(await readFile('tests/fixtures/workflow-management/official.json','utf8'));
@@ -17,8 +17,8 @@ try{
  await writeFile(join(dir,'render.html'),`<!doctype html><meta charset="utf-8"><style>*{box-sizing:border-box}html,body,#root{margin:0;width:100%;font-family:system-ui}button{max-width:100%}p,pre{overflow-wrap:anywhere}td{padding:6px}</style><p style="padding:0 16px">Workflow management injected fixture preview · real empty directory · no model calls</p><div id="root"></div><script>${result.outputFiles[0].text}</script>`);
  browser=await chromium.launch({executablePath:'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:true});const checks=[];
  for(const [name,width,height] of [['wide',1100,1000],['narrow',390,844]]){
- const page=await browser.newPage({viewport:{width,height}}),errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto('file://'+join(dir,'render.html'));await page.locator('summary').first().click();await page.getByRole('button',{name:'List project workflows',exact:true}).click();await page.getByText('No saved project workflow.').waitFor();await page.getByRole('button',{name:'fixture-run · completed',exact:true}).click();await page.getByRole('button',{name:'Read published artifacts',exact:true}).click();await page.getByTestId('zcode-workflow-artifact').waitFor();await page.getByRole('button',{name:'Read content chunk',exact:true}).click();await page.getByText('hello report',{exact:true}).waitFor();await page.screenshot({path:`docs/probes/checks/workflow-management-${name}.png`,fullPage:true});
+ const page=await browser.newPage({viewport:{width,height}}),errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto('file://'+join(dir,'render.html'));await page.locator('summary').first().click();await page.getByRole('button',{name:'List project workflows',exact:true}).click();await page.getByText('No saved project workflow.').waitFor();await page.getByRole('button',{name:'fixture-run · completed',exact:true}).click();await page.getByRole('button',{name:'Read published artifacts',exact:true}).click();await page.getByTestId('zcode-workflow-artifact').waitFor();await page.getByRole('button',{name:'Read content chunk',exact:true}).click();await page.getByText('hello report',{exact:true}).waitFor();await page.screenshot({path:`.agent-work/tmp/check-workflow-visual/workflow-management-${name}.png`,fullPage:true});
  const dimensions=await page.evaluate(()=>({horizontalOverflow:document.documentElement.scrollWidth>innerWidth}));checks.push({name,width,errors,...dimensions});await page.close();
  }
- await writeFile('docs/probes/checks/workflow-management-visual.json',JSON.stringify({kind:'injected-lifecycle-with-real-empty-directory',noLiveExecution:true,checks},null,2)+'\n');console.log(JSON.stringify(checks));if(checks.some(c=>c.errors.length||c.horizontalOverflow))process.exitCode=1;
+ await writeFile('.agent-work/tmp/check-workflow-visual/workflow-management-visual.json',JSON.stringify({kind:'injected-lifecycle-with-real-empty-directory',noLiveExecution:true,checks},null,2)+'\n');console.log(JSON.stringify(checks));if(checks.some(c=>c.errors.length||c.horizontalOverflow))process.exitCode=1;
 }finally{await browser?.close();await rm(dir,{recursive:true,force:true})}

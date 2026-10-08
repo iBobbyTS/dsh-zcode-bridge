@@ -6,7 +6,7 @@ import { readFileSync,writeFileSync,mkdirSync } from 'node:fs';
 import { resolve,join } from 'node:path';
 import { createLauncherConfig,prepareLauncher,sandboxProfile } from '../packages/host/launcher/config.mjs';
 import assert from 'node:assert/strict';
-const scratch=resolve('../.agent-work/tmp/host-reuse-probe'),output=resolve('docs/probes/checks/scratch-host-launcher/bootstrap');mkdirSync(output,{recursive:true});
+const scratch=resolve('../.agent-work/tmp/host-reuse-probe'),output=resolve('.agent-work/tmp/check-scratch-bootstrap/scratch-host-launcher/bootstrap');mkdirSync(output,{recursive:true});
 const options={scratchRoot:scratch,artifactRoot:join(scratch,'official-extracted'),electronPath:join(scratch,'node_modules/electron/dist/Electron.app/Contents/MacOS/Electron'),builtinConfig:'/Applications/ZCode.app/Contents/Resources/config/provider/zcode-builtin.json'};
 const rows=[];
 for(const [name,code] of [['zod-module-missing',"import './host-bus.mjs';"],['uncaught',"setImmediate(()=>{throw Object.assign(new Error('synthetic'),{code:'SCRATCH_SYNTHETIC_CRASH'})});"],['rejection',"Promise.reject(Object.assign(new Error('synthetic'),{code:'SCRATCH_SYNTHETIC_REJECTION'}));"]]){

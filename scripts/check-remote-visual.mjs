@@ -1,11 +1,11 @@
 // Isolated webui only; real local scope/unreadable remote inventory; no official GUI/remote action.
 import { build } from 'esbuild';
-import { readFile, writeFile, mkdtemp, rm } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 const { chromium } = createRequire(resolve('../dsh/apps/web/package.json'))('playwright');
-const dir = await mkdtemp(join(tmpdir(), 'remote-workspace-visual-')); let browser;
+const dir = await mkdtemp(join(tmpdir(), 'remote-workspace-visual-')); await mkdir('.agent-work/tmp/check-remote-visual', { recursive: true }); let browser;
 try {
   const fixture = JSON.parse(await readFile('tests/fixtures/remote-workspace/empty.json', 'utf8'));
   const result = await build({ stdin: { contents: `import React from 'react';import {createRoot} from 'react-dom/client';import {RemoteStore} from '${resolve('packages/client/remote.mjs')}';import {ZCodeRemotePanel,remoteLocales} from '${resolve('packages/client/remote-view.jsx')}';
@@ -16,9 +16,9 @@ try {
   for (const [name, width, height] of [['wide', 1100, 1000], ['narrow', 390, 844]]) {
     const page = await browser.newPage({ viewport: { width, height } }), errors = []; page.on('pageerror', e => errors.push(e.message));
     await page.goto('file://'+join(dir, 'render.html')); await page.locator('[data-local-scope]').waitFor(); await page.locator('summary').click();
-    await page.screenshot({ path: `docs/probes/checks/remote-workspace-${name}.png`, fullPage: true });
+    await page.screenshot({ path: `.agent-work/tmp/check-remote-visual/remote-workspace-${name}.png`, fullPage: true });
     checks.push({ name, width, errors, ...await page.evaluate(() => ({ horizontalOverflow: document.documentElement.scrollWidth > innerWidth, remoteAvailableClaims: document.querySelectorAll('[data-remote-available="true"]').length })) }); await page.close();
   }
-  await writeFile('docs/probes/checks/remote-workspace-visual.json', JSON.stringify({ kind: 'official-local-scope-with-unreadable-remote-inventory', checks }, null, 2)+'\n'); console.log(JSON.stringify(checks));
+  await writeFile('.agent-work/tmp/check-remote-visual/remote-workspace-visual.json', JSON.stringify({ kind: 'official-local-scope-with-unreadable-remote-inventory', checks }, null, 2)+'\n'); console.log(JSON.stringify(checks));
   if (checks.some(c => c.errors.length || c.horizontalOverflow || c.remoteAvailableClaims)) process.exitCode = 1;
 } finally { await browser?.close(); await rm(dir, { recursive: true, force: true }); }

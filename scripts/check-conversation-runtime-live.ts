@@ -7,8 +7,8 @@ import {compareObservation} from '../packages/host/launcher/observation.mjs'
 import {resolve,join} from 'node:path'
 import {readFileSync,writeFileSync,existsSync,copyFileSync,mkdirSync,mkdtempSync} from 'node:fs'
 import {execFileSync} from 'node:child_process'
-const base=resolve('../.agent-work/tmp/host-reuse-probe'),out=resolve('docs/probes/checks/launcher-recovery/live-attempt1');mkdirSync(out,{recursive:true})
-const scratch=mkdtempSync('/private/tmp/s3-'),artifacts=JSON.parse(readFileSync(resolve('docs/probes/checks/launcher-recovery/live-http-artifacts.json'),'utf8'))
+const base=resolve('../.agent-work/tmp/host-reuse-probe'),out=resolve('.agent-work/tmp/check-conversation-runtime-live/launcher-recovery/live-attempt1');mkdirSync(out,{recursive:true})
+const scratch=mkdtempSync('/private/tmp/s3-'),artifacts=JSON.parse(readFileSync(resolve('.agent-work/archive/20261008-1454_docs-process-records/probes/checks/launcher-recovery/live-http-artifacts.json'),'utf8'))
 const save=(n:string,v:unknown)=>writeFileSync(join(out,n+'.json'),JSON.stringify(v,null,2)+'\n')
 const table=()=>execFileSync('/bin/ps',['-axo','pid=,ppid=,comm='],{encoding:'utf8'}).split('\n').map(l=>l.trim().match(/^(\d+)\s+(\d+)\s+(.+)$/)).filter(Boolean).map(m=>({pid:+m![1],ppid:+m![2],comm:m![3]}))
 const gui=()=>table().filter(p=>p.comm.startsWith('/Applications/ZCode.app/')||p.comm==='ZCode')

@@ -5,7 +5,7 @@ import { mkdirSync, writeFileSync, readdirSync, statSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import assert from 'node:assert/strict';
 const scratch=resolve('../.agent-work/tmp/host-reuse-probe');
-const output=resolve(process.env.SCRATCH_LAUNCHER_OUTPUT??'docs/probes/checks/scratch-host-launcher');mkdirSync(output,{recursive:true});
+const output=resolve(process.env.SCRATCH_LAUNCHER_OUTPUT??'.agent-work/tmp/check-scratch-launcher/scratch-host-launcher');mkdirSync(output,{recursive:true});
 const {HostLauncher}=await import(process.env.SCRATCH_LAUNCHER_MODULE?pathToFileURL(process.env.SCRATCH_LAUNCHER_MODULE).href:new URL('../packages/host/launcher/index.mjs',import.meta.url).href);
 const options={scratchRoot:scratch,artifactRoot:join(scratch,'official-extracted'),electronPath:join(scratch,'node_modules/electron/dist/Electron.app/Contents/MacOS/Electron'),builtinConfig:'/Applications/ZCode.app/Contents/Resources/config/provider/zcode-builtin.json'};
 function table(){return execFileSync('/bin/ps',['-axo','pid=,ppid=,comm='],{encoding:'utf8'}).split('\n').map(l=>l.trim().match(/^(\d+)\s+(\d+)\s+(.+)$/)).filter(Boolean).map(m=>({pid:Number(m[1]),ppid:Number(m[2]),comm:m[3]}))}

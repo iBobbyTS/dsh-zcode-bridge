@@ -3,7 +3,7 @@ import {HostLauncher} from '../packages/host/launcher/index.mjs';
 import {spawn} from 'node:child_process';
 import {mkdirSync,writeFileSync,statSync} from 'node:fs';
 import {resolve,join,dirname} from 'node:path';
-const base=resolve('../.agent-work/tmp/host-reuse-probe'),output=resolve('docs/probes/checks/launcher-recovery');
+const base=resolve('../.agent-work/tmp/host-reuse-probe'),output=resolve('.agent-work/tmp/check-launcher-recovery-corrupt/launcher-recovery');mkdirSync(output,{recursive:true});
 let fixture,seed;const events=[];
 const launcher=new HostLauncher({scratchRoot:base,runId:'launcher-recovery-corrupt-'+Date.now(),artifactRoot:join(base,'official-extracted'),electronPath:join(base,'node_modules/electron/dist/Electron.app/Contents/MacOS/Electron'),builtinConfig:'/Applications/ZCode.app/Contents/Resources/config/provider/zcode-builtin.json'},{spawnProcess:(cmd,args,opts)=>{
  fixture=join(dirname(args.at(-1)),'data-base/.zcode/v2/credentials.json');mkdirSync(dirname(fixture),{recursive:true});

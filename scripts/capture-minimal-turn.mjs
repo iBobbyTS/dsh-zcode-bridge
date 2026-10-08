@@ -3,7 +3,7 @@
 import {readFileSync,writeFileSync,mkdirSync} from 'node:fs';
 import {resolve,join} from 'node:path';
 const log=process.env.MINIMAL_TURN_WEB_LOG??'/private/tmp/conversation-web-restart2.log';
-const out=resolve(process.env.MINIMAL_TURN_OUT??'docs/probes/checks/minimal-turn-usage');mkdirSync(out,{recursive:true});
+const out=resolve(process.env.MINIMAL_TURN_OUT??'.agent-work/tmp/capture-minimal-turn/minimal-turn-usage');mkdirSync(out,{recursive:true});
 const url=readFileSync(log,'utf8').match(/dsh web: (http:\/\/127\.0\.0\.1:\d+\/\?token=[^\s]+)/)?.[1];
 if(!url)throw Error('web-url-unavailable');
 const origin=new URL(url).origin;

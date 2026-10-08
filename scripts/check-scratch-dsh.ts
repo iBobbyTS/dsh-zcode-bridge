@@ -8,7 +8,7 @@ import { execFileSync } from 'node:child_process';
 import assert from 'node:assert/strict';
 const modulePath=process.env.SCRATCH_HOST_MODULE??resolve('packages/host/index.mjs');
 const {apply,inject}=await import(pathToFileURL(modulePath).href);
-const scratch=resolve('../.agent-work/tmp/host-reuse-probe'),output=resolve(process.env.SCRATCH_LAUNCHER_OUTPUT??'docs/probes/checks/scratch-host-launcher/dsh-live');await mkdir(output,{recursive:true});
+const scratch=resolve('../.agent-work/tmp/host-reuse-probe'),output=resolve(process.env.SCRATCH_LAUNCHER_OUTPUT??'.agent-work/tmp/check-scratch-dsh/scratch-host-launcher/dsh-live');await mkdir(output,{recursive:true});
 const ps=()=>execFileSync('/bin/ps',['-axo','pid=,ppid=,comm='],{encoding:'utf8'}).split('\n').map(l=>l.trim().match(/^(\d+)\s+(\d+)\s+(.+)$/)).filter(Boolean).map(m=>({pid:Number(m![1]),ppid:Number(m![2]),comm:m![3]}));
 const gui=()=>ps().filter(p=>p.comm.startsWith('/Applications/ZCode.app/')||p.comm==='ZCode');
 const before=gui(),ctx=new Context();let result:any,stage='setup',lastProjection:any;
