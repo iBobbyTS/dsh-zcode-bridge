@@ -1,6 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {commandFault} from './commands.mjs';
-import {renderAttachments} from './attachment-render.mjs';
+import {renderAttachments,sniffImageType} from './attachment-render.mjs';
+import {decodeBase64} from '../host/attachment.mjs';
 import {inboxProjectionDefinition} from './projections.mjs';
 import {FORK_PROJECTION_EVENT} from './fork.mjs';
 
@@ -39,6 +40,24 @@ export function buildWaitingNoteEvent({turn,step,works,epoch,time}){
   return {type:'assistant/message',time:at,surfaceOp:'append',data:{turn,step:step??1,message:{id:`zcode-waiting:${epoch??'history'}:${turn}`,role:'assistant',source:{kind:'model',provider:'zcode',model:'unreported'},content:[{type:'text',text}]},stream}};
 }
 const terminalTools=new Set(['success','error','cancelled']);
+/** ZCode's IAB end-of-turn snapshot is a CLIENT tool the official app runs after the model's
+ *  stop — a `mcp__node_repl__js` call whose input marks `source:"browser_turn_end"` — and its
+ *  display metadata carries the screenshot images. It is not a model action: advertising it as
+ *  a tool-call block would leave the turn's closing step carrying a tool call, and dsh's chat
+ *  then recognizes no final answer for the whole turn (everything folds into the process
+ *  group). Its screenshots settle into the closing assistant message as image blocks instead. */
+export function isTurnEndSnapshotRow(row){
+  if(row?.kind!=='toolCall'||row.toolName!=='mcp__node_repl__js')return false;
+  if(row.display?.source==='browser_turn_end')return true;
+  try{const input=JSON.parse(row.inputText??'');return input?.source==='browser_turn_end'}catch{return false}
+}
+/** Every screenshot image carried by the turn-end snapshot rows of one response group. */
+export function turnEndSnapshotImages(rows){
+  const images=[];
+  for(const row of rows??[])if(isTurnEndSnapshotRow(row)&&Array.isArray(row.display?.images))
+    for(const image of row.display.images)if(typeof image?.base64==='string'&&image.base64)images.push(image);
+  return images;
+}
 const rowsFor=snapshot=>[...snapshot.rows.window].sort((a,b)=>a.createdAtSeq-b.createdAtSeq||a.rowId-b.rowId);
 export function turnEndReason(state,error){
   if(state==='completedSuccess')return {kind:'completed'};
@@ -189,10 +208,11 @@ export class ConversationEventTranslator {
   emit(stream,frame){this.dispatch.emit('agent/assistant-stream',{frame:{attemptId:stream.attemptId,revision:++this.revision,...frame}})}
   chunk(stream,chunk){const time=this.clock();stream.records.push({type:'chunk',time,chunk});this.emit(stream,{type:'chunk',index:stream.index++,time,chunk})}
   abandon(key){const stream=this.streams.get(key);if(!stream)return;this.emit(stream,{type:'end',index:stream.index,outcome:{kind:'abandoned'}});this.streams.delete(key)}
-  blocks(rows){return rows.filter(row=>row.kind!=='toolCall'||row.status!=='inputStreaming').map(row=>row.kind==='toolCall'?{type:'tool-call',id:row.toolCallId,name:row.toolName,arguments:row.inputText}:{type:row.kind==='reasoning'?'reasoning':'text',text:row.text})}
+  blocks(rows){return rows.filter(row=>!isTurnEndSnapshotRow(row)).filter(row=>row.kind!=='toolCall'||row.status!=='inputStreaming').map(row=>row.kind==='toolCall'?{type:'tool-call',id:row.toolCallId,name:row.toolName,arguments:row.inputText}:{type:row.kind==='reasoning'?'reasoning':'text',text:row.text})}
   pushRows(stream,rows){
     stream.latest=clean(rows);
-    for(const [index,row] of rows.entries()){
+    const emitted=rows.filter(row=>!isTurnEndSnapshotRow(row));
+    for(const [index,row] of emitted.entries()){
       const previous=stream.rows.get(row.rowId),text=row.kind==='toolCall'?row.inputText:row.text;
       if(previous&&!text.startsWith(previous.text))throw commandFault('event-stream-prefix-replaced');
       if(!previous)this.chunk(stream,{type:'block-start',index,blockType:row.kind==='toolCall'?'tool-call':row.kind==='reasoning'?'reasoning':'text'});
@@ -201,12 +221,17 @@ export class ConversationEventTranslator {
       stream.rows.set(row.rowId,{text,index});
     }
   }
-  settle(key,rows,turn,step,{interrupted=false,usage,cumulative,canonicalRows=rows}={}){
-    const content=this.blocks(rows);if(!content.length){this.abandon(key);return}
+  settle(key,rows,turn,step,{interrupted=false,usage,cumulative,canonicalRows=rows,tailBlocks=[]}={}){
+    const content=[...this.blocks(rows),...tailBlocks];if(!content.length){this.abandon(key);return}
     const stream=this.startStream(key,turn,step);
     try{
       this.pushRows(stream,rows);
-      for(const [index,block] of content.entries())this.chunk(stream,{type:'block-end',index,block});
+      for(const [index,block] of content.entries()){
+        // Image blocks arrive settled (no row streams them); give each its block-start so the
+        // embedded stream stays aligned with the settled content.
+        if(block.type==='image')this.chunk(stream,{type:'block-start',index,blockType:'image'});
+        this.chunk(stream,{type:'block-end',index,block});
+      }
       if(usage)this.chunk(stream,{type:'usage',usage});
       const data={turn,step,message:{id:`zcode-response:${key}:${turn}:${step}`,role:'assistant',source:{kind:'model',provider:'zcode',model:rows.find(row=>row.model)?.model??'unreported'},content},stream:stream.records,
         ...(interrupted?{interrupted:true}:{}),...(usage?{usage}:{}),zcode:{responseKey:key,rows:clean(canonicalRows),...(stream.baseline?{baseline:stream.baseline}:{}),...(cumulative?{cumulative}:{})}};
@@ -225,6 +250,7 @@ export class ConversationEventTranslator {
     });
   }
   tool(row,key,turn,step,interrupted=false){
+    if(isTurnEndSnapshotRow(row))return;
     if(row.status==='inputStreaming')return;
     if(!this.calls.has(key)){
       this.append('tool/call',{turn,step,callId:row.toolCallId,name:row.toolName,arguments:row.inputText,zcode:{rowKey:key}});this.calls.set(key,{turn,step,callId:row.toolCallId,name:row.toolName,arguments:row.inputText});
@@ -285,6 +311,10 @@ export class ConversationEventTranslator {
         const rowKey=eventRowKey(snapshot.logEpoch,row.rowId);
         if(row.kind==='userInput'&&!this.users.has(rowKey)&&this.acceptInput({...row,sourceCommandId:row.sourceCommandId??header?.sourceCommandId})){
           const input=this.input(row.sourceCommandId??header?.sourceCommandId),first=rows.find(item=>['assistantText','reasoning','toolCall'].includes(item.kind));
+          // Steering input can land while the closing group's settle is held; that message is
+          // already complete, so release it cleanly instead of letting the pending step mark it
+          // interrupted.
+          this.#settleReadyHeld(turn.turn);
           const responseKey=responses.keys().next().value??eventRowKey(snapshot.logEpoch,`${row.turnId}:pending`);
           this.step(turn,responseKey,snapshot,first?rows:[],{pending:!first});
           const attachments=await renderAttachments(this.conversation,this.attachments(),row,{signal:this.lifetime.signal,...(this.history?{lenient:true}:{})});
@@ -350,9 +380,20 @@ export class ConversationEventTranslator {
         const interrupted=visible.some(row=>['interrupted','failed'].includes(row.state)||!!end&&(row.state==='streaming'||row.status==='inputStreaming'));
         if(previous&&JSON.stringify(this.blocks(previous.rows))===JSON.stringify(this.blocks(visible))&&previous.interrupted===interrupted){for(const row of visible)if(row.kind==='toolCall')this.tool(row,eventRowKey(snapshot.logEpoch,row.rowId),turn.turn,step,!!end);continue}
         const stream=this.startStream(key,turn.turn,step);if(previous)stream.baseline=previous.data.zcode.baseline;stream.canonicalRows=clean(visible);this.pushRows(stream,delivered);
-        if(ready){
+        // The closing group of a still-running turn holds its settle until the terminal state:
+        // ZCode appends the IAB end-of-turn snapshot row only after the model stops, and the
+        // screenshot must settle INTO the closing message (a later settle cannot amend one —
+        // dsh assistant messages are immutable). Only a text-only closing group can still gain
+        // that snapshot row: a group carrying real tool calls is the model actively working
+        // (its tool rows must surface immediately), and a later text segment opens a NEW group
+        // which supersedes the hold. The history fold keeps today's eager settle because its
+        // windows are complete and the live layer owns the running turn.
+        const hold=!this.history&&!end&&!turn.closed&&[...responses.keys()].at(-1)===key
+          &&!interrupted&&visible.every(row=>row.kind!=='toolCall'||isTurnEndSnapshotRow(row));
+        if(ready&&!hold){
           const usage=key===credit&&!interrupted?{...delta,totalTokens:delta.inputTokens+delta.outputTokens}:undefined;
-          this.settle(key,delivered,turn.turn,step,{interrupted,usage,cumulative,canonicalRows:visible});
+          const tailBlocks=end?await this.#turnEndImageBlocks(visible):[];
+          this.settle(key,delivered,turn.turn,step,{interrupted,usage,cumulative,canonicalRows:visible,tailBlocks});
           for(const row of visible)if(row.kind==='toolCall')this.tool(row,eventRowKey(snapshot.logEpoch,row.rowId),turn.turn,step,!!end);
         }
       }
@@ -380,7 +421,37 @@ export class ConversationEventTranslator {
     }
   }
   abort(){this.lifetime.abort(commandFault('event-translator-disposed'))}
+  /** Cleanly settle held-but-complete streams of one turn before an interruption path
+   *  (steering input, close, cancel) would otherwise mark them interrupted. */
+  #settleReadyHeld(turn){
+    for(const [key,stream] of [...this.streams]){
+      if(stream.turn!==turn)continue;
+      const rows=stream.canonicalRows??stream.latest;
+      if(!rows?.length)continue;
+      if(rows.some(row=>row.kind==='toolCall'?row.status==='inputStreaming':row.state==='streaming'))continue;
+      this.settle(key,rows,stream.turn,stream.step,{canonicalRows:rows});
+    }
+  }
+  /** Persist the IAB end-of-turn screenshots as durable image blocks on the closing message.
+   *  Any failure (no store, admission limits) degrades to no images — never a failed settle. */
+  async #turnEndImageBlocks(rows){
+    const images=turnEndSnapshotImages(rows);
+    if(!images.length)return [];
+    const store=this.attachments?.();
+    if(!store||typeof store.saveImages!=='function')return [];
+    try{
+      const prepared=images.map((image,index)=>{
+        const data=decodeBase64(image.base64);
+        return {data,mediaType:sniffImageType(data)??image.mimeType??'image/png',name:`browser-turn-end-${index+1}.png`};
+      });
+      const refs=await store.saveImages(prepared);
+      return refs.map(ref=>({type:'image',attachment:ref}));
+    }catch{
+      return [];
+    }
+  }
   closeTurn(turn,reason,waiting){
+    this.#settleReadyHeld(turn.turn);
     this.interruptNow();
     for(const [key,call] of this.calls)if(call.turn===turn.turn&&!this.results.has(key))this.tool({rowId:0,toolCallId:call.callId,toolName:call.name,inputText:call.arguments,status:'cancelled'},key,call.turn,call.step,true);
     if(turn.openStep!==null)this.append('step/end',{turn:turn.turn,step:turn.openStep});
@@ -411,7 +482,12 @@ export class ConversationEventTranslator {
     return undefined;
   }
   async close({keepOpenTurns=false}={}){
-    this.abort();await this.tail;this.interruptNow();
+    this.abort();await this.tail;
+    // Held-but-complete streams settle cleanly before any interruption marking: an
+    // interrupted flag on an already-finished message would persist forever (unchanged
+    // rows never re-settle) and poison the turn's final answer.
+    for(const turn of this.turns.values())if(!turn.closed)this.#settleReadyHeld(turn.turn);
+    this.interruptNow();
     // keepOpenTurns serves the history backfill of a conversation that was STILL RUNNING when
     // its window was read: closing the final turn here (or via the factory's interrupted-turn
     // closers) would mark a live turn "stopped" while the live layer keeps appending into the
