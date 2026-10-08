@@ -282,12 +282,13 @@ export class ConversationEventTranslator {
           const meta=header.originMeta;
           const source=meta?.backgroundSource==='subagent'?'后台Subagent':meta?.backgroundSource==='bash'?'后台终端命令':meta?.backgroundSource==='workflow'?'后台Workflow':null;
           const title=typeof meta?.title==='string'?meta.title.trim():'';
-          const text=header.origin==='goalContinuation'?'⟳ Goal 自动继续'
-            :source!==null&&title!==''?`⟳ ${source}完成：${title.slice(0,40)}`
-            :'⟳ 后台任务结果触发';
+          const text=header.origin==='goalContinuation'?'Goal 自动继续'
+            :source!==null&&title!==''?`${source}完成：${title.slice(0,40)}`
+            :'后台任务结果触发';
           // rowKey keeps replay dedupe; turnKey lets history re-timing pin the message to the
-          // turn's own start instead of the import moment.
-          this.append('user/message',{id:`zcode-user:${triggerKey}`,role:'user',source:{kind:'user'},content:[{type:'text',text}],zcode:{rowKey:triggerKey,turnKey}},'append');
+          // turn's own start instead of the import moment. The source carries zcodeTrigger so
+          // the chat renderer can decorate the bubble (SVG glyph) without text sniffing.
+          this.append('user/message',{id:`zcode-user:${triggerKey}`,role:'user',source:{kind:'user',zcodeTrigger:true},content:[{type:'text',text}],zcode:{rowKey:triggerKey,turnKey}},'append');
           this.users.add(triggerKey);
         }
       }
