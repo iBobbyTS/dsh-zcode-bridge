@@ -1,5 +1,5 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';
-import {readFileSync,writeFileSync,mkdtempSync,mkdirSync,rmSync} from 'node:fs';import {homedir} from 'node:os';import {join} from 'node:path';import {createHash,randomBytes} from 'node:crypto';import {createLauncherConfig,assertLandings,sandboxProfile,fault} from '../packages/host/launcher/config.mjs';import {EventEmitter} from 'node:events';import {createRequire} from 'node:module';import vm from 'node:vm';import {transformSync} from 'esbuild';
+import {readFileSync,writeFileSync,mkdtempSync,mkdirSync,rmSync,existsSync} from 'node:fs';import {homedir} from 'node:os';import {join} from 'node:path';import {createHash,randomBytes} from 'node:crypto';import {createLauncherConfig,assertLandings,sandboxProfile,fault} from '../packages/host/launcher/config.mjs';import {EventEmitter} from 'node:events';import {createRequire} from 'node:module';import vm from 'node:vm';import {transformSync} from 'esbuild';
 const require=createRequire(import.meta.url),tick=()=>new Promise(resolve=>setImmediate(resolve));
 // Run the actual lifecycle owner with REAL configuration/landing/socket validation and profile
 // generation. Only artifact preparation and process spawn are mocked; no protected Host is launched.
@@ -9,6 +9,7 @@ function launcherFixture({ready=true}={}){
   const landing=assertLandings(config);assert.equal(landing.mode,'live-http');
   assert.ok(Buffer.byteLength(join(config.paths.temp,'znr-00000000-0000-0000-0000-000000000000.sock'))<=103);
   assert.equal(configs.some(old=>old.runRoot===config.runRoot),false,'each recovery needs a fresh run');
+  if(existsSync(config.runRoot))throw fault('scratch-run-already-exists');
   mkdirSync(config.runRoot,{recursive:true});configs.push(config);return {...config,landing};
  }};
  let source=readFileSync(new URL('../packages/host/launcher/index.mjs',import.meta.url),'utf8').replace(/import \{ createLauncherConfig, prepareLauncher, sandboxProfile, fault \} from '\.\/config.mjs';/, 'const {createLauncherConfig,prepareLauncher,sandboxProfile,fault}=configFace;');
@@ -24,6 +25,19 @@ test('Production launcher can restart after an authenticated ready process exits
 
 test('Prior bootstrap failure keeps the existing live-http retry guard; disposal never restarts',async()=>{
  const f=launcherFixture({ready:false});try{assert.equal((await f.launcher.start()).phase,'failed');f.children[0].exited=true;f.children[0].emit('close',2);await f.tick();assert.equal((await f.launcher.start()).reason,'live-http-retry-disabled');assert.equal(f.children.length,1);await f.launcher.dispose();await assert.rejects(f.launcher.start(),{code:'disposed'})}finally{await f.close()}
+});
+
+test('A stale run directory left by a previous boot recovers onto a fresh owned run',async()=>{
+ const f=launcherFixture();try{
+  const stale=createLauncherConfig(f.launcher.options).runRoot;
+  mkdirSync(stale,{recursive:true});
+  const state=await f.launcher.start();
+  assert.equal(state.phase,'ready',state.reason);
+  assert.equal(f.children.length,1,'one bootstrap despite the stale directory');
+  assert.notEqual(f.configs[0].runRoot,stale,'the launch moved to a recovery run');
+  assert.equal(existsSync(stale),true,'the stale directory is left untouched, never scrubbed');
+  rmSync(stale,{recursive:true,force:true});
+ }finally{await f.close()}
 });
 
 test('Recovery IDs fit the REAL validator at the production root and exactly at the socket budget',async()=>{

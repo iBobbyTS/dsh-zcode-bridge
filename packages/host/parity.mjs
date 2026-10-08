@@ -2,7 +2,6 @@ import { CatalogClient } from './catalog.mjs';
 import { InsightsClient } from './insights.mjs';
 import { AutomationClient } from './automation.mjs';
 import { zcodeWorkspacePresentationSchema } from './vendor/zcode/v4.mjs';
-import { backgroundWaiting } from './background-waiting.mjs';
 import { requestWorkflow } from './workflow.mjs';
 import {HOOK_REVIEW_COMMANDS,INTERACTION_COMMANDS,validateHookReview,validateInteractionRoute,grantWorkspaceHookTrust} from '../driver/hook-review.mjs';
 import {HISTORY_MUTATION_COMMANDS} from '../driver/history.mjs';
@@ -92,13 +91,9 @@ export class ParityService {
     }
     if(domain==='preferences'&&['read','update'].includes(operation))return peer.request('bridge/preferences/'+operation,{...params,workspace},{signal});
     // Conversation resources/control stay with the projection, target admission and command ledger.
-    if(['command','attachment','snapshot','history','waiting'].includes(domain)){
+    if(['command','attachment','snapshot','history'].includes(domain)){
       const agent=this.runtime.agents.get(sessionId);if(!agent||!record?.officialId)throw fault('official-session-required');
       agent.touch();await agent.connect();if(!await agent.whenProjectionReady())throw fault('projection-unconfirmed');if(signal?.aborted)throw fault('cancelled');
-      if(domain==='waiting'){
-        if(operation!=='read'||Object.keys(params).length)throw fault('parity-operation-denied');
-        return backgroundWaiting(agent);
-      }
       if(domain==='snapshot')return agent.conversation.state;
       if(domain==='history'){
         if(operation!=='read')throw fault('parity-operation-denied');

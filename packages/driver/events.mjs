@@ -6,6 +6,38 @@ import {FORK_PROJECTION_EVENT} from './fork.mjs';
 
 const clean=value=>JSON.parse(JSON.stringify(value));
 export const eventRowKey=(epoch,id)=>JSON.stringify([epoch,id]);
+const WAITING_MARKER_KIND_LABELS={subagent:'后台Subagent',bash:'后台终端命令',workflow:'后台Workflow'};
+const WAITING_MARKER_KIND_BY_LABEL=Object.fromEntries(Object.entries(WAITING_MARKER_KIND_LABELS).map(([kind,label])=>[label,kind]));
+/** Inverse of the synthetic marker text built in the projection below: the legacy backfill
+ *  parses persisted marker events to recover {kind,title} without re-reading official rows.
+ *  Titles were capped at 40 chars at synthesis time, which is enough for the note line. */
+export function parseWaitingMarkerText(text){
+  const match=/^(后台Subagent|后台终端命令|后台Workflow)完成：([\s\S]+)$/.exec(String(text??'').trim());
+  return match?{kind:WAITING_MARKER_KIND_BY_LABEL[match[1]],title:match[2].trim()}:null;
+}
+/** The turn-end waiting note: a REAL transcript event — the final assistant message of a turn
+ *  that ended resting on background works, so every surface that renders the conversation shows
+ *  it. Live, the translator emits it at the terminal close from the snapshot's own pending
+ *  backgroundWorks; historically, the legacy backfill splices the same event just before that
+ *  turn's turn/end, derived from the NEXT turn's ⟳ marker. Both paths derive from official
+ *  data, so every re-import regenerates an identical note (same deterministic id). */
+export function waitingNoteText(works){
+  const lines=(works??[]).map(work=>work.kind==='bash'&&work.command
+    ?`以后台执行命令：\n\`\`\`bash\n${work.command}\n\`\`\``
+    :`已启动 ${WAITING_MARKER_KIND_LABELS[work.kind]??'后台任务'}《${work.title||work.workId||'未命名任务'}》`);
+  return `本轮结束时仍有 ${lines.length} 个后台任务未交卷，等待结果中：\n${lines.join('\n')}\n完成后 agent 自动接管。`;
+}
+export function buildWaitingNoteEvent({turn,step,works,epoch,time}){
+  const at=time??Date.now(),text=waitingNoteText(works);
+  // assistant messages embed their own delivery stream; a single settled text block is the
+  // minimal legal shape for the log validator (block-start, full delta, settled block-end).
+  const stream=[
+    {type:'chunk',time:at,chunk:{type:'block-start',index:0,blockType:'text'}},
+    {type:'chunk',time:at,chunk:{type:'text-delta',index:0,text}},
+    {type:'chunk',time:at,chunk:{type:'block-end',index:0,block:{type:'text',text}}},
+  ];
+  return {type:'assistant/message',time:at,surfaceOp:'append',data:{turn,step:step??1,message:{id:`zcode-waiting:${epoch??'history'}:${turn}`,role:'assistant',source:{kind:'model',provider:'zcode',model:'unreported'},content:[{type:'text',text}]},stream}};
+}
 const terminalTools=new Set(['success','error','cancelled']);
 const rowsFor=snapshot=>[...snapshot.rows.window].sort((a,b)=>a.createdAtSeq-b.createdAtSeq||a.rowId-b.rowId);
 export function turnEndReason(state,error){
@@ -280,7 +312,7 @@ export class ConversationEventTranslator {
         const triggerKey=eventRowKey(snapshot.logEpoch,`trigger:${header.turnId??rows[0]?.turnId}`);
         if(!this.users.has(triggerKey)){
           const meta=header.originMeta;
-          const source=meta?.backgroundSource==='subagent'?'后台Subagent':meta?.backgroundSource==='bash'?'后台终端命令':meta?.backgroundSource==='workflow'?'后台Workflow':null;
+          const source=typeof meta?.backgroundSource==='string'?WAITING_MARKER_KIND_LABELS[meta.backgroundSource]??null:null;
           const title=typeof meta?.title==='string'?meta.title.trim():'';
           const text=header.origin==='goalContinuation'?'Goal 自动继续'
             :source!==null&&title!==''?`${source}完成：${title.slice(0,40)}`
@@ -325,8 +357,9 @@ export class ConversationEventTranslator {
         }
       }
       if(end&&!turn.closed){
-        for(const [key,stream] of [...this.streams])if(stream.turn===turn.turn)this.settle(key,stream.latest??[],turn.turn,stream.step,{interrupted:true,canonicalRows:stream.canonicalRows??stream.latest});
-        this.closeTurn(turn,end);
+        for(const [key,stream] of [...this.streams])if(stream.turn===turn.turn)this.settle(key,stream.latest??[],stream.turn,stream.step,{interrupted:true,canonicalRows:stream.canonicalRows??stream.latest});
+        const pending=(snapshot?.backgroundWorks??[]).filter(work=>work&&(work.status==='running'||work.status==='resultPending'));
+        this.closeTurn(turn,end,pending.length?{works:pending,epoch:snapshot.logEpoch}:undefined);
       }
     }
     // v4 reports cumulative session counters, not per-row usage. Attribute only a
@@ -347,11 +380,35 @@ export class ConversationEventTranslator {
     }
   }
   abort(){this.lifetime.abort(commandFault('event-translator-disposed'))}
-  closeTurn(turn,reason){
+  closeTurn(turn,reason,waiting){
     this.interruptNow();
     for(const [key,call] of this.calls)if(call.turn===turn.turn&&!this.results.has(key))this.tool({rowId:0,toolCallId:call.callId,toolName:call.name,inputText:call.arguments,status:'cancelled'},key,call.turn,call.step,true);
     if(turn.openStep!==null)this.append('step/end',{turn:turn.turn,step:turn.openStep});
+    if(waiting?.works?.length){
+      // The note is the turn's own closing step: assistant messages must attach to an open
+      // step, and the resting turn's real steps are all closed by now.
+      const works=waiting.works.map(work=>({...work,command:work.command??this.#commandForWork(work)}));
+      const step=Math.max(turn.nextStep??0,this.#lastStep(turn)+1);
+      this.append('step/start',{turn:turn.turn,step});
+      const note=buildWaitingNoteEvent({turn:turn.turn,step,works,epoch:waiting.epoch});
+      this.append(note.type,note.data);
+      this.append('step/end',{turn:turn.turn,step});
+    }
     this.append('turn/end',{turn:turn.turn,reason});turn.closed=true;turn.openStep=null;
+  }
+  #lastStep(turn){const steps=[...turn.steps.values()];return steps.length?Math.max(...steps):1}
+  /** Background bash works carry their Agent description as the title; the launching call in
+   *  this same turn holds the raw command, joined here by that description. */
+  #commandForWork(work){
+    if(work.kind!=='bash'||typeof work.title!=='string')return undefined;
+    for(const call of this.calls.values()){
+      if(call.name!=='Bash'||typeof call.arguments!=='string')continue;
+      try{
+        const input=JSON.parse(call.arguments);
+        if(input&&input.description===work.title&&typeof input.command==='string'&&input.command.trim())return input.command.trim().slice(0,200);
+      }catch{/* a non-JSON argument snapshot simply contributes no command */}
+    }
+    return undefined;
   }
   async close({keepOpenTurns=false}={}){
     this.abort();await this.tail;this.interruptNow();

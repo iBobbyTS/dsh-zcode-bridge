@@ -7,9 +7,8 @@ import { ZCodeCatalogPanel,catalogLocales } from './catalog-view.jsx';
 import { ZCodeInsightsPanel,insightsLocales } from './insights-view.jsx';
 import { ZCodeWorkflowPanel } from './workflow-view.jsx';
 import { inputSubmission,heldConfirmation,confirmHeld,commandResultText } from './input-controls.mjs';
-import { waitingPreference } from './waiting-tail.jsx';
 
-export const parityLocales={en:{title:'Zcode Bridge',connection:'Connection',version:'Official version',sync:'Sync official task directory in the background',syncNote:'Startup sync and refresh before opening a session always run.',waitingTail:'Show ZCode background waiting status under the last turn',diagnostics:'Diagnostics',runtime:'Default runtime: zcode (fixed for new sessions)',catalog:'Task catalog',insights:'Account, usage and diagnostics',automation:'Automations',workflows:'Workflows',workspace:'Workspace presentations',preferences:'Interaction preferences',refresh:'Refresh official state',unknown:'Unknown',...Object.fromEntries(Object.entries(catalogLocales.en).map(([k,v])=>['catalog.'+k,v])),...Object.fromEntries(Object.entries(insightsLocales.en).map(([k,v])=>['insights.'+k,v]))},zh:{title:'Zcode Bridge',connection:'连接状态',version:'官方版本',sync:'后台同步官方任务目录',syncNote:'启动同步和打开会话前刷新始终执行。',waitingTail:'会话空闲时在最后一轮下方显示后台任务等待状态',diagnostics:'诊断信息',runtime:'默认 runtime：zcode（新会话固定默认值）',catalog:'任务目录',insights:'账号、用量与诊断',automation:'自动化',workflows:'工作流',workspace:'工作区呈现',preferences:'交互偏好',refresh:'刷新官方状态',unknown:'未知',...Object.fromEntries(Object.entries(catalogLocales.zh).map(([k,v])=>['catalog.'+k,v])),...Object.fromEntries(Object.entries(insightsLocales.zh).map(([k,v])=>['insights.'+k,v]))}};
+export const parityLocales={en:{title:'Zcode Bridge',connection:'Connection',version:'Official version',sync:'Sync official task directory in the background',syncNote:'Startup sync and refresh before opening a session always run.',diagnostics:'Diagnostics',runtime:'Default runtime: zcode (fixed for new sessions)',catalog:'Task catalog',insights:'Account, usage and diagnostics',automation:'Automations',workflows:'Workflows',workspace:'Workspace presentations',preferences:'Interaction preferences',refresh:'Refresh official state',unknown:'Unknown',...Object.fromEntries(Object.entries(catalogLocales.en).map(([k,v])=>['catalog.'+k,v])),...Object.fromEntries(Object.entries(insightsLocales.en).map(([k,v])=>['insights.'+k,v]))},zh:{title:'Zcode Bridge',connection:'连接状态',version:'官方版本',sync:'后台同步官方任务目录',syncNote:'启动同步和打开会话前刷新始终执行。',diagnostics:'诊断信息',runtime:'默认 runtime：zcode（新会话固定默认值）',catalog:'任务目录',insights:'账号、用量与诊断',automation:'自动化',workflows:'工作流',workspace:'工作区呈现',preferences:'交互偏好',refresh:'刷新官方状态',unknown:'未知',...Object.fromEntries(Object.entries(catalogLocales.zh).map(([k,v])=>['catalog.'+k,v])),...Object.fromEntries(Object.entries(insightsLocales.zh).map(([k,v])=>['insights.'+k,v]))}};
 const fallback=key=>parityLocales.en[key]??key;
 const style={padding:12,overflowWrap:'anywhere',minWidth:0};
 function Facts({value}){return value===null||value===undefined?null:<pre style={{whiteSpace:'pre-wrap',maxHeight:280,overflow:'auto'}}>{JSON.stringify(value,null,2)}</pre>}
@@ -23,14 +22,12 @@ export function useParityRead(controller){
 function Result({read}){return <>{read.busy&&<p role="status">Awaiting official result</p>}{read.error&&<p role="alert">{read.error} · retry reads to get current official state; writes are never retried automatically.</p>}{read.value?.ack&&<p role="status">{commandResultText(read.value)}</p>}</>}
 export function BridgeSettingsPanel({rpc,status,t=fallback,onDiagnostics}){
   const owner=useMemo(()=>({rpc}),[rpc]),read=useParityRead(owner);
-  const waitingTail=useSyncExternalStore(waitingPreference.subscribe,waitingPreference.getSnapshot,waitingPreference.getSnapshot);
   const request=async patch=>{const response=await rpc.call('/zcode-bridge','bridgeSettings',patch??{},new AbortController().signal);if(!response.ok)throw Object.assign(new Error(response.error.code),{code:response.error.code});return response.value};
   useEffect(()=>{void read.run(()=>request())},[owner]);
   return <section data-zcode-settings="" style={style}><h3>{t('title')}</h3>
     <p>{t('connection')}: {status?.state??read.value?.connection??t('unknown')}</p><p>{t('version')}: {status?.installation?.version??read.value?.version??t('unknown')}</p>
     <label><input type="checkbox" aria-label={t('sync')} checked={read.value?.catalogSync??true} disabled={read.busy||!read.value} onChange={event=>void read.run(()=>request({catalogSync:event.target.checked}))}/>{t('sync')}</label>
     <p>{t('syncNote')}</p>
-    <label><input type="checkbox" aria-label={t('waitingTail')} checked={waitingTail} onChange={event=>waitingPreference.setEnabled(event.target.checked)}/>{t('waitingTail')}</label>
     <p role="note">{t('runtime')}</p><button type="button" onClick={onDiagnostics}>{t('diagnostics')}</button>
     <button type="button" disabled={read.busy} onClick={()=>void read.run(()=>request())}>{t('refresh')}</button><Result read={read}/>
   </section>;

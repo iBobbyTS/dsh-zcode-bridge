@@ -6,7 +6,6 @@ import { statusText } from './status.mjs';
 import { StatusController } from './controller.mjs';
 import { installParityPanels } from './parity-controls.jsx';
 import { installTriggerIcon } from './trigger-icon.jsx';
-import { installWaitingTail } from './waiting-tail.jsx';
 export { BridgeParityPage,BridgeSettingsPanel,AutomationPanel,PreferencesPanel,FeedbackPanel,AttachmentPanel,SessionParityPanel,DiagnosticsExtras } from './parity-controls.jsx';
 export { QueueSendNowControl,ZCodeInterlockBanner } from './session-dock-controls.jsx';
 import { CompatibilityStore } from './compatibility.mjs';
@@ -24,7 +23,6 @@ export function apply(ctx){
   // session parity dock and the interlock notice in the parity page.
   installParityPanels(ctx,connection,StatusCard);
   installTriggerIcon(ctx);
-  installWaitingTail(ctx);
   ctx.effect(()=>ctx.locale.register('zcodeBridge',{zh,en}),'zcode-bridge: locale');
 }
 /** R19 version banner and R20 fail-safe notices. Dismissal is a separate local preference and

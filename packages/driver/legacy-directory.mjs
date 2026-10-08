@@ -1,4 +1,4 @@
-import {ConversationEventTranslator,mergeEventWindows} from './events.mjs';
+import {ConversationEventTranslator,mergeEventWindows,parseWaitingMarkerText,buildWaitingNoteEvent} from './events.mjs';
 import {collectHistoryPages,historySnapshots,historyAttachmentReader} from './history-backfill.mjs';
 
 const fault=(code,message)=>Object.assign(new Error(message??code),{code});
@@ -76,9 +76,66 @@ export function retimeHistoryEvents(events,rows,epoch,{sessionUpdatedAt}={}){
  * the resume write gate: the first open fetches and persists the complete translated history;
  * every later open re-probes ZCode's tail and appends only what changed (the replay is idempotent
  * against already-persisted events). */
+/** Insert the turn-end waiting notes into a translated backfill batch: every ⟳ marker turn
+ *  proves the turn before it ended resting on that work, and the note becomes that turn's FINAL
+ *  assistant message, inserted right before its turn/end. Derived only from official rows (the
+ *  marker's own synthesized text carries {kind,title}; the turn's Bash calls rejoin the raw
+ *  command by description), so every re-import regenerates an identical event. Pure so the
+ *  splice stays testable without the poller. */
+export function spliceWaitingNotes(events){
+  const out=[];let turn=0;
+  const turnEndIndex=new Map(),turnEndTime=new Map(),lastStep=new Map(),markers=[],bashByDescription=new Map();
+  for(const event of Array.isArray(events)?events:[]){
+    if(event?.type==='turn/start'){const next=event.data?.turn;turn=Number.isSafeInteger(next)?next:turn+1;out.push(event);continue}
+    const t=Number.isSafeInteger(event?.data?.turn)?event.data.turn:turn;
+    if(event?.type==='step/start'&&Number.isSafeInteger(event.data?.step))lastStep.set(t,event.data.step);
+    // user/message events carry id/role/source/content flat on data (assistant nests under .message).
+    if(event?.type==='user/message'&&String(event.data?.id??'').includes('trigger:')){
+      const text=(Array.isArray(event.data?.content)?event.data.content:[]).filter(block=>block?.type==='text').map(block=>block.text).join(' ');
+      const parsed=parseWaitingMarkerText(text);
+      if(parsed)markers.push({turn:t,work:parsed,epoch:epochOf(event.data.id)});
+    }
+    if(event?.type==='turn/end'){
+      if(!turnEndIndex.has(t))turnEndIndex.set(t,out.length);
+      if(!turnEndTime.has(t)&&typeof event.time==='number')turnEndTime.set(t,event.time);
+    }
+    if(event?.type==='tool/call'&&event.data?.name==='Bash'&&typeof event.data?.arguments==='string'){
+      try{
+        const input=JSON.parse(event.data.arguments);
+        if(input&&typeof input.description==='string'&&typeof input.command==='string')bashByDescription.set(input.description,input.command.slice(0,200));
+      }catch{/* non-JSON argument snapshot: no command to rejoin */}
+    }
+    out.push(event);
+  }
+  const byTurn=new Map();
+  for(const marker of markers){
+    const waiting=marker.turn-1;
+    if(waiting<1||!turnEndIndex.has(waiting))continue;
+    const works=byTurn.get(waiting)??[];
+    if(!works.some(work=>work.title===marker.work.title))works.push({...marker.work,command:marker.work.kind==='bash'?bashByDescription.get(marker.work.title):undefined,epoch:marker.epoch});
+    byTurn.set(waiting,works);
+  }
+  // The note is the waiting turn's own closing step (assistant messages must attach to an open
+  // step, and every real step of a closed turn is closed), so three events are spliced: an
+  // exclusive step start, the note, and the step end — all stamped with the turn end time.
+  const inserts=[];
+  for(const [t,works] of byTurn){
+    const step=(lastStep.get(t)??0)+1,time=turnEndTime.get(t);
+    const events=[
+      {type:'step/start',time,data:{turn:t,step}},
+      buildWaitingNoteEvent({turn:t,step,works,epoch:works[0]?.epoch,time}),
+      {type:'step/end',time,data:{turn:t,step}},
+    ];
+    inserts.push([turnEndIndex.get(t),events]);
+  }
+  for(const [index,events] of inserts.sort((a,b)=>b[0]-a[0]))out.splice(index,0,...events);
+  return out;
+}
+const epochOf=id=>{try{const parsed=JSON.parse(String(id));return Array.isArray(parsed)&&typeof parsed[0]==='string'?parsed[0]:'history'}catch{return 'history'}};
+
 export class LegacyDirectory {
   rows=new Map();inflight=new Map();announced=new Map();announcing=new Map();opened=new Set();attached=new Set();headers=new Map();disposed=false;
-  constructor({store,persistence,listCatalog,listPersistedHeaders,request,attachments=()=>undefined,sessions,workspaceRegistry,intervalMs=5000,onError=()=>{}}){
+  constructor({store,persistence,listCatalog,listPersistedHeaders,request,attachments=()=>undefined,sessions,workspaceRegistry,intervalMs=5000,onError=()=>{}}={}){
     Object.assign(this,{store,persistence,listCatalog,listPersistedHeaders,request,attachments,sessions,workspaceRegistry,intervalMs,onError});
   }
   status(sessionId){return this.store.value.legacy[sessionId]??null}
@@ -370,7 +427,7 @@ export class LegacyDirectory {
       // Detached prepare adds a `session/end-seed` terminator at the seed boundary. Persist it at
       // most once (matching the create path), and never count it as backfill progress.
       const boundary=appended.findIndex(event=>event.type==='session/end-seed');
-      const body=boundary<0?appended:[...appended.slice(0,boundary),...appended.slice(boundary+1)];
+      const body=spliceWaitingNotes(boundary<0?appended:[...appended.slice(0,boundary),...appended.slice(boundary+1)]);
       const toAppend=boundary>=0&&!existing.some(event=>event.type==='session/end-seed')?[appended[boundary],...body]:body;
       // An excluded end-seed still consumed a seq inside the detached fold, so the body would
       // start one past the store's next slot; the official persistence validates contiguous

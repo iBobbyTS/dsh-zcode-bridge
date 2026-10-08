@@ -29,26 +29,15 @@ test('Settings section clicks persist OFF/ON, runtime default is read-only and d
  }finally{await mounted?.close();await w.close()}
 });
 
-test('Settings section carries the local waiting-status toggle after catalog sync; flips persist in local storage',async()=>{
+test('Settings section stays server-owned: catalog sync toggle only, no local display toggles',async()=>{
  const w=await parityWorld();let mounted;try{
   mounted=await mount(ui.BridgeSettingsPanel,{rpc:{call:(channel,endpoint,payload,signal)=>w.rpc.call(channel,endpoint,payload,signal)},status:{state:'authenticated',installation:{version:'3.14.4'}}});
-  // jsdom's default document is an opaque origin whose real localStorage throws; the component
-  // only needs the storage contract, so hand it a plain in-memory implementation.
-  const store=new Map();
-  globalThis.localStorage={getItem:key=>store.has(key)?store.get(key):null,setItem:(key,value)=>store.set(key,String(value)),removeItem:key=>store.delete(key)};
-  for(const language of ['zh','en'])assert.ok(ui.parityLocales[language].waitingTail,'locale label exists');
   const boxes=[...document.querySelectorAll('input[type="checkbox"]')];
-  assert.equal(boxes.length,2,'catalog sync first, the waiting toggle second');
+  assert.equal(boxes.length,1,'catalog sync is the only toggle; the waiting note is transcript data, not a display preference');
   assert.equal(boxes[0].getAttribute('aria-label'),'Sync official task directory in the background');
-  const waitingToggle=boxes[1];
-  assert.equal(waitingToggle.getAttribute('aria-label'),'Show ZCode background waiting status under the last turn');
-  assert.equal(waitingToggle.checked,true,'the preference defaults to on');
-  await React.act(async()=>{Simulate.change(waitingToggle,{target:{checked:false}});await tick()});
-  assert.equal(waitingToggle.checked,false);
-  assert.equal(globalThis.localStorage.getItem('zcodeBridge.waitingTail'),'false','off persists locally');
-  await React.act(async()=>{Simulate.change(waitingToggle,{target:{checked:true}});await tick()});
-  assert.equal(globalThis.localStorage.getItem('zcodeBridge.waitingTail'),'true','on persists locally');
- }finally{delete globalThis.localStorage;await mounted?.close();await w.close()}
+  assert.equal(ui.parityLocales.zh.waitingTail,undefined);
+  assert.equal(ui.parityLocales.en.waitingTail,undefined);
+ }finally{await mounted?.close();await w.close()}
 });
 
 test('Catalog UI displays official enable state and actual list status; enable click rereads instead of optimistically toggling',async()=>{

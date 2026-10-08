@@ -41,7 +41,15 @@ export class HostLauncher {
       if(this.#liveHttpAttempted&&!this.#liveHttpReady)throw fault('live-http-retry-disabled');
       // Recovery uses the same validated configuration/profile, with a fresh owned run. Failed
       // first bootstrap remains guarded; an authenticated ready owner may recover after exit.
-      config=prepareLauncher(createLauncherConfig({...this.options,...(this.#launchCount?{runId:recoveryRunId(this.options.scratchRoot)}: {})}));this.#launchCount++;this.#executionNonce=config.executionNonce;
+      try{config=prepareLauncher(createLauncherConfig({...this.options,...(this.#launchCount?{runId:recoveryRunId(this.options.scratchRoot)}: {})}))}
+      catch(error){
+        // A previous boot's owned run directory can outlive it (stop never scrubs scratch, and a
+        // crash leaves it behind); without this branch every later boot would fail its first
+        // attempt forever. The configured id is not sacred, so recover onto a fresh owned run.
+        if(error.code!=='scratch-run-already-exists'||this.#launchCount)throw error;
+        config=prepareLauncher(createLauncherConfig({...this.options,runId:recoveryRunId(this.options.scratchRoot)}));
+      }
+      this.#launchCount++;this.#executionNonce=config.executionNonce;
       if(config.mode==='live-http')this.#liveHttpAttempted=true;
       const codeRoot=realpathSync(fileURLToPath(new URL('../',import.meta.url)));
       const dependencyRoot=dirname(fileURLToPath(import.meta.resolve('zod')));
