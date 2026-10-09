@@ -4,6 +4,7 @@ import {join} from 'node:path';
 import {homedir} from 'node:os';
 import {installDriver} from './factory.mjs';
 import {installZCodeLlm} from '../host/zcode-llm.mjs';
+import {readSelfManagedCatalog} from './self-catalog.mjs';
 import {DriverTransport} from './transport.mjs';
 import {installSessionCommandSeams} from './session-commands.mjs';
 import {installDefaultModelCover,installModelSeat} from './model-seat.mjs';
@@ -32,7 +33,7 @@ export const inject=['agents','sessions','sessionProjections','zcodeBridgeHost']
 export function legacyHistoryRequest(transport){
   return async (method,params,options)=>{
     await transport.ready(undefined,options?.signal);
-    return transport.peer.request(method,params,options);
+    return typeof transport.requestFor==='function'?transport.requestFor(method,params,options):transport.peer.request(method,params,options);
   };
 }
 /** Wait for the host's async model discovery, then re-announce the registered route exactly once.
@@ -61,7 +62,13 @@ export async function apply(ctx){
   // Shared before the factory install: the factory records bindings from its first create while
   // the legacy wiring below is still loading the state file the index eventually persists to.
   const bindings=new ConversationBindingIndex();
-  const driver=installDriver(ctx,{createScope,agentEvents,interruptedTurnClosers,bindings,transport:new DriverTransport(host),hostDiagnostics:host.driverDiagnostics??=new Map()});
+  const store=new DriverStateStore(process.env.DSH_HOME??join(homedir(),'.dsh'));
+  const transport=new DriverTransport(host);transport.store=store;
+  if(host.authorityMode==='self-managed'||host.pool){
+    host.driverStateStore=store;host.driverBindings=bindings;
+    host.selfCatalogProvider=async()=>{await store.ensureLoaded();bindings.attach(store);return readSelfManagedCatalog({pool:host.pool,store,authority:host.status.sessionAuthority,logger:ctx.logger})};
+  }
+  const driver=installDriver(ctx,{createScope,agentEvents,interruptedTurnClosers,bindings,transport,hostDiagnostics:host.driverDiagnostics??=new Map()});
   host.driverState=driver.state;
   if(driver.state.state==='occupied'){
     // The occupied driver owns the official catalog import. Retire the host mirror directory
@@ -128,8 +135,7 @@ export async function apply(ctx){
           return;
         }
         legacyCtx.fiber.assertActive();
-        const store=new DriverStateStore(process.env.DSH_HOME??join(homedir(),'.dsh'));
-        await store.load();
+        if(host.authorityMode==='self-managed'||host.pool)await store.ensureLoaded();else await store.load();
         bindings.attach(store);
         try{
           const archive=await runNativeArchive({

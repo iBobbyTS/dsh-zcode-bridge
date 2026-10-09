@@ -43,14 +43,20 @@ class WorkspacePeer {
   async request(method,params,{signal,timeoutMs,onResult}={}){
     return this.#run(signal,peer=>peer.request(method,params,{signal,timeoutMs,onResult}));
   }
-  async #run(signal,operation){
+  requestIfLive(method,params,{signal,timeoutMs,onResult}={}){
+    const peer=this.entry.peer;
+    if(this.closed||this.pool.disposed||!peer||peer.closed)return null;
+    return this.#run(signal,live=>live.request(method,params,{signal,timeoutMs,onResult}),peer);
+  }
+  async #run(signal,operation,livePeer){
     if(this.closed||this.pool.disposed)throw fault(this.#closeReason??'execution-disposed');
     if(signal?.aborted)throw fault('cancelled');
     const entry=this.entry;let dispatched=false;entry.pending++;this.pool.touch(entry);
     try{
-      const peer=await waitFor(this.pool.ensure(entry),signal);
+      const peer=livePeer??await waitFor(this.pool.ensure(entry),signal);
       if(signal?.aborted)throw fault('cancelled');
       if(this.closed||this.pool.disposed)throw fault(this.#closeReason??'execution-disposed');
+      if(livePeer&&(entry.peer!==livePeer||livePeer.closed))throw fault('execution-disconnected');
       dispatched=true;return await operation(peer);
     }catch(error){
       // ProtocolPeer records whether a queued request reached stdin before losing the stream.
@@ -72,6 +78,11 @@ export class AppServerPool {
   }
   get disposed(){return this.#disposed}
   get size(){return this.#entries.size}
+  /** Snapshot facades for live-only reads that retain normal pending/trim accounting. */
+  live(){
+    if(this.disposed)return [];
+    return [...this.#entries.values()].filter(entry=>entry.launcher.state.phase==='ready'&&entry.peer&&!entry.peer.closed&&!entry.facade.closed).map(entry=>({facade:entry.facade,workspacePath:entry.workspacePath}));
+  }
   forWorkspace(workspacePath){
     if(this.disposed)return Promise.reject(fault('execution-disposed'));
     const lookup=this.#workspace(workspacePath);this.#lookups.add(lookup);

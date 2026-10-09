@@ -18,7 +18,7 @@ export const initialStatus=()=>({state:'unavailable',reason:'not-connected',auth
 /** Owns only children it launches; there is no attach or shared-process killer. */
 export class BridgeHost {
   #conversations=new Set(); #handles=new Map(); #deleted=new Set(); #clientId='bridge-'+randomUUID(); #status=initialStatus(); #peer; #catalog; #insights; #automation; #hostTools; #operation; #disposed=false; #stop; #disposePromise; #failSafe=new FailSafeState();
-  constructor({appPath,workspacePath,defaultWorkspace,inspect=inspectInstallation,spawnProcess=spawn,catalogLimit=4096,onStatus=()=>{},authorityMode='restricted-cli',launcher}={}){if(!Number.isSafeInteger(catalogLimit)||catalogLimit<50||catalogLimit>65536)throw new BridgeError('catalog-limit-invalid');if(!['restricted-cli','host-backed','self-managed'].includes(authorityMode))throw new BridgeError('authority-mode-invalid');this.authorityMode=authorityMode;this.launcher=launcher;this.catalogLimit=catalogLimit;this.appPath=appPath;this.workspacePath=workspacePath;this.defaultWorkspace=defaultWorkspace;this.inspect=inspect;this.spawnProcess=spawnProcess;this.onStatus=onStatus}
+  constructor({appPath,workspacePath,defaultWorkspace,inspect=inspectInstallation,spawnProcess=spawn,catalogLimit=4096,onStatus=()=>{},authorityMode='restricted-cli',launcher,selfCatalog}={}){if(!Number.isSafeInteger(catalogLimit)||catalogLimit<50||catalogLimit>65536)throw new BridgeError('catalog-limit-invalid');if(!['restricted-cli','host-backed','self-managed'].includes(authorityMode))throw new BridgeError('authority-mode-invalid');this.selfCatalogProvider=selfCatalog;this.authorityMode=authorityMode;if(authorityMode==='self-managed')this.#status.sessionAuthority='self-managed:'+randomUUID();this.launcher=launcher;this.catalogLimit=catalogLimit;this.appPath=appPath;this.workspacePath=workspacePath;this.defaultWorkspace=defaultWorkspace;this.inspect=inspect;this.spawnProcess=spawnProcess;this.onStatus=onStatus}
   /** Adds the per-connection fail-safe grade and the version-compatibility truth table.
    *  Both are derived facts: the fail-safe never persists, and the compatibility record is the
    *  bridge's own verified-version constant, never a ZCode source-derived claim. */
@@ -30,6 +30,7 @@ export class BridgeHost {
   /** #listSessions body; the public wrapper records any failure code (a core sessions-invalid
    *  projection must stop new side effects, not only close the peer). */
   async #listSessions({address,signal}={}){
+    if(this.authorityMode==='self-managed')return this.#selfCatalog(address,signal);
     if(this.authorityMode==='host-backed')return this.#hostCatalog(address,signal);
     const peer=this.#peer,status=this.status;
     if(this.#disposed||!status.connected||!peer||peer.closed)throw new BridgeError('source-unavailable');
@@ -57,6 +58,20 @@ export class BridgeHost {
     if(address&&sessions.length===0){const catalog=await this.#listSessions({signal});return {...catalog,sessions:catalog.sessions.filter(row=>row.address.sessionId===address.sessionId)}}
     const visible=sessions.filter(row=>!this.#deleted.has(row.address.sessionId));
     return {sessions:visible,catalog:{complete:!truncated,truncated,limit,deleted:[...this.#deleted],sharedGui:'unverified',authorityKind:'owned-headless',lifetime:'process'},management:{rename:status.installation?.verified===true,delete:status.installation?.verified===true,archive:false,pin:false,reason:'archive-pin-carrier-unverified',renameCas:false,deleteSemantics:'official-runtime-removal'},scope:{authority:status.sessionAuthority,workspace:status.workspacePath},availability:{state:status.state,reason:status.reason,capabilities:{create:false,open:false,nativeAgent:false}}};
+  }
+  async #selfCatalog(address,signal){
+    const state=this.status;signal?.throwIfAborted();
+    if(this.#disposed)throw new BridgeError('source-unavailable');
+    if(address&&(address.runtime!=='zcode'||address.authority!==state.sessionAuthority||typeof address.workspace!=='string'||typeof address.sessionId!=='string'))throw new BridgeError('source-address-mismatch');
+    const complete=typeof this.selfCatalogProvider==='function';
+    const rows=complete?await this.selfCatalogProvider({signal}):[];signal?.throwIfAborted();
+    if(this.#disposed)throw new BridgeError('source-unavailable');
+    const sessions=rows.filter(row=>!address||(row.sessionId===address.sessionId&&row.workspacePath===address.workspace)).map(row=>({
+      address:{runtime:'zcode',authority:state.sessionAuthority,workspace:row.workspacePath,sessionId:row.sessionId},
+      ...(typeof row.title==='string'?{title:row.title}:{}),cwd:row.workspacePath,running:undefined,
+      sharedTask:{createdAt:row.createdAt,lastActivityAt:row.updatedAt,archived:row.archived===true},
+    }));
+    return {sessions,catalog:{complete,truncated:false,limit:rows.length,deleted:[],sharedGui:'shared-task-store',authorityKind:'self-managed',lifetime:'official',readOnly:true,multiWorkspace:true,...(!complete?{diagnostic:'self-catalog-unbound'}:{})},management:{rename:false,delete:false,archive:false,pin:false,reason:'read-only-official-catalog'},scope:{authority:state.sessionAuthority,workspace:'official-task-catalog'},availability:{state:state.state,reason:state.reason,capabilities:{create:false,open:false,nativeAgent:false}}};
   }
   async #hostCatalog(address,signal){
     const state=this.status;
@@ -231,7 +246,7 @@ export class BridgeHost {
       try{
         if(this.defaultWorkspace!==undefined)peer=await pool.acquire(this.defaultWorkspace);
         if(this.#disposed)throw new BridgeError('disposed');
-        this.#publish({state:'available',connected:true,auth:'unavailable',reason:'direct-storage',sessionAuthority:'self-managed:'+randomUUID(),workspacePath:peer?.workspacePath??this.defaultWorkspace,pool,authorityMode:'self-managed'});
+        this.#publish({state:'available',connected:true,auth:'unavailable',reason:'direct-storage',sessionAuthority:this.#status.sessionAuthority,workspacePath:peer?.workspacePath??this.defaultWorkspace,pool,authorityMode:'self-managed'});
       }catch(error){this.#publish({state:'unavailable',connected:false,auth:'unavailable',reason:this.#disposed?'disposed':error.code??'launch-failed'})}
       finally{peer?.releaseHold()}
       return this.status;

@@ -118,7 +118,7 @@ export class DriverFactory {
         }
         // The durable index entry must exist before the conversation can surface in the catalog
         // (first-turn materialization), or the directory poll would import it as a second record.
-        this.bindings?.bind(zcodeConversationId,id);
+        this.bindings?.bind(zcodeConversationId,id,session.header.cwd??(this.transport.host?.pool?this.transport.executionWorkspace:undefined));
         const binding={type:BINDING_EVENT,seq:session.seq,time:Date.now(),ignorable:true,data:{sessionId:id,zcodeConversationId}};
         // append() cannot set ignorable. Re-prepare the still-detached log with the binding envelope.
         session=this.ctx.sessions.prepare(id,{seed:[...readEvents(session),binding],meta:session.header,inheritedEventCount:session.inheritedEventCount});
@@ -130,7 +130,7 @@ export class DriverFactory {
         zcodeConversationId=boundConversationId(id,cold.events,handle.inheritedEventCount);
         // Re-register on every resume: sessions bound before this index existed (or while the
         // store was not yet attached) heal their entry the first time they are opened.
-        this.bindings?.bind(zcodeConversationId,id);
+        this.bindings?.bind(zcodeConversationId,id,handle.header.cwd??(this.transport.host?.pool?this.bindings?.workspaceOf(zcodeConversationId):undefined));
         storedCount=cold.events.length;
         const open=cold.events.findLast(event=>event.type==='turn/start'||event.type==='turn/end')?.type==='turn/start';
         // A legacy gate that observed the conversation STILL RUNNING keeps its final turn open

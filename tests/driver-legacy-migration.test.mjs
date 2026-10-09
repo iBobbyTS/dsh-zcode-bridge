@@ -320,6 +320,7 @@ test('driver create: the DSH agent preset never persists into the session header
     assert.equal(agent.session.header.agentPreset,undefined);
     assert.equal(f.stored.get('preset-strip-1').header.agentPreset,undefined);
     assert.equal(index.ownerOf('zcode-conv-Y'),'preset-strip-1','the created conversation is bound before it can surface in the catalog');
+    assert.equal(index.workspaceOf('zcode-conv-Y'),'/w');
   }finally{await driver.dispose()}
 });
 
@@ -1073,4 +1074,253 @@ test('an active legacy conversation skips the interrupted-turn closers on resume
       assert.equal(events.some(event=>event.type==='turn/end'),false,'no aborted closer is appended for a live turn');
     }finally{await handle.dispose()}
   }finally{await driver.dispose()}
+});
+
+test('S02 AC5: mixed binding shapes load tolerantly, retain workspaces and round-trip union writes',async()=>{
+  const {mkdir,writeFile}=await import('node:fs/promises');
+  const root=await mkdtemp(join(tmpdir(),'binding-union-'));
+  try{
+    const store=new DriverStateStore(root);await mkdir(join(root,'zcode-bridge'));
+    await writeFile(store.file,JSON.stringify({version:1,executionWorkspace:'/stable',bindings:{old:'dsh-old',new:{sessionId:'dsh-new',workspace:'/new'},missing:{sessionId:'dsh-missing'},bad:10,badObject:{sessionId:8},null:null,array:['dsh']}}));
+    await store.load();const index=new ConversationBindingIndex();index.attach(store);
+    assert.equal(index.ownerOf('old'),'dsh-old');assert.equal(index.workspaceOf('old'),undefined);
+    assert.equal(index.ownerOf('new'),'dsh-new');assert.equal(index.workspaceOf('new'),'/new');assert.equal(index.ownerOf('missing'),'dsh-missing');
+    for(const id of ['bad','badObject','null','array']){assert.equal(index.ownerOf(id),undefined);assert.equal(id in store.value.bindings,false)}
+    index.bind('fresh','dsh-fresh','/fresh');index.bind('plain','dsh-plain');index.bind('old','dsh-old','/old');await store.writing;
+    const fresh=new DriverStateStore(root);await fresh.load();assert.equal(fresh.value.executionWorkspace,'/stable');
+    assert.deepEqual(fresh.value.bindings.fresh,{sessionId:'dsh-fresh',workspace:'/fresh'});assert.equal(fresh.value.bindings.plain,'dsh-plain');assert.deepEqual(fresh.value.bindings.old,{sessionId:'dsh-old',workspace:'/old'});
+  }finally{await rm(root,{recursive:true,force:true})}
+});
+
+function selfPool(){
+  const peers=new Map(),lookups=[];let disposed=0;
+  return {peers,lookups,get disposed(){return disposed},dispose(){disposed++},async forWorkspace(workspace){
+    lookups.push(workspace);let peer=peers.get(workspace);
+    if(!peer||peer.closed){peer={workspacePath:workspace,connectionId:`connection:${workspace}`,closed:false,holds:0,releases:0,readies:0,calls:[],notifications:new Set(),closures:new Set(),
+      hold(){this.holds++},releaseHold(){this.holds--;this.releases++},async ready({signal}={}){signal?.throwIfAborted();this.readies++},
+      onNotification(fn){this.notifications.add(fn);return ()=>this.notifications.delete(fn)},onClosed(fn){this.closures.add(fn);return ()=>this.closures.delete(fn)},
+      close(reason){this.closeReason=reason;this.closed=true},async request(method,params,options){this.calls.push({method,params,options});if(method==='v4/command')return {commandId:params.commandId,status:'accepted',revisionAtDecision:0,result:{type:'createSession',sessionId:'created'}};return {rows:[]}}};peers.set(workspace,peer)}return peer;
+  }};
+}
+
+test('S02 AC6: self-managed create, resume, conversation holds and legacy history route by workspace',async()=>{
+  const {DriverTransport,legacyHistoryRequest}=await import('../packages/driver/index.mjs');
+  const root=await mkdtemp(join(tmpdir(),'self-transport-')),store=new DriverStateStore(root);
+  try{
+    const pool=selfPool();store.value.executionWorkspace=join(root,'default');await store.save();
+    const bindings=new ConversationBindingIndex();const host={pool,driverStateStore:store,driverBindings:bindings,status:{sessionAuthority:'self'},connect(){throw new Error('no launcher gating')}};
+    const transport=new DriverTransport(host),signal=new AbortController().signal;
+    assert.equal(await transport.ready(undefined,signal),join(root,'default'));bindings.attach(store);
+    assert.equal(await transport.create({signal,firstInput:{text:'hello'},modelSelection:{providerId:'p',modelId:'m'},mode:'build'}),'created');
+    const peer=pool.peers.get(join(root,'default')),envelope=peer.calls[0].params;
+    assert.equal(envelope.clientId,'dsh-zcode-driver');assert.equal(envelope.type,'createSession');assert.equal(envelope.sessionId,null);
+    assert.deepEqual(envelope.workspace,{workspacePath:join(root,'default'),workspaceKey:join(root,'default')});
+    assert.deepEqual(envelope.payload,{workspaceId:join(root,'default'),firstInput:{text:'hello',modelSelection:{providerId:'p',modelId:'m'},mode:'build'}});
+    await assert.rejects(transport.create({cwd:'/wrong',signal}),{code:'driver-workspace-mismatch'});
+    const workspace=join(root,'project');bindings.bind('other','dsh-other',workspace);
+    assert.equal(await transport.resume({zcodeConversationId:'other',signal}),'other');
+    const other=pool.peers.get(workspace);assert.equal(other.readies,0,'resume resolves the facade without a project handshake');assert.equal(other.holds,1,'resume protects its prepared facade');
+    const one=transport.conversation({zcodeConversationId:'other',cwd:workspace}),two=transport.conversation({zcodeConversationId:'other',cwd:workspace});
+    assert.equal(one.peer,other);assert.equal(one.connectionId,other.connectionId);assert.equal(one.clientMode,'desktop-continuous');assert.equal(one.runnable,true);assert.equal(one.managementAllowed,true);assert.equal(other.holds,2);
+    await one.cancel();await one.cancel();assert.equal(other.holds,1);assert.equal(other.releases,1);
+    // A recoverable connection loss is not a terminal conversation close.
+    for(const notify of other.closures)notify('execution-disconnected');assert.equal(other.holds,1);
+    const history=legacyHistoryRequest(transport),params={workspace:{workspacePath:workspace,workspaceKey:workspace},sessionId:'other'};
+    await history('v4/conversation/rowsRange',params,{signal});assert.deepEqual(other.calls.at(-1),{method:'v4/conversation/rowsRange',params,options:{signal}});
+    await history('v4/conversation/rowsRange',{topic:'conversation/other'});assert.equal(other.calls.at(-1).params.topic,'conversation/other');
+    const before=peer.calls.length;await history('v4/conversation/rowsRange',{sessionId:'unbound'});assert.equal(peer.calls.length,before+1);
+    await transport.requestFor('fixture/read',{workspace:{workspacePath:workspace,workspaceKey:workspace}});assert.equal(other.calls.at(-1).method,'fixture/read');
+    transport.dispose();assert.equal(other.holds,0);assert.equal(other.releases,2);assert.equal(other.closeReason,'transport-disposed');assert.equal(peer.closeReason,'transport-disposed');assert.equal(pool.disposed,0);assert.equal(transport.facades.size,0);
+    await two.cancel();assert.equal(other.releases,2,'late close never releases twice');
+  }finally{await store.writing;await rm(root,{recursive:true,force:true})}
+});
+
+test('S02 default execution workspace is lazily created once and persisted before legacy loading',async()=>{
+  const {DriverTransport}=await import('../packages/driver/transport.mjs');const {stat}=await import('node:fs/promises');
+  const root=await mkdtemp(join(tmpdir(),'self-default-')),previous=process.env.DSH_HOME;process.env.DSH_HOME=root;
+  try{
+    const store=new DriverStateStore(root),pool=selfPool(),transport=new DriverTransport({pool,driverStateStore:store});
+    const expected=join(root,'zcode-execution');assert.deepEqual(await Promise.all([transport.ready(),transport.ready()]),[expected,expected]);
+    assert.equal((await stat(expected)).isDirectory(),true);assert.equal((await store.ensureLoaded()).executionWorkspace,expected);
+    const saved=new DriverStateStore(root);await saved.load();assert.equal(saved.value.executionWorkspace,expected);
+    process.env.DSH_HOME=join(root,'different');const next=new DriverTransport({pool:selfPool(),driverStateStore:saved});assert.equal(await next.ready(),expected);
+    transport.dispose();next.dispose();
+    const failing={value:{executionWorkspace:expected},async load(){},async save(){throw new Error('read-only state')}};
+    delete failing.value.executionWorkspace;process.env.DSH_HOME=root;
+    const degraded=new DriverTransport({pool:selfPool(),driverStateStore:failing});assert.equal(await degraded.ready(),expected);degraded.dispose();
+  }finally{if(previous===undefined)delete process.env.DSH_HOME;else process.env.DSH_HOME=previous;await rm(root,{recursive:true,force:true})}
+});
+
+test('S02 AC7: BridgeHost self catalog is late-bound, host-shaped, address-filtered and honestly unbound',async()=>{
+  const {BridgeHost}=await import('../packages/host/runtime.mjs');const {ZCodeRuntime}=await import('../packages/host/zcode-runtime.mjs');
+  const host=new BridgeHost({authorityMode:'self-managed'});await host.connect();
+  try{
+    const unbound=await host.listSessions();assert.deepEqual(unbound.sessions,[]);assert.equal(unbound.catalog.complete,false);assert.equal(unbound.catalog.diagnostic,'self-catalog-unbound');
+    const authority=host.status.sessionAuthority,rows=[{sessionId:'one',workspacePath:'/a',workspaceIdentity:'/a',authority,title:'A',createdAt:1,updatedAt:3,archived:true},{sessionId:'one',workspacePath:'/b',workspaceIdentity:'/b',authority,title:'B',updatedAt:4}];
+    host.selfCatalogProvider=async()=>rows;const catalog=await host.listSessions();
+    assert.equal(catalog.catalog.complete,true);assert.equal(catalog.catalog.multiWorkspace,true);assert.equal(catalog.catalog.readOnly,true);assert.equal(catalog.management.rename,false);assert.equal(catalog.management.delete,false);assert.deepEqual(catalog.scope,{authority,workspace:'official-task-catalog'});
+    assert.deepEqual(catalog.sessions[0],{address:{runtime:'zcode',authority,workspace:'/a',sessionId:'one'},title:'A',cwd:'/a',running:undefined,sharedTask:{createdAt:1,lastActivityAt:3,archived:true}});
+    assert.deepEqual(await ZCodeRuntime.prototype.catalogSnapshot.call({host}),rows);
+    const result=await host.listSessions({address:{runtime:'zcode',authority,workspace:'/b',sessionId:'one'}});assert.equal(result.sessions.length,1);assert.equal(result.sessions[0].title,'B');
+    assert.equal((await host.listSessions({address:{runtime:'zcode',authority,workspace:'/b',sessionId:'missing'}})).sessions.length,0);
+    await assert.rejects(host.listSessions({address:{runtime:'zcode',authority:'wrong',workspace:'/a',sessionId:'one'}}),{code:'source-address-mismatch'});
+  }finally{await host.dispose()}
+});
+
+test('S02 AC8: self-managed runtime start exposes catalog without registering, recovering or refreshing mirrors',async()=>{
+  const {ZCodeRuntime,installZCodeRuntime}=await import('../packages/host/zcode-runtime.mjs');
+  let loaded=0,listed=0;const store={records:new Map([['old',{id:'old',officialId:'old',workspace:'/a'}]]),async load(){loaded++},writing:Promise.resolve()};
+  const host={authorityMode:'self-managed',pool:selfPool(),async connect(){},status:{sessionAuthority:'self'},async listSessions(){listed++;return {sessions:[]}}};
+  const runtime=new ZCodeRuntime({},host,{store,discoverModels:async()=>[]});
+  runtime.register=runtime.recoverAll=runtime.refreshDirectory=()=>{throw new Error('mirror path invoked')};
+  await runtime.start();assert.equal(loaded,1);assert.equal(listed,0);assert.equal(runtime.directoryTimer,undefined);assert.equal(runtime.offRecovery,undefined);
+  assert.equal((await runtime.bridgeSettings({catalogSync:true})).connection,'self-managed');assert.equal(runtime.directoryTimer,undefined);
+  await assert.rejects(runtime.ensurePeer(),{code:'execution-unavailable'});await runtime.dispose();
+  const installed=await installZCodeRuntime({},host,{store,createScope:()=>{},agentEvents:{},discoverModels:async()=>[]});
+  assert.equal(typeof host.zcodeCatalog,'function');assert.deepEqual(await host.zcodeCatalog(),[]);assert.equal(listed,1);assert.equal(installed.agents.size,0);assert.equal(installed.directoryTimer,undefined);await installed.dispose();
+});
+
+
+test('S02 factory resume records the persisted session workspace in the union binding',async()=>{
+  const f=driverFixture(),bindings=new ConversationBindingIndex(),driver=installDriver(f.ctx,{...f.deps,bindings});
+  try{
+    const handle=await f.persistence.create({version:4,id:'dsh-resumed',cwd:'/session-project',createdAt:1,isSeeded:false,delegationDepth:0});
+    await handle.append([{type:BINDING_EVENT,seq:0,time:1,ignorable:true,data:{sessionId:'dsh-resumed',zcodeConversationId:'official-resumed'}}]);await handle.close();
+    const resumed=await f.factory.resume(f.owner,{resumeSessionId:'dsh-resumed'});
+    assert.equal(bindings.ownerOf('official-resumed'),'dsh-resumed');assert.equal(bindings.workspaceOf('official-resumed'),'/session-project');await resumed.dispose();
+  }finally{await driver.dispose()}
+});
+
+test('S02 repair: default workspace mkdir failure is a semantic unsent fault and can be retried',async()=>{
+  const {DriverTransport}=await import('../packages/driver/transport.mjs');const {writeFile}=await import('node:fs/promises');
+  const root=await mkdtemp(join(tmpdir(),'self-workspace-fault-'));
+  try{
+    const file=join(root,'file');await writeFile(file,'not a directory');
+    const store={value:{executionWorkspace:join(file,'child')},async load(){},async save(){}},pool=selfPool();
+    const transport=new DriverTransport({pool,driverStateStore:store});
+    await assert.rejects(transport.ready(),{code:'workspace-unavailable',sent:false});assert.deepEqual(pool.lookups,[]);
+    store.value.executionWorkspace=join(root,'valid');assert.equal(await transport.ready(),join(root,'valid'));transport.dispose();
+  }finally{await rm(root,{recursive:true,force:true})}
+});
+
+test('S02 wave3: resume retries replace one outstanding unit and dispose releases unused units exactly once',async()=>{
+  const {DriverTransport}=await import('../packages/driver/transport.mjs');
+  const root=await mkdtemp(join(tmpdir(),'self-resume-holds-'));
+  try{
+    const pool=selfPool(),workspace=join(root,'project'),store={value:{executionWorkspace:join(root,'default')},async load(){},async save(){}};
+    const transport=new DriverTransport({pool,driverStateStore:store,status:{sessionAuthority:'self'}});
+    await Promise.all([transport.resume({zcodeConversationId:'same',cwd:workspace}),transport.resume({zcodeConversationId:'same',cwd:workspace})]);
+    const peer=pool.peers.get(workspace);assert.equal(peer.holds,1);assert.equal(peer.readies,0);assert.equal(pool.peers.get(join(root,'default')).holds,0);
+    const one=transport.conversation({zcodeConversationId:'same',cwd:workspace});assert.equal(peer.holds,1);
+    await transport.resume({zcodeConversationId:'same',cwd:workspace});await transport.resume({zcodeConversationId:'same',cwd:workspace});
+    assert.equal(peer.holds,2,'one active conversation and one unconsumed retry unit');
+    const two=transport.conversation({zcodeConversationId:'same',cwd:workspace});assert.equal(peer.holds,2);await one.cancel();assert.equal(peer.holds,1);
+    await transport.resume({zcodeConversationId:'unused',cwd:workspace});await transport.resume({zcodeConversationId:'unused',cwd:workspace});assert.equal(peer.holds,2);
+    const releases=peer.releases;transport.dispose();transport.dispose();assert.equal(peer.holds,0);assert.equal(peer.releases,releases+2);assert.equal(pool.disposed,0);
+    await two.cancel();assert.equal(peer.releases,releases+2,'a late close never releases a transferred unit twice');
+  }finally{await rm(root,{recursive:true,force:true})}
+});
+
+test('S02 repair: driver apply binds the shared catalog provider before a self-managed pool exists',async()=>{
+  const {apply}=await import('../packages/driver/index.mjs');const {BridgeHost}=await import('../packages/host/runtime.mjs');
+  const root=await mkdtemp(join(tmpdir(),'self-driver-boot-')),previous=process.env.DSH_HOME;process.env.DSH_HOME=root;
+  const f=driverFixture(),host=new BridgeHost({authorityMode:'self-managed'});f.ctx.zcodeBridgeHost=host;
+  // Isolate the apply wiring from optional service assembly while retaining the real factory seam.
+  f.registry.setFactory({});
+  try{
+    await apply(f.ctx);assert.equal(host.pool,undefined);assert.equal(host.status.connected,false);
+    assert.equal(typeof host.selfCatalogProvider,'function');assert.ok(host.driverStateStore instanceof DriverStateStore);assert.ok(host.driverBindings instanceof ConversationBindingIndex);
+    assert.equal(host.driverStateStore.file,join(root,'zcode-bridge','driver-state.json'));
+  }finally{await f.ctx.unload();await host.dispose();if(previous===undefined)delete process.env.DSH_HOME;else process.env.DSH_HOME=previous;await rm(root,{recursive:true,force:true})}
+});
+
+test('S02 wave2: bare attachment sessionId routes by binding or prior explicit history workspace with frozen precedence',async()=>{
+  const {DriverTransport,legacyHistoryRequest}=await import('../packages/driver/index.mjs');
+  const root=await mkdtemp(join(tmpdir(),'self-attachment-route-'));
+  try{
+    const pool=selfPool(),bindings=new ConversationBindingIndex(),workspace=join(root,'project'),other=join(root,'other'),store={value:{executionWorkspace:join(root,'default')},async load(){},async save(){}};
+    bindings.bind('bound','dsh-bound',workspace);bindings.bind('topic','dsh-topic',other);
+    const transport=new DriverTransport({pool,driverBindings:bindings,driverStateStore:store,status:{sessionAuthority:'self'}}),history=legacyHistoryRequest(transport);
+    await history('v4/conversation/attachmentRead',{sessionId:'bound',offset:0});
+    assert.equal(pool.peers.get(workspace)?.calls.at(-1).method,'v4/conversation/attachmentRead');assert.equal(pool.peers.get(join(root,'default')).calls.length,0);
+    const params={sessionId:'unbound',workspace:{workspacePath:other,workspaceKey:other}};
+    await history('v4/conversation/rowsRange',params);
+    await history('v4/conversation/attachmentRead',{sessionId:'unbound'});assert.equal(pool.peers.get(other).calls.at(-1).method,'v4/conversation/attachmentRead');
+    await history('v4/conversation/rowsRange',{topic:'conversation/topic-only',workspace:{workspacePath:workspace,workspaceKey:workspace}});
+    await history('v4/conversation/attachmentRead',{sessionId:'topic-only'});assert.equal(pool.peers.get(workspace).calls.at(-1).params.sessionId,'topic-only');
+    // Bindings outrank cached workspace, and topic binding outranks bare-session binding.
+    bindings.bind('unbound','dsh-unbound',workspace);
+    await history('v4/conversation/attachmentRead',{sessionId:'unbound'});assert.equal(pool.peers.get(workspace).calls.at(-1).params.sessionId,'unbound');
+    await history('v4/conversation/attachmentRead',{topic:'conversation/topic',sessionId:'bound'});assert.equal(pool.peers.get(other).calls.at(-1).params.sessionId,'bound');
+    await history('v4/conversation/attachmentRead',{topic:'conversation/topic',sessionId:'bound',workspace:{workspacePath:workspace,workspaceKey:workspace}});assert.equal(pool.peers.get(workspace).calls.at(-1).params.topic,'conversation/topic');
+    await history('v4/conversation/attachmentRead',{topic:'conversation/missing-topic',sessionId:'bound'});assert.equal(pool.peers.get(workspace).calls.at(-1).params.sessionId,'bound');
+    await transport.resume({zcodeConversationId:'resumed-unbound',cwd:other});
+    await history('v4/conversation/attachmentRead',{sessionId:'resumed-unbound'});assert.equal(pool.peers.get(other).calls.at(-1).params.sessionId,'resumed-unbound');
+    await history('v4/conversation/attachmentRead',{sessionId:'unknown'});assert.equal(pool.peers.get(join(root,'default')).calls.at(-1).params.sessionId,'unknown');
+    transport.dispose();for(const peer of pool.peers.values())assert.equal(peer.holds,0);
+  }finally{await rm(root,{recursive:true,force:true})}
+});
+
+
+test('S02 wave3: failed creates release their own preparation unit for every ACK failure path',async t=>{
+  const {DriverTransport}=await import('../packages/driver/transport.mjs');
+  const root=await mkdtemp(join(tmpdir(),'self-create-failures-'));t.after(()=>rm(root,{recursive:true,force:true}));
+  const failures=[
+    ['rejected',p=>({commandId:p.commandId,status:'rejected',revisionAtDecision:0,reasonCode:'fixture-denied'})],
+    ['exception',()=>{throw Object.assign(new Error('fixture-not-sent'),{code:'fixture-not-sent',sent:false})}],
+    ['malformed',()=>({invalid:true})],
+    ['receipt mismatch',()=>({commandId:'other',status:'accepted',revisionAtDecision:0,result:{type:'createSession',sessionId:'id'}})],
+    ['missing create result',p=>({commandId:p.commandId,status:'accepted',revisionAtDecision:0})],
+  ];
+  for(const [name,response] of failures)await t.test(name,async()=>{
+    const pool=selfPool(),workspace=join(root,name),store={value:{executionWorkspace:workspace},async load(){},async save(){}};
+    const transport=new DriverTransport({pool,driverStateStore:store,status:{sessionAuthority:'self'}});
+    try{
+      await transport.ready();const peer=pool.peers.get(workspace),request=peer.request.bind(peer);
+      peer.request=(method,params,options)=>method==='v4/command'?response(params):request(method,params,options);
+      await assert.rejects(transport.create({}));assert.equal(peer.holds,0);assert.equal(peer.releases,1);assert.equal(transport.prepared.size,0);assert.equal(transport.holders.size,0);
+    }finally{transport.dispose()}
+  });
+});
+
+test('S02 wave3: ready and routed reads acquire no units while a direct conversation owns a fresh hold',async()=>{
+  const {DriverTransport}=await import('../packages/driver/transport.mjs');const root=await mkdtemp(join(tmpdir(),'self-no-handoff-'));
+  try{
+    const pool=selfPool(),workspace=join(root,'default'),store={value:{executionWorkspace:workspace},async load(){},async save(){}};
+    const transport=new DriverTransport({pool,driverStateStore:store,status:{sessionAuthority:'self'}});
+    await transport.ready();await transport.ready();await transport.requestFor('fixture/read',{sessionId:'direct'});
+    const peer=pool.peers.get(workspace);assert.equal(peer.holds,0);assert.equal(transport.prepared.size,0);
+    const conversation=transport.conversation({zcodeConversationId:'direct'});assert.equal(peer.holds,1);assert.equal(transport.prepared.size,0);
+    await conversation.cancel();await conversation.cancel();assert.equal(peer.holds,0);assert.equal(peer.releases,1);transport.dispose();assert.equal(pool.disposed,0);
+  }finally{await rm(root,{recursive:true,force:true})}
+});
+
+test('S02 wave4: create/resume units follow operation abort, detach at handoff, and release once on disposal',async t=>{
+  const {DriverTransport}=await import('../packages/driver/transport.mjs');const {getEventListeners}=await import('node:events');
+  const root=await mkdtemp(join(tmpdir(),'self-operation-holds-'));t.after(()=>rm(root,{recursive:true,force:true}));
+  for(const method of ['create','resume'])await t.test(method,async()=>{
+    const pool=selfPool(),workspace=join(root,method),store={value:{executionWorkspace:workspace},async load(){},async save(){}};
+    const transport=new DriverTransport({pool,driverStateStore:store,status:{sessionAuthority:'self'}});
+    const run=signal=>method==='create'?transport.create({signal}):transport.resume({zcodeConversationId:'resumed',cwd:workspace,signal});
+    try{
+      const abandoned=new AbortController();await run(abandoned.signal);const peer=pool.peers.get(workspace);
+      assert.equal(peer.holds,1);assert.equal(getEventListeners(abandoned.signal,'abort').length,1);
+      abandoned.abort(new Error('operation rolled back after ACK'));
+      assert.equal(peer.holds,0);assert.equal(peer.releases,1);assert.equal(transport.prepared.size,0);assert.equal(transport.holders.size,0);assert.equal(getEventListeners(abandoned.signal,'abort').length,0);
+      const handedOff=new AbortController(),id=await run(handedOff.signal),listener=getEventListeners(handedOff.signal,'abort')[0];
+      assert.equal(peer.holds,1);assert.equal(typeof listener,'function');
+      const conversation=transport.conversation({zcodeConversationId:id,cwd:workspace});assert.equal(transport.prepared.size,0);assert.equal(getEventListeners(handedOff.signal,'abort').length,0);
+      handedOff.abort(new Error('caller abort after handoff'));listener();
+      assert.equal(peer.holds,1,'a detached or already-captured abort callback cannot release a conversation owner');assert.equal(peer.releases,1);
+      await conversation.cancel();await conversation.cancel();assert.equal(peer.holds,0);assert.equal(peer.releases,2);assert.equal(getEventListeners(handedOff.signal,'abort').length,0);
+      const unused=new AbortController();await run(unused.signal);assert.equal(peer.holds,1);
+      let remaining=unused;
+      if(method==='resume'){
+        remaining=new AbortController();await run(remaining.signal);assert.equal(peer.holds,1);assert.equal(getEventListeners(unused.signal,'abort').length,0);
+        const releases=peer.releases;unused.abort();assert.equal(peer.holds,1);assert.equal(peer.releases,releases,'replaced operation cannot release the retry unit');
+      }
+      const releases=peer.releases;transport.dispose();transport.dispose();assert.equal(peer.holds,0);assert.equal(peer.releases,releases+1);assert.equal(getEventListeners(remaining.signal,'abort').length,0);
+      remaining.abort();assert.equal(peer.releases,releases+1);assert.equal(transport.prepared.size,0);assert.equal(pool.disposed,0);
+    }finally{transport.dispose()}
+  });
 });

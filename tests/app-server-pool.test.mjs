@@ -221,3 +221,147 @@ test('repair 1: stdout EOF reaps the hung generation and lazily restores the sam
   assert.equal(peer.connectionId,connectionId);assert.equal(await f.pool.forWorkspace(f.root),peer);
   assert.equal(states.at(-1),'ready');assert.deepEqual(closures,['execution-disconnected'],'protocol EOF and child exit must notify only once');
 });
+
+test('S02 live enumeration excludes unstarted and dead peers and never lazily respawns',options,async t=>{
+  const f=await setup(t,{envForSpawn:()=>({FIXTURE_SUICIDE:'1'})});
+  await f.pool.forWorkspace(join(f.root,'idle'));assert.deepEqual(f.pool.live(),[]);assert.equal(f.children.length,0);
+  const peer=await f.pool.acquire(join(f.root,'live')),snapshot=f.pool.live();assert.equal(snapshot.length,1);assert.equal(snapshot[0].workspacePath,peer.workspacePath);
+  assert.equal((await snapshot[0].facade.requestIfLive('fixture/echo',{})).cwd,peer.workspacePath);assert.equal(f.children.length,1);
+  await assert.rejects(peer.request('fixture/suicide',{}),{code:'execution-disconnected'});await f.children[0].close;
+  assert.deepEqual(f.pool.live(),[]);assert.equal(snapshot[0].facade.requestIfLive('session/list',{}),null);assert.equal(f.children.length,1);
+});
+
+test('S02 repair: resume holds its lazy facade through capacity pressure and transfers ownership to conversation',options,async t=>{
+  const {DriverTransport}=await import('../packages/driver/transport.mjs');
+  const f=await setup(t,{maxEntries:1}),workspace=join(f.root,'resume-project');
+  const store={value:{executionWorkspace:join(f.root,'default')},async load(){},async save(){}};
+  const transport=new DriverTransport({pool:f.pool,driverStateStore:store,status:{sessionAuthority:'self'}});t.after(()=>transport.dispose());
+  await transport.resume({zcodeConversationId:'resumed',cwd:workspace});
+  const facade=transport.facades.get(workspace);assert.equal(facade.entry.holds,1);assert.equal(facade.entry.child,null,'resume never starts the target project');
+  await f.pool.forWorkspace(join(f.root,'pressure'));
+  assert.equal(facade.closed,false,'a prepared resume must survive LRU pressure before conversation construction');
+  const conversation=transport.conversation({zcodeConversationId:'resumed',cwd:workspace});
+  assert.equal(conversation.peer,facade);assert.equal(facade.entry.holds,1,'conversation consumes the existing hold');
+  await conversation.cancel();await conversation.cancel();assert.equal(facade.entry.holds,0);
+  assert.equal(f.children.length,1,'only the default readiness handshake spawned');
+});
+
+test('S02 wave3: create handoff survives capacity pressure while ready adds no preparation',options,async t=>{
+  const {DriverTransport}=await import('../packages/driver/transport.mjs');
+  const f=await setup(t,{maxEntries:1}),workspace=join(f.root,'default');
+  const store={value:{executionWorkspace:workspace},async load(){},async save(){}};
+  const transport=new DriverTransport({pool:f.pool,driverStateStore:store,status:{sessionAuthority:'self'}});t.after(()=>transport.dispose());
+  await transport.ready();const facade=transport.facades.get(workspace),request=facade.request.bind(facade);assert.equal(facade.entry.holds,0,'ready is connectivity only');
+  facade.request=(method,params,options)=>method==='v4/command'?Promise.resolve({commandId:params.commandId,status:'accepted',revisionAtDecision:0,result:{type:'createSession',sessionId:'created'}}):request(method,params,options);
+  assert.equal(await transport.create({}),'created');await Promise.all([transport.ready(),transport.ready()]);
+  await f.pool.forWorkspace(join(f.root,'pressure'));
+  assert.equal(facade.closed,false,'successful create must retain the default facade until handoff');assert.equal(facade.entry.holds,1,'ready does not add units to a create preparation');
+  const conversation=transport.conversation({zcodeConversationId:'created'});assert.equal(conversation.peer,facade);assert.equal(facade.entry.holds,1);
+  await transport.ready();await transport.ready();assert.equal(facade.entry.holds,1,'ready leaves only the active conversation owner');
+  await conversation.cancel();await conversation.cancel();assert.equal(facade.entry.holds,0,'the active owner is released exactly once');
+  transport.dispose();transport.dispose();assert.equal(facade.entry.holds,0);assert.equal(f.pool.disposed,false);
+});
+
+test('S02 wave2: requestIfLive accounts pending, prevents mid-flight eviction, and never spawns dead generations',options,async t=>{
+  const f=await setup(t,{maxEntries:1,envForSpawn:()=>({FIXTURE_SUICIDE:'1'})});
+  const facade=await f.pool.forWorkspace(join(f.root,'live'));await facade.ready();
+  const snapshot=f.pool.live()[0];assert.equal(snapshot.facade,facade);
+  const blocked=notification(facade,'fixture/blocked'),request=facade.requestIfLive('fixture/delay',{delayMs:60});
+  assert.notEqual(request,null);await blocked;assert.equal(facade.entry.pending,1);
+  const pressure=await f.pool.forWorkspace(join(f.root,'pressure'));
+  assert.equal(facade.closed,false);assert.equal(facade.entry.pending,1);assert.equal(f.children.length,1);
+  await request;assert.equal(facade.entry.pending,0);assert.equal(facade.closed,true,'idle completion permits deferred trim');
+  await f.children[0].close;assert.equal(facade.requestIfLive('session/list',{}),null);assert.equal(pressure.requestIfLive('session/list',{}),null);assert.equal(f.children.length,1);
+  const current=await f.pool.forWorkspace(join(f.root,'current'));await current.ready();
+  await assert.rejects(current.requestIfLive('fixture/suicide',{}),{code:'execution-disconnected'});await f.children[1].close;
+  assert.equal(current.closed,false);assert.equal(current.requestIfLive('session/list',{}),null);assert.equal(current.entry.pending,0);assert.equal(f.children.length,2);
+});
+
+
+test('S02 wave3: overlapping creates retain separate handoffs after the first conversation closes at capacity one',options,async t=>{
+  const {DriverTransport}=await import('../packages/driver/transport.mjs');
+  const f=await setup(t,{maxEntries:1}),workspace=join(f.root,'default');
+  const pressure=await f.pool.acquire(join(f.root,'held-other'));t.after(()=>pressure.releaseHold());
+  let dispatched=0,enteredBoth,releaseSecond;
+  const both=new Promise(resolve=>{enteredBoth=resolve}),secondAck=new Promise(resolve=>{releaseSecond=resolve});
+  t.after(()=>releaseSecond());
+  const lookup=f.pool.forWorkspace.bind(f.pool),facades=new WeakSet(),peers=new WeakSet();
+  f.pool.forWorkspace=async path=>{
+    const facade=await lookup(path);
+    if(path===workspace&&!facades.has(facade)){
+      facades.add(facade);const request=facade.request.bind(facade);
+      facade.request=async(method,params,options)=>{
+        if(method==='v4/command'){
+          await facade.ready(options);const peer=facade.entry.peer;
+          if(!peers.has(peer)){
+            peers.add(peer);const raw=peer.request.bind(peer);
+            peer.request=(method,params,options)=>{
+              if(method!=='v4/command')return raw(method,params,options);
+              const n=++dispatched;if(n===2)enteredBoth();
+              const label=params.payload.firstInput.text;
+              const ack={commandId:params.commandId,status:'accepted',revisionAtDecision:0,result:{type:'createSession',sessionId:`created-${label}`}};
+              return label==='second'?secondAck.then(()=>ack):Promise.resolve(ack);
+            };
+          }
+        }
+        return request(method,params,options);
+      };
+    }
+    return facade;
+  };
+  const store={value:{executionWorkspace:workspace},async load(){},async save(){}};
+  const transport=new DriverTransport({pool:f.pool,driverStateStore:store,status:{sessionAuthority:'self'}});t.after(()=>transport.dispose());
+  const first=transport.create({firstInput:{text:'first'}}),second=transport.create({firstInput:{text:'second'}});await both;
+  const firstId=await first,facade=transport.facades.get(workspace);
+  const one=transport.conversation({zcodeConversationId:firstId});await one.cancel();
+  const pendingAfterClose=facade.entry.pending;assert.equal(pendingAfterClose,1,'second create is still in flight');
+  releaseSecond();const secondId=await second;
+  assert.equal(facade.closed,false,'second accepted create keeps its own handoff unit after RPC pending clears');
+  assert.equal(facade.entry.holds,1);assert.equal(facade.entry.pending,0);
+  const two=transport.conversation({zcodeConversationId:secondId});assert.equal(two.peer,facade);assert.equal(facade.entry.holds,1);
+  await two.cancel();await two.cancel();assert.equal(facade.entry.holds,0);assert.equal(facade.closed,true,'the held other workspace can evict only after the second owner closes');
+});
+
+test('S02 wave4: real factory rollback after accepted create releases abandoned preparations before capacity pressure',options,async t=>{
+  const {DriverTransport}=await import('../packages/driver/transport.mjs');
+  const {installDriver}=await import('../packages/driver/factory.mjs');
+  const {driverFixture}=await import('./helpers/zcode-driver-fixture.mjs');
+  const f=await setup(t,{maxEntries:1}),workspace=join(f.root,'default');
+  const operationSignals=[],unitCounts=[],lookup=f.pool.forWorkspace.bind(f.pool),facades=new WeakSet(),peers=new WeakSet();let accepted=0;
+  f.pool.forWorkspace=async path=>{
+    const facade=await lookup(path);
+    if(path===workspace&&!facades.has(facade)){
+      facades.add(facade);const request=facade.request.bind(facade);
+      facade.request=async(method,params,options)=>{
+        if(method==='v4/command'){
+          operationSignals.push(options.signal);await facade.ready(options);const peer=facade.entry.peer;
+          if(!peers.has(peer)){
+            peers.add(peer);const raw=peer.request.bind(peer);
+            peer.request=(method,params,options)=>method==='v4/command'?Promise.resolve({commandId:params.commandId,status:'accepted',revisionAtDecision:0,result:{type:'createSession',sessionId:`official-${++accepted}`}}):raw(method,params,options);
+          }
+        }
+        return request(method,params,options);
+      };
+    }
+    return facade;
+  };
+  const store={value:{executionWorkspace:workspace},async load(){},async save(){}};
+  const transport=new DriverTransport({pool:f.pool,driverStateStore:store,status:{sessionAuthority:'self'}}),harness=driverFixture();
+  harness.persistence.create=async(header,{signal})=>{
+    assert.equal(signal,operationSignals.at(-1));assert.equal(signal.aborted,false);
+    unitCounts.push([...transport.prepared.values()].reduce((sum,slots)=>sum+[...slots.values()].reduce((n,queue)=>n+queue.length,0),0));
+    throw Object.assign(new Error('fixture-persistence-failed'),{code:'fixture-persistence-failed'});
+  };
+  const driver=installDriver(harness.ctx,{...harness.deps,transport});t.after(()=>driver.dispose());
+  for(let n=0;n<3;n++){
+    await assert.rejects(driver.factory.createAgent(harness.owner,{sessionId:'retry-local',meta:{cwd:workspace}}),{code:'fixture-persistence-failed'});
+    assert.equal(operationSignals[n].aborted,true,'factory rollback aborts the actual create operation signal after ACK');
+    assert.equal(driver.factory.transactions.size,0);assert.equal(harness.agents.size,0);assert.equal(harness.sessions.size,0);
+  }
+  assert.equal(accepted,3);
+  const abandoned=transport.facades.get(workspace),unitsAfterRollback=transport.prepared.size,holdsAfterRollback=abandoned.entry.holds;
+  const next=await f.pool.forWorkspace(join(f.root,'new-workspace'));f.pool.trim();
+  assert.equal(next.closed,false,'new workspace must survive pressure instead of being evicted by abandoned create units');
+  assert.equal(abandoned.closed,true);assert.equal(unitsAfterRollback,0);assert.equal(holdsAfterRollback,0);assert.equal(transport.holders.size,0);
+  assert.deepEqual(unitCounts,[1,1,1],'each retry takes one fresh unit after the previous rollback released it');assert.equal(f.pool.size,1);
+});
