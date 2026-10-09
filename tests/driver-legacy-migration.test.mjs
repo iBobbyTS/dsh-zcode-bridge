@@ -524,6 +524,86 @@ test('a re-open detects ZCode-side additions and appends only the delta',async()
   assert.deepEqual(updated.cursor.maxRowId,next+2,'the cursor advances');
 });
 
+test('S02 AC7: incremental backfill after appending DSH permission preset events succeeds with intact cursor and row counts',async()=>{
+  const store=memoryStore(),persistence=fakePersistence(),sessions=fakeSessions();
+  const rows=historyRows(2);
+  const request=rowsRangeRequest(rows);
+  const directory=new LegacyDirectory({store,persistence,sessions,request,
+    listCatalog:async()=>[{sessionId:'zcode-old',workspacePath:'/workspace',title:'t'}],
+    listPersistedHeaders:async()=>[...persistence.records.values()].map(r=>r.header),
+  });
+  await directory.sync({});
+  const initial=await directory.ensureReadable('zcode-old');
+  assert.equal(initial.state,'readable');
+  const initialRecord=persistence.records.get('zcode-old');
+  const initialUserEvents=initialRecord.events.filter(event=>event.type==='user/message');
+  assert.equal(initialUserEvents.length,2);
+  assert.deepEqual(initial.cursor,{logEpoch:'epoch-1',revision:1,seq:6,maxRowId:5});
+
+  // Append 3 DSH native events (permission/preset + sandbox/mode + approval/policy)
+  // simulating S02 reverse alignment write
+  const handle=await persistence.open('zcode-old');
+  const seqBefore=initialRecord.events.length;
+  await handle.append([
+    {type:'permission/preset',data:{preset:'danger-full-access'},seq:seqBefore,time:2},
+    {type:'sandbox/mode',data:{mode:'danger-full-access'},seq:seqBefore+1,time:2},
+    {type:'approval/policy',data:{policy:'never'},seq:seqBefore+2,time:2},
+  ]);
+  await handle.close();
+
+  // ZCode gains a 3rd turn while the session was closed in DSH
+  const next=rows.at(-1).rowId+1;
+  rows.push(row('turnHeader',next,{origin:'userInput',state:'completedSuccess',startedAt:0,turnId:'turn-3',sourceCommandId:'cmd-3'}));
+  rows.push(row('userInput',next+1,{origin:'realUser',text:'question-3',turnId:'turn-3',sourceCommandId:'cmd-3'}));
+  rows.push(row('assistantText',next+2,{text:'answer-3',state:'complete',model:'model_a',turnId:'turn-3',assistantResponseId:'resp-3'}));
+
+  request.calls.length=0;
+  const updated=await directory.ensureReadable('zcode-old');
+  assert.equal(updated.state,'readable');
+  assert.deepEqual(request.calls.map(call=>call.params.limit).at(0),1,'the probe runs first');
+  assert.ok(request.calls.length>1,'a changed tail triggers a history re-read');
+
+  // Assertions: zcode row count and cursor advancement are unaffected by the 3 DSH native events
+  assert.deepEqual(updated.cursor.maxRowId,next+2,'the cursor advances to the newest zcode rowId');
+  assert.equal(updated.cursor.seq,rows.length,'cursor seq tracks zcode rows (9 rows total)');
+  assert.equal(updated.cursor.logEpoch,'epoch-1');
+
+  const allEvents=persistence.records.get('zcode-old').events;
+  const userEvents=()=>allEvents.filter(event=>event.type==='user/message');
+  assert.equal(userEvents().length,3,'only the new turn is appended (3 total)');
+  assert.ok(userEvents().some(event=>event.data.content[0].text==='question-3'));
+
+  const assistantEvents=()=>allEvents.filter(event=>event.type==='assistant/message');
+  assert.equal(assistantEvents().length,3,'only 3 assistant messages exist');
+  assert.ok(assistantEvents().some(event=>event.data.message.content[0].text==='answer-3'));
+
+  // Assertions: no duplicate rows, no out-of-order events
+  for(let i=0;i<allEvents.length;i++){
+    assert.equal(allEvents[i].seq,i,`event at index ${i} must have contiguous seq ${i}`);
+  }
+
+  const presetIdx=allEvents.findIndex(event=>event.type==='permission/preset');
+  const sandboxIdx=allEvents.findIndex(event=>event.type==='sandbox/mode');
+  const policyIdx=allEvents.findIndex(event=>event.type==='approval/policy');
+  assert.equal(presetIdx,seqBefore);
+  assert.equal(sandboxIdx,seqBefore+1);
+  assert.equal(policyIdx,seqBefore+2);
+  assert.deepEqual(allEvents[presetIdx].data,{preset:'danger-full-access'});
+  assert.deepEqual(allEvents[sandboxIdx].data,{mode:'danger-full-access'});
+  assert.deepEqual(allEvents[policyIdx].data,{policy:'never'});
+
+  const turnStarts=allEvents.filter(event=>event.type==='turn/start');
+  assert.deepEqual(turnStarts.map(event=>event.data.turn),[1,2,3],'turns are numbered 1, 2, 3 without duplicate turns');
+
+  const turnEnds=allEvents.filter(event=>event.type==='turn/end');
+  assert.deepEqual(turnEnds.map(event=>event.data.turn),[1,2,3],'turn ends match turns 1, 2, 3');
+
+  const turn3StartIdx=allEvents.findIndex(event=>event.type==='turn/start'&&event.data?.turn===3);
+  assert.ok(turn3StartIdx>policyIdx,'incremental turn 3 begins after the DSH permission events');
+
+  await directory.dispose();
+});
+
 test('a rewritten ZCode log epoch (persisted cursor row gone) keeps the transcript instead of duplicating it',async()=>{
   const store=memoryStore(),persistence=fakePersistence(),sessions=fakeSessions();
   const rows=historyRows(2);

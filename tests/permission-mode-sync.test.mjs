@@ -20,13 +20,46 @@ import {
   isInFlight,
 } from '../packages/driver/permission-mode-seam.mjs';
 
+class FakeConversation {
+  constructor(initialState = {}) {
+    this.subscribers = new Set();
+    this.state = initialState;
+  }
+  subscribe(fn) {
+    this.subscribers.add(fn);
+    return () => {
+      this.subscribers.delete(fn);
+    };
+  }
+  pushState(newState) {
+    this.state = {...this.state, ...newState};
+    for (const fn of Array.from(this.subscribers)) {
+      fn(this.state);
+    }
+  }
+}
+
 function createFakeEnv() {
   const listeners = new Map();
   const unregisterCalls = [];
   const warnings = [];
   const agents = new Map();
+  const permissionsMap = new Map();
+  const services = new Map();
   const transport = Symbol('fake-transport');
-  const factory = {transport};
+  const factory = {transport, accepting: true};
+  let stateOfCalls = 0;
+
+  const defaultProjections = {
+    stateOf(session, name) {
+      stateOfCalls++;
+      if (name === 'permissions') {
+        return permissionsMap.get(session) ?? null;
+      }
+      return null;
+    },
+  };
+  services.set('sessionProjections', defaultProjections);
 
   const ctx = {
     on(name, fn) {
@@ -54,17 +87,42 @@ function createFakeEnv() {
       get(id) {
         return agents.get(id);
       },
+      list() {
+        return Array.from(agents.values());
+      },
+    },
+    get(name) {
+      return services.get(name);
     },
   };
+
+  function emit(name, ...args) {
+    const list = listeners.get(name);
+    if (!list) return undefined;
+    let lastResult;
+    for (const fn of Array.from(list)) {
+      lastResult = fn(...args);
+    }
+    return lastResult;
+  }
+
+  function emitSessionEvent(session, event) {
+    return emit('session/event', session, event);
+  }
 
   function createFakeAgent(id, options = {}) {
     const {
       agentTransport = transport,
       mode = 'edit',
       hasConversation = true,
+      status = 'live',
+      conversationState = null,
       initializing = false,
       submitControl = null,
       isDriverAgent = true,
+      disposed = false,
+      foldedPreset = 'workspace-write',
+      emitOnAppend = false,
     } = options;
     const snapshot = 'snapshot' in options
       ? options.snapshot
@@ -72,33 +130,66 @@ function createFakeEnv() {
     const proto = isDriverAgent ? DriverAgent.prototype : Object.prototype;
     const agent = Object.create(proto);
     const submissions = [];
+    const appends = [];
     agent.id = id;
     agent.transport = agentTransport;
     agent.initializing = initializing;
+    agent.disposed = disposed;
+
     if (hasConversation) {
-      agent.conversation = {
-        state: snapshot !== undefined ? {snapshot} : {},
-      };
+      if (options.conversation) {
+        agent.conversation = options.conversation;
+      } else {
+        const initial = conversationState ?? (
+          snapshot !== undefined ? {status, snapshot} : {status}
+        );
+        agent.conversation = new FakeConversation(initial);
+      }
     } else {
       agent.conversation = undefined;
     }
+
+    const session = options.session ?? {
+      id,
+      append(type, data) {
+        appends.push({type, data});
+        const cur = permissionsMap.get(session);
+        if (cur) {
+          if (type === 'permission/preset') cur.preset = data.preset;
+          if (type === 'sandbox/mode') cur.sandbox = data.mode;
+          if (type === 'approval/policy') cur.approval = data.policy;
+        }
+        if (agent.onAppend) {
+          agent.onAppend(type, data);
+        }
+        if (agent.emitOnAppend) {
+          emitSessionEvent(session, {type, data});
+        }
+      },
+    };
+    agent.session = session;
+    agent.appends = appends;
+    agent.emitOnAppend = emitOnAppend;
     agent.submissions = submissions;
     agent.submitControl = submitControl || (async (cmd) => {
       submissions.push(cmd);
       return {ok: true};
     });
+
+    if (foldedPreset) {
+      const bundle = REVERSE_BUNDLE_MAP[foldedPreset] ?? {sandbox: 'workspace-write', approval: 'ask'};
+      permissionsMap.set(session, {
+        preset: foldedPreset,
+        sandbox: bundle.sandbox,
+        approval: bundle.approval,
+        seeded: true,
+      });
+    } else if (foldedPreset === null) {
+      permissionsMap.set(session, null);
+    }
+
     agents.set(id, agent);
     return agent;
-  }
-
-  function emitSessionEvent(session, event) {
-    const list = listeners.get('session/event');
-    if (!list) return undefined;
-    let lastResult;
-    for (const fn of Array.from(list)) {
-      lastResult = fn(session, event);
-    }
-    return lastResult;
   }
 
   return {
@@ -107,9 +198,19 @@ function createFakeEnv() {
     agents,
     warnings,
     listeners,
+    services,
+    permissionsMap,
     unregisterCalls,
     createFakeAgent,
+    emit,
     emitSessionEvent,
+    emitAgentCreated: (agent) => emit('agent/created', {agent}),
+    emitAgentDisposed: (agent) => emit('agent/disposed', {agent}),
+    setSessionPermissions: (session, proj) => {
+      if (proj === null) permissionsMap.set(session, null);
+      else permissionsMap.set(session, {...proj});
+    },
+    getStateOfCalls: () => stateOfCalls,
   };
 }
 
@@ -650,4 +751,948 @@ test('AC3.4: factory.mjs source code retains exact defaultPreset mapping express
     factorySource.includes("try{agent.ctx.sessions.announce(session)}finally{agent.initializing=false}"),
     'factory.mjs must set agent.initializing=true and clear it in finally around announce(session)'
   );
+});
+
+// ============================================================================
+// AC4 逆向映射与捆绑（三元组与冻结断言）
+// ============================================================================
+
+test('AC4.1: modeBundle returns frozen triplets for valid modes and undefined for plan/auto/custom/unknown', () => {
+  const buildBundle = modeBundle('build');
+  assert.deepEqual(buildBundle, {sandbox: 'read-only', approval: 'ask'});
+  assert.ok(Object.isFrozen(buildBundle), 'build mode bundle must be frozen');
+
+  const editBundle = modeBundle('edit');
+  assert.deepEqual(editBundle, {sandbox: 'workspace-write', approval: 'ask'});
+  assert.ok(Object.isFrozen(editBundle), 'edit mode bundle must be frozen');
+
+  const yoloBundle = modeBundle('yolo');
+  assert.deepEqual(yoloBundle, {sandbox: 'danger-full-access', approval: 'never'});
+  assert.ok(Object.isFrozen(yoloBundle), 'yolo mode bundle must be frozen');
+
+  assert.equal(modeBundle('plan'), undefined);
+  assert.equal(modeBundle('auto'), undefined);
+  assert.equal(modeBundle('custom'), undefined);
+  assert.equal(modeBundle(undefined), undefined);
+  assert.equal(modeBundle('unknown-mode'), undefined);
+});
+
+// ============================================================================
+// AC5 两个对齐时机
+// ============================================================================
+
+test('AC5.1: Timing (a) initial read on attach: agent/created with live yolo snapshot and workspace-write folded state appends triplet in exact order', () => {
+  const env = createFakeEnv();
+  installPermissionModeSeam(env.ctx, env.factory);
+
+  // Subcase 1: via agent/created event
+  const agent = env.createFakeAgent('sess-initial-created', {
+    mode: 'yolo',
+    status: 'live',
+    foldedPreset: 'workspace-write',
+  });
+  env.emitAgentCreated(agent);
+
+  assert.equal(agent.appends.length, 3, 'initial read must append exactly 3 events');
+  assert.deepEqual(agent.appends, [
+    {type: 'permission/preset', data: {preset: 'danger-full-access'}},
+    {type: 'sandbox/mode', data: {mode: 'danger-full-access'}},
+    {type: 'approval/policy', data: {policy: 'never'}},
+  ]);
+
+  // Subcase 2: pre-existing agent in factory before seam install
+  const env2 = createFakeEnv();
+  const preAgent = env2.createFakeAgent('sess-initial-pre', {
+    mode: 'yolo',
+    status: 'live',
+    foldedPreset: 'workspace-write',
+  });
+  installPermissionModeSeam(env2.ctx, env2.factory);
+
+  assert.equal(preAgent.appends.length, 3, 'seam install must attach pre-existing agents from factory');
+  assert.deepEqual(preAgent.appends, [
+    {type: 'permission/preset', data: {preset: 'danger-full-access'}},
+    {type: 'sandbox/mode', data: {mode: 'danger-full-access'}},
+    {type: 'approval/policy', data: {policy: 'never'}},
+  ]);
+});
+
+test('AC5.2: subscribe does not replay: attaching during connecting status does not align, subsequent transition to live aligns on first observation', () => {
+  const env = createFakeEnv();
+  installPermissionModeSeam(env.ctx, env.factory);
+
+  const agent = env.createFakeAgent('sess-connecting', {
+    mode: 'yolo',
+    status: 'connecting',
+    foldedPreset: 'workspace-write',
+  });
+
+  env.emitAgentCreated(agent);
+  assert.equal(agent.appends.length, 0, 'connecting status must produce zero appends on attach');
+
+  // Push transition to live with snapshot mode yolo
+  agent.conversation.pushState({
+    status: 'live',
+    snapshot: {config: {mode: 'yolo'}},
+  });
+
+  assert.equal(agent.appends.length, 3, 'first observation after becoming live counts as transition');
+  assert.deepEqual(agent.appends, [
+    {type: 'permission/preset', data: {preset: 'danger-full-access'}},
+    {type: 'sandbox/mode', data: {mode: 'danger-full-access'}},
+    {type: 'approval/policy', data: {policy: 'never'}},
+  ]);
+});
+
+test('AC5.3: Timing (b) value transition: live push build->yolo appends triplet, same value re-push produces zero appends', () => {
+  const env = createFakeEnv();
+  installPermissionModeSeam(env.ctx, env.factory);
+
+  const agent = env.createFakeAgent('sess-transition', {
+    mode: 'build',
+    status: 'live',
+    foldedPreset: 'read-only',
+  });
+  env.emitAgentCreated(agent);
+  assert.equal(agent.appends.length, 0, 'initial matching state produces zero appends');
+
+  // Push mode transition build -> yolo
+  agent.conversation.pushState({
+    status: 'live',
+    snapshot: {config: {mode: 'yolo'}},
+  });
+  assert.equal(agent.appends.length, 3, 'mode transition must append yolo triplet');
+  assert.deepEqual(agent.appends, [
+    {type: 'permission/preset', data: {preset: 'danger-full-access'}},
+    {type: 'sandbox/mode', data: {mode: 'danger-full-access'}},
+    {type: 'approval/policy', data: {policy: 'never'}},
+  ]);
+
+  // Same value re-push
+  agent.conversation.pushState({
+    status: 'live',
+    snapshot: {config: {mode: 'yolo'}},
+  });
+  assert.equal(agent.appends.length, 3, 're-pushing same value mode must produce zero additional appends');
+});
+
+test('AC5.4: unmapped mode (plan, auto, undefined, custom, unknown) produces zero evaluation and zero appends', () => {
+  const env = createFakeEnv();
+  installPermissionModeSeam(env.ctx, env.factory);
+
+  for (const mode of ['plan', 'auto', undefined, 'custom', 'unknown-val']) {
+    const agent = env.createFakeAgent(`sess-unmapped-${mode}`, {
+      mode,
+      status: 'live',
+      foldedPreset: 'workspace-write',
+    });
+    env.emitAgentCreated(agent);
+    assert.equal(agent.appends.length, 0, `initial read for mode "${mode}" must produce zero appends`);
+
+    agent.conversation.pushState({
+      status: 'live',
+      snapshot: {config: {mode}},
+    });
+    assert.equal(agent.appends.length, 0, `pushing unmapped mode "${mode}" must produce zero appends`);
+  }
+});
+
+// ============================================================================
+// AC6 回环序列
+// ============================================================================
+
+test('AC6.1: E2 zcode mode transition alone triggers 3 appends and forward seam same-value echo guard produces zero submitControl calls', () => {
+  const env = createFakeEnv();
+  installPermissionModeSeam(env.ctx, env.factory);
+
+  const agent = env.createFakeAgent('sess-e2', {
+    mode: 'build',
+    status: 'live',
+    foldedPreset: 'read-only',
+    emitOnAppend: true,
+  });
+  env.emitAgentCreated(agent);
+  assert.equal(agent.appends.length, 0);
+  assert.equal(agent.submissions.length, 0);
+
+  // ZCode pushes mode transition to edit
+  agent.conversation.pushState({
+    status: 'live',
+    snapshot: {config: {mode: 'edit'}},
+  });
+
+  // Reverse seam appends 3 events, and forward seam same-value guard absorbs the echo preset event
+  assert.equal(agent.appends.length, 3);
+  assert.deepEqual(agent.appends, [
+    {type: 'permission/preset', data: {preset: 'workspace-write'}},
+    {type: 'sandbox/mode', data: {mode: 'workspace-write'}},
+    {type: 'approval/policy', data: {policy: 'ask'}},
+  ]);
+  assert.equal(agent.submissions.length, 0, 'echo preset event must be swallowed by same-value guard with 0 commands');
+});
+
+test('AC6.2: E1->E2->E1 interleaved sequence asserts exact per-segment commands and appends totals', async () => {
+  const env = createFakeEnv();
+  installPermissionModeSeam(env.ctx, env.factory);
+
+  // Agent starts at 'edit', folded state 'workspace-write'
+  const agent = env.createFakeAgent('sess-interleaved', {
+    mode: 'edit',
+    status: 'live',
+    foldedPreset: 'workspace-write',
+    emitOnAppend: true,
+  });
+  env.emitAgentCreated(agent);
+
+  // Segment 1 (E1): User triggers read-only event -> 1 command, 0 appends (snapshot advances to build)
+  env.emitSessionEvent(agent.session, {type: 'permission/preset', data: {preset: 'read-only'}});
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(agent.submissions.length, 1, 'Segment 1 must produce exactly 1 command');
+  assert.deepEqual(agent.submissions[0], {
+    type: 'switchCollaborationMode',
+    payload: {mode: 'build'},
+  });
+  assert.equal(agent.appends.length, 0, 'Segment 1 must produce 0 appends');
+  // User selection updates DSH folded state to read-only; snapshot advances to build
+  env.setSessionPermissions(agent.session, {preset: 'read-only', sandbox: 'read-only', approval: 'ask', seeded: true});
+  agent.conversation.pushState({status: 'live', snapshot: {config: {mode: 'build'}}});
+  assert.equal(agent.appends.length, 0, 'Segment 1 snapshot matching user choice must produce 0 appends');
+
+  // Segment 2 (E2): ZCode side pushes mode edit (folded read-only) -> 3 appends, 0 commands (snapshot advances to edit)
+  agent.conversation.pushState({status: 'live', snapshot: {config: {mode: 'edit'}}});
+  assert.equal(agent.appends.length, 3, 'Segment 2 must produce exactly 3 appends');
+  assert.deepEqual(agent.appends, [
+    {type: 'permission/preset', data: {preset: 'workspace-write'}},
+    {type: 'sandbox/mode', data: {mode: 'workspace-write'}},
+    {type: 'approval/policy', data: {policy: 'ask'}},
+  ]);
+  assert.equal(agent.submissions.length, 1, 'Segment 2 must produce 0 additional commands');
+
+  // Segment 3 (E1): User triggers danger-full-access event -> 1 command, 0 appends (snapshot advances to yolo)
+  env.setSessionPermissions(agent.session, {preset: 'danger-full-access', sandbox: 'danger-full-access', approval: 'never', seeded: true});
+  env.emitSessionEvent(agent.session, {type: 'permission/preset', data: {preset: 'danger-full-access'}});
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(agent.submissions.length, 2, 'Segment 3 must produce exactly 1 additional command');
+  assert.deepEqual(agent.submissions[1], {
+    type: 'switchCollaborationMode',
+    payload: {mode: 'yolo'},
+  });
+  assert.equal(agent.appends.length, 3, 'Segment 3 must produce 0 additional appends');
+  agent.conversation.pushState({status: 'live', snapshot: {config: {mode: 'yolo'}}});
+
+  // Final exact totals: 2 commands, 3 appends
+  assert.equal(agent.submissions.length, 2, 'Total submissions must be exactly 2');
+  assert.equal(agent.appends.length, 3, 'Total appends must be exactly 3');
+});
+
+test('AC6.3: E2p mode plan transition produces 0 events and 0 commands', () => {
+  const env = createFakeEnv();
+  installPermissionModeSeam(env.ctx, env.factory);
+
+  const agent = env.createFakeAgent('sess-e2p', {
+    mode: 'edit',
+    status: 'live',
+    foldedPreset: 'workspace-write',
+    emitOnAppend: true,
+  });
+  env.emitAgentCreated(agent);
+
+  agent.conversation.pushState({
+    status: 'live',
+    snapshot: {config: {mode: 'plan'}},
+  });
+
+  assert.equal(agent.appends.length, 0, 'mode plan must produce 0 appends');
+  assert.equal(agent.submissions.length, 0, 'mode plan must produce 0 commands');
+});
+
+test('AC6.4: E3c cold recovery: error->live re-evaluates even with same mode; misaligned folded state appends, matching folded state produces zero appends', () => {
+  const env = createFakeEnv();
+  installPermissionModeSeam(env.ctx, env.factory);
+
+  // Subcase A: Misaligned folded state (zcode yolo, DSH defaulted to workspace-write)
+  const agentA = env.createFakeAgent('sess-e3c-misaligned', {
+    mode: 'yolo',
+    status: 'error',
+    foldedPreset: 'workspace-write',
+    emitOnAppend: true,
+  });
+  env.emitAgentCreated(agentA);
+  assert.equal(agentA.appends.length, 0, 'initial error status produces 0 appends');
+
+  // Recovery: status becomes live with mode yolo (same mode re-evaluated)
+  agentA.conversation.pushState({
+    status: 'live',
+    snapshot: {config: {mode: 'yolo'}},
+  });
+  assert.equal(agentA.appends.length, 3, 'cold recovery with misaligned folded state must append triplet');
+  assert.deepEqual(agentA.appends, [
+    {type: 'permission/preset', data: {preset: 'danger-full-access'}},
+    {type: 'sandbox/mode', data: {mode: 'danger-full-access'}},
+    {type: 'approval/policy', data: {policy: 'never'}},
+  ]);
+  assert.equal(agentA.submissions.length, 0, 'echo guard prevents commands on recovery');
+
+  // Subcase B: Matching folded state (zcode yolo, DSH already danger-full-access)
+  const agentB = env.createFakeAgent('sess-e3c-matching', {
+    mode: 'yolo',
+    status: 'error',
+    foldedPreset: 'danger-full-access',
+    emitOnAppend: true,
+  });
+  env.emitAgentCreated(agentB);
+  assert.equal(agentB.appends.length, 0);
+
+  // Recovery: status becomes live with mode yolo
+  agentB.conversation.pushState({
+    status: 'live',
+    snapshot: {config: {mode: 'yolo'}},
+  });
+  assert.equal(agentB.appends.length, 0, 'cold recovery with matching folded state must produce zero appends');
+  assert.equal(agentB.submissions.length, 0);
+});
+
+test('AC6.5: E5 residual variant: user event before initial snapshot submits command; snapshot arrival during in-flight is suppressed with zero release compensation', async () => {
+  const env = createFakeEnv();
+  installPermissionModeSeam(env.ctx, env.factory);
+
+  let resolveCommand;
+  const pCommand = new Promise(resolve => { resolveCommand = resolve; });
+
+  const agent = env.createFakeAgent('sess-e5', {
+    hasConversation: true,
+    snapshot: undefined,
+    foldedPreset: 'workspace-write',
+    submitControl: async (cmd) => {
+      agent.submissions.push(cmd);
+      return pCommand;
+    },
+    emitOnAppend: true,
+  });
+  env.emitAgentCreated(agent);
+
+  // Step 1: User triggers read-only before first snapshot -> 1 command queued, in-flight set
+  env.emitSessionEvent(agent.session, {type: 'permission/preset', data: {preset: 'read-only'}});
+  assert.equal(agent.submissions.length, 1);
+  assert.deepEqual(agent.submissions[0], {
+    type: 'switchCollaborationMode',
+    payload: {mode: 'build'},
+  });
+  assert.equal(isInFlight(agent), true);
+
+  // Step 2: First snapshot arrives during in-flight with mode yolo (differs from user choice build)
+  agent.conversation.pushState({
+    status: 'live',
+    snapshot: {config: {mode: 'yolo'}},
+  });
+  assert.equal(agent.appends.length, 0, 'snapshot during in-flight must be suppressed (zero appends)');
+
+  // Step 3: Command settles
+  resolveCommand({ok: true});
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(isInFlight(agent), false);
+  assert.equal(agent.appends.length, 0, 'command settling must not trigger release compensation (zero appends, zero rewrites)');
+  assert.equal(agent.submissions.length, 1);
+});
+
+// ============================================================================
+// R7 抑制与生命周期
+// ============================================================================
+
+test('R7.1: Mode transition during in-flight is suppressed; settling does not replay, same value re-push produces zero appends, different value appends', async () => {
+  const env = createFakeEnv();
+  installPermissionModeSeam(env.ctx, env.factory);
+
+  let resolveFirst;
+  const pFirst = new Promise(resolve => { resolveFirst = resolve; });
+
+  const agent = env.createFakeAgent('sess-r7-inflight', {
+    mode: 'build',
+    status: 'live',
+    foldedPreset: 'read-only',
+    submitControl: async (cmd) => {
+      agent.submissions.push(cmd);
+      return pFirst;
+    },
+    emitOnAppend: true,
+  });
+  env.emitAgentCreated(agent);
+
+  // Trigger forward switch to put seam in flight
+  env.emitSessionEvent(agent.session, {type: 'permission/preset', data: {preset: 'workspace-write'}});
+  assert.equal(isInFlight(agent), true);
+
+  // Push mode transition to yolo while in flight
+  agent.conversation.pushState({
+    status: 'live',
+    snapshot: {config: {mode: 'yolo'}},
+  });
+  assert.equal(agent.appends.length, 0, 'mode transition during in-flight must produce zero appends');
+
+  // Command settles
+  resolveFirst({ok: true});
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(isInFlight(agent), false);
+  assert.equal(agent.appends.length, 0, 'settling command must not replay suppressed observation');
+
+  // Re-push same value yolo: observation was already consumed, must not replay
+  agent.conversation.pushState({
+    status: 'live',
+    snapshot: {config: {mode: 'yolo'}},
+  });
+  assert.equal(agent.appends.length, 0, 're-pushing same value yolo must produce zero appends');
+
+  // Push different value edit: must align
+  agent.conversation.pushState({
+    status: 'live',
+    snapshot: {config: {mode: 'edit'}},
+  });
+  assert.equal(agent.appends.length, 3, 'different value edit must append triplet');
+  assert.deepEqual(agent.appends, [
+    {type: 'permission/preset', data: {preset: 'workspace-write'}},
+    {type: 'sandbox/mode', data: {mode: 'workspace-write'}},
+    {type: 'approval/policy', data: {policy: 'ask'}},
+  ]);
+});
+
+test('R7.2: Lifecycle and ownership boundaries: disposed agent and seam cleanup detach subscription; owner replacement produces zero appends for old agent', () => {
+  const env = createFakeEnv();
+  const cleanup = installPermissionModeSeam(env.ctx, env.factory);
+
+  // Subcase A: agent/disposed detaches
+  const agentDisposed = env.createFakeAgent('sess-disposed', {
+    mode: 'build',
+    status: 'live',
+    foldedPreset: 'read-only',
+  });
+  env.emitAgentCreated(agentDisposed);
+  env.emitAgentDisposed(agentDisposed);
+
+  agentDisposed.conversation.pushState({
+    status: 'live',
+    snapshot: {config: {mode: 'yolo'}},
+  });
+  assert.equal(agentDisposed.appends.length, 0, 'disposed agent must produce zero appends');
+
+  // Subcase B: seam cleanup unsubscribes active agents
+  const agentCleanup = env.createFakeAgent('sess-cleanup', {
+    mode: 'build',
+    status: 'live',
+    foldedPreset: 'read-only',
+  });
+  env.emitAgentCreated(agentCleanup);
+  cleanup();
+
+  agentCleanup.conversation.pushState({
+    status: 'live',
+    snapshot: {config: {mode: 'yolo'}},
+  });
+  assert.equal(agentCleanup.appends.length, 0, 'seam cleanup must produce zero appends on subsequent push');
+
+  // Subcase C: owner replacement: ctx.agents.get returns new agent, old callback produces zero appends
+  const env2 = createFakeEnv();
+  installPermissionModeSeam(env2.ctx, env2.factory);
+
+  const oldAgent = env2.createFakeAgent('sess-replaced', {
+    mode: 'build',
+    status: 'live',
+    foldedPreset: 'read-only',
+  });
+  env2.emitAgentCreated(oldAgent);
+
+  // Replace owner in ctx.agents
+  const newAgent = env2.createFakeAgent('sess-replaced', {
+    mode: 'build',
+    status: 'live',
+    foldedPreset: 'read-only',
+  });
+  assert.equal(env2.ctx.agents.get('sess-replaced'), newAgent);
+
+  // Old agent receives state update
+  oldAgent.conversation.pushState({
+    status: 'live',
+    snapshot: {config: {mode: 'yolo'}},
+  });
+  assert.equal(oldAgent.appends.length, 0, 'replaced owner callback must produce zero appends');
+});
+
+test('R7.3: Error boundaries: missing projections logs warning with zero appends; session.append failure logs warning without retrying', () => {
+  const env = createFakeEnv();
+  installPermissionModeSeam(env.ctx, env.factory);
+
+  // Subcase A: sessionProjections service missing
+  env.services.delete('sessionProjections');
+  const agentNoProj = env.createFakeAgent('sess-no-proj', {
+    mode: 'build',
+    status: 'live',
+    foldedPreset: 'read-only',
+  });
+  env.emitAgentCreated(agentNoProj);
+
+  agentNoProj.conversation.pushState({
+    status: 'live',
+    snapshot: {config: {mode: 'yolo'}},
+  });
+  assert.equal(agentNoProj.appends.length, 0);
+  assert.ok(env.warnings.some(w => w.includes('permissions-projection-unavailable')));
+
+  // Subcase B: stateOf returns null
+  env.services.set('sessionProjections', {stateOf: () => null});
+  const agentNullState = env.createFakeAgent('sess-null-state', {
+    mode: 'build',
+    status: 'live',
+    foldedPreset: null,
+  });
+  env.emitAgentCreated(agentNullState);
+
+  agentNullState.conversation.pushState({
+    status: 'live',
+    snapshot: {config: {mode: 'yolo'}},
+  });
+  assert.equal(agentNullState.appends.length, 0);
+  assert.ok(env.warnings.some(w => w.includes('permissions-projection-unavailable')));
+
+  // Subcase C: session.append throws
+  const env2 = createFakeEnv();
+  installPermissionModeSeam(env2.ctx, env2.factory);
+
+  let appendCalls = 0;
+  const agentThrowing = env2.createFakeAgent('sess-throwing', {
+    mode: 'build',
+    status: 'live',
+    foldedPreset: 'read-only',
+    session: {
+      id: 'sess-throwing',
+      append() {
+        appendCalls++;
+        throw new Error('disk-full-simulated');
+      },
+    },
+  });
+  env2.emitAgentCreated(agentThrowing);
+
+  assert.doesNotThrow(() => {
+    agentThrowing.conversation.pushState({
+      status: 'live',
+      snapshot: {config: {mode: 'yolo'}},
+    });
+  });
+
+  assert.equal(appendCalls, 1, 'must attempt append once and not retry on failure');
+  assert.ok(env2.warnings.some(w => w.includes('permission alignment failed') && w.includes('disk-full-simulated')));
+});
+
+test('R7.4: User switch interrupting triplet append: in-flight set on first append stops subsequent appends', () => {
+  const env = createFakeEnv();
+  installPermissionModeSeam(env.ctx, env.factory);
+
+  const agent = env.createFakeAgent('sess-interrupt', {
+    mode: 'build',
+    status: 'live',
+    foldedPreset: 'read-only',
+  });
+
+  agent.onAppend = (type) => {
+    if (type === 'permission/preset') {
+      // Simulate user switch arriving synchronously during the first append
+      env.emitSessionEvent(agent.session, {type: 'permission/preset', data: {preset: 'workspace-write'}});
+    }
+  };
+
+  env.emitAgentCreated(agent);
+
+  // Push mode transition build -> yolo
+  agent.conversation.pushState({
+    status: 'live',
+    snapshot: {config: {mode: 'yolo'}},
+  });
+
+  // Exactly 1 append must have succeeded before the loop was interrupted by in-flight
+  assert.equal(agent.appends.length, 1, 'must abort subsequent appends when interrupted by in-flight');
+  assert.equal(agent.appends[0].type, 'permission/preset');
+  assert.deepEqual(agent.appends[0].data, {preset: 'danger-full-access'});
+});
+
+// ============================================================================
+// AC7 导入游标与原生事件安全
+// ============================================================================
+
+test('AC7.1: Cursor safety: reverse sync appended events are strictly DSH native events without zcode rowId or turn tracking fields', () => {
+  const env = createFakeEnv();
+  installPermissionModeSeam(env.ctx, env.factory);
+
+  const agent = env.createFakeAgent('sess-cursor', {
+    mode: 'yolo',
+    status: 'live',
+    foldedPreset: 'workspace-write',
+  });
+  env.emitAgentCreated(agent);
+
+  assert.equal(agent.appends.length, 3);
+  const allowedTypes = new Set(['permission/preset', 'sandbox/mode', 'approval/policy']);
+  for (const event of agent.appends) {
+    assert.ok(allowedTypes.has(event.type), `event type "${event.type}" must be a standard DSH permission type`);
+    assert.equal('rowId' in event.data, false, 'must not attach rowId');
+    assert.equal('turnId' in event.data, false, 'must not attach turnId');
+    assert.equal('stepId' in event.data, false, 'must not attach stepId');
+    assert.equal('cursor' in event.data, false, 'must not attach cursor');
+  }
+});
+
+// ============================================================================
+// S02 评审修复波2（B1 resync 误判 + B2 组合轨迹 + NIT 三元组判错力）
+// ============================================================================
+
+test('Repair 1 (B1): resync same-value produces zero release compensation and zero evaluation', async () => {
+  const env = createFakeEnv();
+  installPermissionModeSeam(env.ctx, env.factory);
+
+  let resolveCommand;
+  const pCommand = new Promise(resolve => { resolveCommand = resolve; });
+
+  // 1. live(build, fold read-only 一致)
+  const agent = env.createFakeAgent('sess-repair-b1', {
+    mode: 'build',
+    status: 'live',
+    foldedPreset: 'read-only',
+    submitControl: async (cmd) => {
+      agent.submissions.push(cmd);
+      return pCommand;
+    },
+    emitOnAppend: true,
+  });
+  env.emitAgentCreated(agent);
+  assert.equal(agent.appends.length, 0);
+  assert.equal(agent.submissions.length, 0);
+
+  // 2. 用户切 workspace-write（命令挂起）
+  env.emitSessionEvent(agent.session, {type: 'permission/preset', data: {preset: 'workspace-write'}});
+  assert.equal(agent.submissions.length, 1);
+  assert.deepEqual(agent.submissions[0], {
+    type: 'switchCollaborationMode',
+    payload: {mode: 'edit'},
+  });
+  assert.equal(isInFlight(agent), true);
+
+  // 3. 推 yolo（抑制零追加）
+  agent.conversation.pushState({
+    status: 'live',
+    snapshot: {config: {mode: 'yolo'}},
+  });
+  assert.equal(agent.appends.length, 0, 'suppressed during in-flight: zero appends');
+
+  // 4. settle
+  resolveCommand({ok: true});
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(isInFlight(agent), false);
+  assert.equal(agent.appends.length, 0, 'zero compensation on settle');
+
+  const readsBeforeResync = env.getStateOfCalls();
+
+  // 5. 推 resyncing
+  agent.conversation.pushState({status: 'resyncing'});
+  assert.equal(agent.appends.length, 0, 'resyncing produces zero appends');
+
+  // 6. 推 live 同 yolo
+  agent.conversation.pushState({
+    status: 'live',
+    snapshot: {config: {mode: 'yolo'}},
+  });
+  // 断言零追加零评估（探针断言零读，零追加+零命令）
+  assert.equal(agent.appends.length, 0, 'resyncing->live same mode yolo produces zero appends');
+  assert.equal(agent.submissions.length, 1, 'resyncing->live produces zero additional commands');
+  assert.equal(env.getStateOfCalls(), readsBeforeResync, 'resyncing->live same mode must not read projection (zero evaluation)');
+
+  // 7. 再推不同值 edit→追加（时机(b) 仍活）
+  agent.conversation.pushState({
+    status: 'live',
+    snapshot: {config: {mode: 'edit'}},
+  });
+  assert.equal(agent.appends.length, 3, 'subsequent different value edit triggers timing (b) alignment');
+  assert.deepEqual(agent.appends, [
+    {type: 'permission/preset', data: {preset: 'workspace-write'}},
+    {type: 'sandbox/mode', data: {mode: 'workspace-write'}},
+    {type: 'approval/policy', data: {policy: 'ask'}},
+  ]);
+  assert.equal(agent.submissions.length, 1, 'echo absorbed by same-value guard');
+});
+
+test('Repair 2 (B1): rename resync does not trigger reopening alignment', () => {
+  const env = createFakeEnv();
+  installPermissionModeSeam(env.ctx, env.factory);
+
+  // live 一致态
+  const agent = env.createFakeAgent('sess-repair-rename', {
+    mode: 'edit',
+    status: 'live',
+    foldedPreset: 'workspace-write',
+    emitOnAppend: true,
+  });
+  env.emitAgentCreated(agent);
+  assert.equal(agent.appends.length, 0, 'initial matching state produces zero appends');
+
+  // resyncing -> live 同 mode -> 零追加
+  agent.conversation.pushState({status: 'resyncing'});
+  assert.equal(agent.appends.length, 0, 'resyncing produces zero appends');
+
+  agent.conversation.pushState({
+    status: 'live',
+    snapshot: {config: {mode: 'edit'}},
+  });
+  assert.equal(agent.appends.length, 0, 'resyncing->live with same mode produces zero appends');
+  assert.equal(agent.submissions.length, 0, 'zero commands produced');
+});
+
+test('Repair 3 (B2): E3c complete trajectory with announce window pin and initial read alignment', () => {
+  const env = createFakeEnv();
+  installPermissionModeSeam(env.ctx, env.factory);
+
+  // 1. 折叠态为 null（空权限日志），agent.initializing=true
+  const agent = env.createFakeAgent('sess-repair-e3c', {
+    initializing: true,
+    hasConversation: true,
+    snapshot: undefined,
+    foldedPreset: null,
+    emitOnAppend: true,
+  });
+  env.emitAgentCreated(agent);
+  assert.equal(agent.appends.length, 0);
+  assert.equal(agent.submissions.length, 0);
+
+  // 2. agent.initializing=true 期间 dsh 侧 pin 追加（模拟：setSessionPermissions 置默认 workspace-write + emitSessionEvent permission/preset workspace-write 于 initializing 窗口内→零命令）
+  env.setSessionPermissions(agent.session, {
+    preset: 'workspace-write',
+    sandbox: 'workspace-write',
+    approval: 'ask',
+    seeded: true,
+  });
+  env.emitSessionEvent(agent.session, {
+    type: 'permission/preset',
+    data: {preset: 'workspace-write'},
+  });
+  assert.equal(agent.submissions.length, 0, 'initializing window pin produces zero commands');
+  assert.equal(getAgentBaseline(agent), 'workspace-write', 'must record preset baseline');
+
+  // 3. initializing=false
+  agent.initializing = false;
+
+  // 4. 推 live 快照 yolo→时机(a)：0 命令、3 追加（danger-full-access 组）、回声被守卫消化
+  agent.conversation.pushState({
+    status: 'live',
+    snapshot: {config: {mode: 'yolo'}},
+  });
+  assert.equal(agent.submissions.length, 0, 'timing (a) must produce 0 commands');
+  assert.equal(agent.appends.length, 3, 'timing (a) must produce 3 appends');
+  assert.deepEqual(agent.appends, [
+    {type: 'permission/preset', data: {preset: 'danger-full-access'}},
+    {type: 'sandbox/mode', data: {mode: 'danger-full-access'}},
+    {type: 'approval/policy', data: {policy: 'never'}},
+  ]);
+
+  const finalPermissions = env.permissionsMap.get(agent.session);
+  assert.equal(finalPermissions.preset, 'danger-full-access');
+  assert.equal(finalPermissions.sandbox, 'danger-full-access');
+  assert.equal(finalPermissions.approval, 'never');
+});
+
+test('Repair 4 (B2): E5 complete trajectory with missing snapshot, in-flight suppression, and matching effect frame', async () => {
+  const env = createFakeEnv();
+  installPermissionModeSeam(env.ctx, env.factory);
+
+  let resolveCommand;
+  const pCommand = new Promise(resolve => { resolveCommand = resolve; });
+
+  // 1. 快照缺席
+  const agent = env.createFakeAgent('sess-repair-e5', {
+    hasConversation: true,
+    snapshot: undefined,
+    foldedPreset: 'workspace-write',
+    submitControl: async (cmd) => {
+      agent.submissions.push(cmd);
+      return pCommand;
+    },
+    emitOnAppend: true,
+  });
+  env.emitAgentCreated(agent);
+  assert.equal(agent.appends.length, 0);
+  assert.equal(agent.submissions.length, 0);
+
+  // 2. 用户 read-only 事件→1 命令挂起
+  env.emitSessionEvent(agent.session, {
+    type: 'permission/preset',
+    data: {preset: 'read-only'},
+  });
+  assert.equal(agent.submissions.length, 1);
+  assert.deepEqual(agent.submissions[0], {
+    type: 'switchCollaborationMode',
+    payload: {mode: 'build'},
+  });
+  assert.equal(isInFlight(agent), true);
+
+  // 用户选择折叠态更新为 read-only
+  env.setSessionPermissions(agent.session, {
+    preset: 'read-only',
+    sandbox: 'read-only',
+    approval: 'ask',
+    seeded: true,
+  });
+
+  // 3. 推 live 快照 yolo（在飞抑制零追加）
+  agent.conversation.pushState({
+    status: 'live',
+    snapshot: {config: {mode: 'yolo'}},
+  });
+  assert.equal(agent.appends.length, 0, 'snapshot during in-flight must be suppressed (zero appends)');
+
+  // 4. 命令 settle
+  resolveCommand({ok: true});
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(isInFlight(agent), false);
+  assert.equal(agent.appends.length, 0, 'command settle must not produce compensation appends');
+
+  // 5. 推 build 效果帧（值转变时机(b)，折叠已是 read-only→一致零追加）
+  agent.conversation.pushState({
+    status: 'live',
+    snapshot: {config: {mode: 'build'}},
+  });
+  assert.equal(agent.appends.length, 0, 'matching folded state on effect frame produces zero appends');
+
+  // 6. 终态断言：1 命令、0 追加、折叠 read-only、观察 mode build
+  assert.equal(agent.submissions.length, 1, 'must have exactly 1 command total');
+  assert.equal(agent.appends.length, 0, 'must have exactly 0 appends total');
+  assert.equal(env.permissionsMap.get(agent.session).preset, 'read-only', 'folded preset must be read-only');
+  assert.equal(agent.conversation.state.snapshot.config.mode, 'build', 'observed mode must be build');
+});
+
+test('Repair 5 (NIT): triplet mismatch with same preset but different approval triggers 3 appends to correct approval', () => {
+  const env = createFakeEnv();
+  installPermissionModeSeam(env.ctx, env.factory);
+
+  // preset 相同但 approval 不同（setSessionPermissions 手工置 {preset:'workspace-write',sandbox:'workspace-write',approval:'never'}）
+  const agent = env.createFakeAgent('sess-repair-nit', {
+    mode: 'edit',
+    status: 'connecting',
+    foldedPreset: null,
+    emitOnAppend: true,
+  });
+  env.setSessionPermissions(agent.session, {
+    preset: 'workspace-write',
+    sandbox: 'workspace-write',
+    approval: 'never',
+    seeded: true,
+  });
+  env.emitAgentCreated(agent);
+  assert.equal(agent.appends.length, 0);
+
+  // 推 live 同 mode edit→断言 3 追加（修正 approval 为 ask）
+  agent.conversation.pushState({
+    status: 'live',
+    snapshot: {config: {mode: 'edit'}},
+  });
+
+  assert.equal(agent.appends.length, 3, 'triplet mismatch must append 3 events to correct approval');
+  assert.deepEqual(agent.appends, [
+    {type: 'permission/preset', data: {preset: 'workspace-write'}},
+    {type: 'sandbox/mode', data: {mode: 'workspace-write'}},
+    {type: 'approval/policy', data: {policy: 'ask'}},
+  ]);
+
+  const updatedPermissions = env.permissionsMap.get(agent.session);
+  assert.equal(updatedPermissions.preset, 'workspace-write');
+  assert.equal(updatedPermissions.sandbox, 'workspace-write');
+  assert.equal(updatedPermissions.approval, 'ask', 'approval must be corrected to ask');
+  assert.equal(agent.submissions.length, 0, 'echo preset event must be swallowed by same-value guard');
+});
+
+// ============================================================================
+// S02 评审修复波3（恢复首读标记穿过 connecting）
+// ============================================================================
+
+test('Repair 6 (S02波3 a): live->error->connecting->live same mode with misaligned folded state triggers 1 evaluation and 3 appends', () => {
+  const env = createFakeEnv();
+  installPermissionModeSeam(env.ctx, env.factory);
+
+  // 1. live(yolo, folded danger-full-access 一致态)
+  const agent = env.createFakeAgent('sess-repair-recover-misaligned', {
+    mode: 'yolo',
+    status: 'live',
+    foldedPreset: 'danger-full-access',
+    emitOnAppend: true,
+  });
+  env.emitAgentCreated(agent);
+  assert.equal(agent.appends.length, 0, 'initial matching state produces zero appends');
+  const callsBefore = env.getStateOfCalls();
+
+  // 2. error 态：置 recovering 粘性标记
+  agent.conversation.pushState({status: 'error'});
+  assert.equal(agent.appends.length, 0, 'error status produces zero appends');
+  assert.equal(env.getStateOfCalls(), callsBefore, 'error status does not evaluate projections');
+
+  // 3. connecting 态：不清除 recovering 标记
+  agent.conversation.pushState({status: 'connecting'});
+  assert.equal(agent.appends.length, 0, 'connecting status produces zero appends');
+  assert.equal(env.getStateOfCalls(), callsBefore, 'connecting status does not evaluate projections');
+
+  // 4. 断线期间折叠态错位（例如回退到 workspace-write）
+  env.setSessionPermissions(agent.session, {
+    preset: 'workspace-write',
+    sandbox: 'workspace-write',
+    approval: 'ask',
+    seeded: true,
+  });
+
+  // 5. 恢复 live 同 mode yolo：粘性 recovering 触发首读评估（stateOfCalls 增长恰好 1），发现错位追加 3 事件并消费标记
+  agent.conversation.pushState({
+    status: 'live',
+    snapshot: {config: {mode: 'yolo'}},
+  });
+  assert.equal(env.getStateOfCalls(), callsBefore + 1, 'recovery to live must evaluate projection exactly once');
+  assert.equal(agent.appends.length, 3, 'misaligned folded state triggers 3 appends');
+  assert.deepEqual(agent.appends, [
+    {type: 'permission/preset', data: {preset: 'danger-full-access'}},
+    {type: 'sandbox/mode', data: {mode: 'danger-full-access'}},
+    {type: 'approval/policy', data: {policy: 'never'}},
+  ]);
+
+  // 6. 标记已消费：再次推同值 live 不再评估
+  const callsAfter = env.getStateOfCalls();
+  agent.conversation.pushState({
+    status: 'live',
+    snapshot: {config: {mode: 'yolo'}},
+  });
+  assert.equal(env.getStateOfCalls(), callsAfter, 'subsequent live with same mode must not re-evaluate (recovering consumed)');
+  assert.equal(agent.appends.length, 3, 'no additional appends');
+});
+
+test('Repair 7 (S02波3 b): live->error->connecting->live same mode with matching folded state produces zero appends', () => {
+  const env = createFakeEnv();
+  installPermissionModeSeam(env.ctx, env.factory);
+
+  // 1. live(yolo, folded danger-full-access 一致态)
+  const agent = env.createFakeAgent('sess-repair-recover-matching', {
+    mode: 'yolo',
+    status: 'live',
+    foldedPreset: 'danger-full-access',
+    emitOnAppend: true,
+  });
+  env.emitAgentCreated(agent);
+  assert.equal(agent.appends.length, 0, 'initial matching state produces zero appends');
+  const callsBefore = env.getStateOfCalls();
+
+  // 2. error 态
+  agent.conversation.pushState({status: 'error'});
+  assert.equal(agent.appends.length, 0);
+
+  // 3. connecting 态
+  agent.conversation.pushState({status: 'connecting'});
+  assert.equal(agent.appends.length, 0);
+
+  // 4. 恢复 live 同 mode yolo，折叠态保持一致
+  agent.conversation.pushState({
+    status: 'live',
+    snapshot: {config: {mode: 'yolo'}},
+  });
+  assert.equal(env.getStateOfCalls(), callsBefore + 1, 'recovery to live performs opening read evaluation');
+  assert.equal(agent.appends.length, 0, 'matching folded state produces zero appends');
+  assert.equal(agent.submissions.length, 0, 'zero commands produced');
 });
