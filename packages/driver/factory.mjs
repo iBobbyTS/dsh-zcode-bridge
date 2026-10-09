@@ -36,9 +36,10 @@ function cancellable(call,signal,abandoned=()=>{}){
 export class DriverFactory {
   accepting=true;transactions=new Set();
   gate={state:'open',fn:null,error:null,waiters:[]};
-  constructor(ctx,{transport,createScope,agentEvents,interruptedTurnClosers,beforeResume,hostDiagnostics}){
+  constructor(ctx,{transport,createScope,agentEvents,interruptedTurnClosers,beforeResume,hostDiagnostics,bindings}){
     Object.assign(this,{ctx,transport,createScope,agentEvents,interruptedTurnClosers});
     if(hostDiagnostics)this.hostDiagnostics=hostDiagnostics;
+    if(bindings)this.bindings=bindings;
     if(beforeResume)this.gate={state:'bound',fn:beforeResume,error:null,waiters:[]};
   }
   /** Claim the legacy write gate synchronously when the factory becomes callable. Until the gate is
@@ -96,6 +97,14 @@ export class DriverFactory {
       const persistence=this.ctx.get('sessionPersistence');
       let session,storedCount=0,zcodeConversationId;
       if(source==='startup'){
+        // The DSH agent preset composes DSH-native agents; a driver session's composition is owned
+        // by the official ZCode conversation, so the preset id must not persist into its header —
+        // the agentPreset projection would otherwise badge the session with a mode it never had
+        // (and one an imported equivalent never shows).
+        if(options.meta?.agentPreset!==undefined){
+          const {agentPreset,...meta}=options.meta;
+          options={...options,meta:Object.keys(meta).length?meta:undefined};
+        }
         // Validate caller data before sending anything to ZCode, preserve its authoritative id.
         session=this.ctx.sessions.prepare(id,{seed:options.seed,meta:options.meta,inheritedEventCount:options.inheritedEventCount});
         if(options.meta?.isSeeded||options.seed?.length){
@@ -107,6 +116,9 @@ export class DriverFactory {
           zcodeConversationId=await cancellable(()=>this.transport.create({cwd:session.header.cwd,signal,firstInput:options.firstInput,
             modelSelection:options.modelSelection??options.agentOptions?.modelSelection,mode:options.mode??options.agentOptions?.mode}),signal);
         }
+        // The durable index entry must exist before the conversation can surface in the catalog
+        // (first-turn materialization), or the directory poll would import it as a second record.
+        this.bindings?.bind(zcodeConversationId,id);
         const binding={type:BINDING_EVENT,seq:session.seq,time:Date.now(),ignorable:true,data:{sessionId:id,zcodeConversationId}};
         // append() cannot set ignorable. Re-prepare the still-detached log with the binding envelope.
         session=this.ctx.sessions.prepare(id,{seed:[...readEvents(session),binding],meta:session.header,inheritedEventCount:session.inheritedEventCount});
@@ -116,6 +128,9 @@ export class DriverFactory {
         handle=await cancellable(()=>persistence.open(id,'write',{signal}),signal,value=>value.close());
         const cold=await cancellable(()=>handle.read(0,undefined,{signal}),signal);
         zcodeConversationId=boundConversationId(id,cold.events,handle.inheritedEventCount);
+        // Re-register on every resume: sessions bound before this index existed (or while the
+        // store was not yet attached) heal their entry the first time they are opened.
+        this.bindings?.bind(zcodeConversationId,id);
         storedCount=cold.events.length;
         const open=cold.events.findLast(event=>event.type==='turn/start'||event.type==='turn/end')?.type==='turn/start';
         // A legacy gate that observed the conversation STILL RUNNING keeps its final turn open

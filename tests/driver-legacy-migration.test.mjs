@@ -18,7 +18,7 @@ import {collectHistoryPages,historySnapshots,historyAttachmentReader,HISTORY_PAG
 import {LegacyDirectory,installLegacyDirectory} from '../packages/driver/legacy-directory.mjs';
 import {installObservationGate} from '../packages/driver/observation-gate.mjs';
 import {runNativeArchive} from '../packages/driver/legacy-archive.mjs';
-import {DriverStateStore} from '../packages/driver/driver-state.mjs';
+import {DriverStateStore,ConversationBindingIndex} from '../packages/driver/driver-state.mjs';
 import {BINDING_EVENT} from '../packages/driver/factory.mjs';
 import {row} from './helpers/zcode-runtime-fixture.mjs';
 
@@ -82,7 +82,11 @@ function fakeSessions(){
         }
         const event=Object.freeze({type,data:structuredClone(data),seq:events.length,time:1});events.push(event);return event}};
     live.set(id,session);return session;
-  }};
+  },
+  // The official SessionStore exposes a live lookup; the binding skip consults it for owners
+  // whose record has not reached persistence yet.
+  get(id){return live.get(id)},
+  };
 }
 
 /** Session-store double that records the placeholder publication lifecycle (enter/announce/detach). */
@@ -244,6 +248,79 @@ test('legacy directory: startup lists only (no history read); an open syncs cont
   assert.deepEqual(request.calls.map(call=>call.params.limit),[1],'exactly one tail probe with limit 1');
   assert.equal(persistence.calls.open,1,'a fresh probe never re-opens the store');
   assert.deepEqual(Object.keys(store.value.legacy),['zcode-old']);
+});
+
+test('conversation binding index: buffers before the store attaches, persists through it, and never records identity',async()=>{
+  const index=new ConversationBindingIndex();
+  // Pre-attach writes answer from memory — the factory is callable before the legacy wiring loads the state file.
+  index.bind('zcode-conv-A','session-own-A');
+  assert.equal(index.ownerOf('zcode-conv-A'),'session-own-A');
+  // Identity is the imported-session case: the record itself keys the zcode id, no owner to index.
+  index.bind('zcode-identity','zcode-identity');
+  assert.equal(index.ownerOf('zcode-identity'),undefined);
+  const root=await mkdtemp(join(tmpdir(),'binding-index-'));
+  try{
+    const store=new DriverStateStore(root);
+    await store.load();
+    index.attach(store);
+    await store.writing;
+    const onDisk=JSON.parse(await readFile(store.file,'utf8'));
+    assert.deepEqual(onDisk.bindings,{'zcode-conv-A':'session-own-A'},'buffered entries flush on attach; identity never lands');
+    // A later instance resolves owners from the persisted state alone, and rebinding is deduped.
+    const fresh=new ConversationBindingIndex();
+    fresh.attach(store);
+    assert.equal(fresh.ownerOf('zcode-conv-A'),'session-own-A');
+    const store2=new DriverStateStore(root);
+    await store2.load();
+    assert.equal(Object.keys(store2.value.bindings).length,1,'a deduped bind writes nothing new');
+    await store.writing;
+  }finally{await rm(root,{recursive:true,force:true,maxRetries:10,retryDelay:20})}
+});
+
+test('legacy directory: catalog rows a DSH session already owns never import; a deleted owner becomes importable again',async()=>{
+  const store=memoryStore(),persistence=fakePersistence(),sessions=fakeSessions();
+  const index=new ConversationBindingIndex();
+  await persistence.create({version:4,id:'session-persisted-owner',createdAt:2,isSeeded:false,delegationDepth:0,cwd:'/w'});
+  index.bind('zcode-owned-persisted','session-persisted-owner');
+  const liveOwner=sessions.prepare('session-live-owner',{meta:{cwd:'/w'}});
+  index.bind('zcode-owned-live','session-live-owner');
+  const request=rowsRangeRequest(historyRows(1));
+  const directory=new LegacyDirectory({store,persistence,sessions,request,bindings:index,
+    listCatalog:async()=>[
+      {sessionId:'zcode-owned-persisted',workspacePath:'/ws',title:'Owned persisted'},
+      {sessionId:'zcode-owned-live',workspacePath:'/ws',title:'Owned live'},
+      {sessionId:'zcode-free',workspacePath:'/ws',title:'Free'},
+    ],
+    listPersistedHeaders:async()=>[...persistence.records.values()].map(r=>r.header),
+  });
+  const listed=await directory.sync({});
+  // Only the unowned row imports: a zcode-id-keyed placeholder for an owned conversation is
+  // what rendered one official conversation as two sidebar rows.
+  assert.equal(listed.listed,1);
+  assert.equal(persistence.calls.create,2,'the test\'s own owner pre-create plus the one unowned row');
+  assert.ok(!persistence.records.has('zcode-owned-persisted'),'a persisted owner blocks the import');
+  assert.ok(!persistence.records.has('zcode-owned-live'),'a live owner blocks the import');
+  assert.equal(directory.status('zcode-owned-persisted'),null);
+  assert.deepEqual(Object.keys(store.value.legacy),['zcode-free']);
+  // Deleting the DSH owner releases its conversation back to the catalog import.
+  persistence.records.delete('session-persisted-owner');
+  await directory.sync({});
+  assert.ok(persistence.records.has('zcode-owned-persisted'),'a deleted owner re-imports');
+  assert.equal(directory.status('zcode-owned-persisted').state,'listed');
+});
+
+test('driver create: the DSH agent preset never persists into the session header and the conversation binding is recorded',async()=>{
+  const f=driverFixture();
+  const index=new ConversationBindingIndex();
+  const driver=installDriver(f.ctx,{...f.deps,bindings:index});
+  try{
+    const {agent}=await f.factory.createAgent(f.owner,{sessionId:'preset-strip-1',meta:{cwd:'/w',agentPreset:'standard'}});
+    // The preset composes DSH-native agents; a driver session's composition is owned by the
+    // official ZCode conversation, so the badge projection must never see a preset id.
+    assert.equal(agent.session.header.agentPreset,undefined);
+    assert.equal(f.stored.get('preset-strip-1').header.agentPreset,undefined);
+    assert.equal(index.ownerOf('zcode-conv-Y'),'preset-strip-1','the created conversation is bound before it can surface in the catalog');
+  }finally{await driver.dispose()}
 });
 
 test('listed placeholders are announced with their catalog title and workspace grouping; the write gate hands the id to the factory',async()=>{

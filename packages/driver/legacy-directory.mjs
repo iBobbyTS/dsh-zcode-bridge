@@ -135,8 +135,8 @@ const epochOf=id=>{try{const parsed=JSON.parse(String(id));return Array.isArray(
 
 export class LegacyDirectory {
   rows=new Map();inflight=new Map();announced=new Map();announcing=new Map();opened=new Set();attached=new Set();headers=new Map();disposed=false;
-  constructor({store,persistence,listCatalog,listPersistedHeaders,request,attachments=()=>undefined,sessions,workspaceRegistry,intervalMs=5000,onError=()=>{}}={}){
-    Object.assign(this,{store,persistence,listCatalog,listPersistedHeaders,request,attachments,sessions,workspaceRegistry,intervalMs,onError});
+  constructor({store,persistence,listCatalog,listPersistedHeaders,request,attachments=()=>undefined,sessions,workspaceRegistry,bindings,intervalMs=5000,onError=()=>{}}={}){
+    Object.assign(this,{store,persistence,listCatalog,listPersistedHeaders,request,attachments,sessions,workspaceRegistry,bindings,intervalMs,onError});
   }
   status(sessionId){return this.store.value.legacy[sessionId]??null}
   /** True when the follow's opening observation must be routed through the resume gate.
@@ -158,6 +158,12 @@ export class LegacyDirectory {
     const result={listed:0,failed:[]};
     for(const row of rows){
       if(row?.archived===true)continue;
+      // A row whose conversation a DSH-created session already owns is that session's official
+      // side, not a legacy import: a zcode-id-keyed placeholder here is what rendered one ZCode
+      // conversation as two sidebar rows. The owner must still exist (persisted or live) — once
+      // its DSH record is deleted the conversation becomes importable again.
+      const owner=this.bindings?.ownerOf(row.sessionId);
+      if(owner&&(persistedIds.has(owner)||this.sessions?.get(owner)))continue;
       // A moved task can appear under two workspaces in one catalog read; pick deterministically
       // (newest activity wins, first row on a tie) so re-lists never flip the chosen workspace.
       const previous=this.rows.get(row.sessionId);

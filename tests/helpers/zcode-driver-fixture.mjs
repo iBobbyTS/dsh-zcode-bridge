@@ -36,7 +36,7 @@ export function driverFixture(){
       if(sessions.has(id))throw new Error('duplicate session');
       const events=structuredClone(seed??[]);
       for(const [index,event] of events.entries())assert.equal(event.seq,index);
-      const header={version:4,id,createdAt:meta.createdAt??1,isSeeded:meta.isSeeded??false,delegationDepth:meta.delegationDepth??0,...(meta.cwd?{cwd:meta.cwd}:{})};
+      const header={version:4,id,createdAt:meta.createdAt??1,isSeeded:meta.isSeeded??false,delegationDepth:meta.delegationDepth??0,...(meta.cwd?{cwd:meta.cwd}:{}),...(meta.agentPreset===undefined?{}:{agentPreset:meta.agentPreset})};
       const session={id,header,inheritedEventCount,get seq(){return events.length},eventAt:seq=>events[seq],
         append(type,data){const event=Object.freeze({type,data:structuredClone(data),seq:events.length,time:1});events.push(event);return event}};
       if(seed&&events.at(-1)?.type!=='session/end-seed')session.append('session/end-seed',{});

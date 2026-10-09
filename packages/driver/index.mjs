@@ -7,7 +7,7 @@ import {installZCodeLlm} from '../host/zcode-llm.mjs';
 import {DriverTransport} from './transport.mjs';
 import {installSessionCommandSeams} from './session-commands.mjs';
 import {installDefaultModelCover,installModelSeat} from './model-seat.mjs';
-import {DriverStateStore} from './driver-state.mjs';
+import {DriverStateStore,ConversationBindingIndex} from './driver-state.mjs';
 import {runNativeArchive} from './legacy-archive.mjs';
 import {installLegacyDirectory} from './legacy-directory.mjs';
 import {installObservationGate} from './observation-gate.mjs';
@@ -19,7 +19,7 @@ export {installSessionCommandSeams} from './session-commands.mjs';
 export {coverDefaultModel,installDefaultModelCover,installModelSeat} from './model-seat.mjs';
 export {ConversationEventTranslator,mergeEventWindows,turnEndReason} from './events.mjs';
 export {HISTORY_MUTATION_COMMANDS,historyOperation} from './history.mjs';
-export {DriverStateStore} from './driver-state.mjs';
+export {DriverStateStore,ConversationBindingIndex} from './driver-state.mjs';
 export {runNativeArchive} from './legacy-archive.mjs';
 export {LegacyDirectory,installLegacyDirectory} from './legacy-directory.mjs';
 export {collectHistoryPages,historySnapshots,historyAttachmentReader,HISTORY_PAGE_LIMIT} from './history-backfill.mjs';
@@ -58,7 +58,10 @@ export function armLlmRouteReadiness({replace,isReady,onReady=()=>{},intervalMs=
 export async function apply(ctx){
   const [{createScope},{agentEvents},{interruptedTurnClosers}]=await Promise.all([import('@deepseek-ai/dsh-scope'),import('@deepseek-ai/dsh-agent'),import('@deepseek-ai/dsh-session')]);
   const host=ctx.zcodeBridgeHost;
-  const driver=installDriver(ctx,{createScope,agentEvents,interruptedTurnClosers,transport:new DriverTransport(host),hostDiagnostics:host.driverDiagnostics??=new Map()});
+  // Shared before the factory install: the factory records bindings from its first create while
+  // the legacy wiring below is still loading the state file the index eventually persists to.
+  const bindings=new ConversationBindingIndex();
+  const driver=installDriver(ctx,{createScope,agentEvents,interruptedTurnClosers,bindings,transport:new DriverTransport(host),hostDiagnostics:host.driverDiagnostics??=new Map()});
   host.driverState=driver.state;
   if(driver.state.state==='occupied'){
     // The occupied driver owns the official catalog import. Retire the host mirror directory
@@ -127,6 +130,7 @@ export async function apply(ctx){
         legacyCtx.fiber.assertActive();
         const store=new DriverStateStore(process.env.DSH_HOME??join(homedir(),'.dsh'));
         await store.load();
+        bindings.attach(store);
         try{
           const archive=await runNativeArchive({
             store,
@@ -137,7 +141,7 @@ export async function apply(ctx){
           host.nativeArchiveState=archive.outcome;
         }catch(error){host.nativeArchiveState={state:'archive-failed',error:error?.code??String(error)}}
         const directory=installLegacyDirectory(legacyCtx,{
-          store,persistence,sessions,
+          store,persistence,sessions,bindings,
           workspaceRegistry:legacyCtx.get('workspaceRegistry'),
           attachments:()=>legacyCtx.get('attachments'),
           listCatalog:signal=>typeof host.zcodeCatalog==='function'?host.zcodeCatalog(signal):[],
