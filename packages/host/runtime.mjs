@@ -9,6 +9,7 @@ import { CatalogClient } from './catalog.mjs';
 import { InsightsClient } from './insights.mjs';
 import { AutomationClient, OFF_PEAK_ENTITLEMENT_REASON } from './automation.mjs';
 import { ProtocolPeer } from './protocol.mjs';
+import { AppServerPool } from './app-server-pool.mjs';
 import { remoteState } from './remote.mjs';
 import { FailSafeState, commandAllowed, SAFE_OPERATIONS } from './fail-safe.mjs';
 import { compatibilityProjection } from './compatibility.mjs';
@@ -17,11 +18,11 @@ export const initialStatus=()=>({state:'unavailable',reason:'not-connected',auth
 /** Owns only children it launches; there is no attach or shared-process killer. */
 export class BridgeHost {
   #conversations=new Set(); #handles=new Map(); #deleted=new Set(); #clientId='bridge-'+randomUUID(); #status=initialStatus(); #peer; #catalog; #insights; #automation; #hostTools; #operation; #disposed=false; #stop; #disposePromise; #failSafe=new FailSafeState();
-  constructor({appPath,workspacePath,inspect=inspectInstallation,spawnProcess=spawn,catalogLimit=4096,onStatus=()=>{},authorityMode='restricted-cli',launcher}={}){if(!Number.isSafeInteger(catalogLimit)||catalogLimit<50||catalogLimit>65536)throw new BridgeError('catalog-limit-invalid');if(!['restricted-cli','host-backed'].includes(authorityMode))throw new BridgeError('authority-mode-invalid');this.authorityMode=authorityMode;this.launcher=launcher;this.catalogLimit=catalogLimit;this.appPath=appPath;this.workspacePath=workspacePath;this.inspect=inspect;this.spawnProcess=spawnProcess;this.onStatus=onStatus}
+  constructor({appPath,workspacePath,defaultWorkspace,inspect=inspectInstallation,spawnProcess=spawn,catalogLimit=4096,onStatus=()=>{},authorityMode='restricted-cli',launcher}={}){if(!Number.isSafeInteger(catalogLimit)||catalogLimit<50||catalogLimit>65536)throw new BridgeError('catalog-limit-invalid');if(!['restricted-cli','host-backed','self-managed'].includes(authorityMode))throw new BridgeError('authority-mode-invalid');this.authorityMode=authorityMode;this.launcher=launcher;this.catalogLimit=catalogLimit;this.appPath=appPath;this.workspacePath=workspacePath;this.defaultWorkspace=defaultWorkspace;this.inspect=inspect;this.spawnProcess=spawnProcess;this.onStatus=onStatus}
   /** Adds the per-connection fail-safe grade and the version-compatibility truth table.
    *  Both are derived facts: the fail-safe never persists, and the compatibility record is the
    *  bridge's own verified-version constant, never a ZCode source-derived claim. */
-  get status(){const status=structuredClone(this.#status);status.failSafe=this.#failSafe.state;status.compatibility=compatibilityProjection(this.#status.installation??null);return status}
+  get status(){const {pool,...snapshot}=this.#status;const status=structuredClone(snapshot);if(pool)status.pool=pool;status.failSafe=this.#failSafe.state;status.compatibility=compatibilityProjection(this.#status.installation??null);return status}
   /** Read official catalog facts only. An address query never activates a Session. */
   async listSessions(options={}){
     try{return await this.#listSessions(options)}catch(error){this.#observeFailure(error);throw error}
@@ -218,10 +219,23 @@ export class BridgeHost {
   connect(){
     if(this.#disposed)return Promise.reject(new BridgeError('disposed'));
     if(this.#operation)return this.#operation;
+    if(this.authorityMode==='self-managed'&&this.pool&&!this.pool.disposed&&this.#status.connected)return Promise.resolve(this.status);
     if(this.#peer&&!this.#peer.closed)return Promise.resolve(this.status);
     this.#operation=this.#connect().finally(()=>{this.#operation=undefined});return this.#operation;
   }
   async #connect(){
+    if(this.authorityMode==='self-managed'){
+      const pool=this.pool??=new AppServerPool({appPath:this.appPath,inspect:this.inspect,spawnProcess:this.spawnProcess});
+      this.#publish({state:'unavailable',reason:'connecting',connected:false,auth:'unavailable'});
+      let peer;
+      try{
+        if(this.defaultWorkspace!==undefined)peer=await pool.acquire(this.defaultWorkspace);
+        if(this.#disposed)throw new BridgeError('disposed');
+        this.#publish({state:'available',connected:true,auth:'unavailable',reason:'direct-storage',sessionAuthority:'self-managed:'+randomUUID(),workspacePath:peer?.workspacePath??this.defaultWorkspace,pool,authorityMode:'self-managed'});
+      }catch(error){this.#publish({state:'unavailable',connected:false,auth:'unavailable',reason:this.#disposed?'disposed':error.code??'launch-failed'})}
+      finally{peer?.releaseHold()}
+      return this.status;
+    }
     if(this.authorityMode==='host-backed'){
       if(!this.launcher){this.#publish({state:'unavailable',reason:'launcher-unconfigured',connected:false});return this.status}
       const project=state=>{if(!this.#disposed)this.#publish({state:state.phase==='ready'?(state.auth==='authenticated'?'authenticated':'restricted'):'unavailable',reason:state.phase==='ready'?(state.auth==='authenticated'?'live-http-authenticated-read-only':'host-execution-disabled-official-host'):state.reason??'launcher-'+state.phase,connected:state.phase==='ready'&&state.auth==='authenticated',sessionAuthority:'official-host:'+state.mainPid,workspacePath:'official-task-catalog',auth:state.auth??'unconfirmed',authority:'official-host-channel',launcher:state,authorityMode:'host-backed'})};
@@ -289,7 +303,7 @@ export class BridgeHost {
     if(this.#disposePromise)return this.#disposePromise;
     this.#disposed=true;this.#hostTools?.dispose();this.#hostTools=undefined;this.#catalog?.dispose();this.#catalog=undefined;this.#insights?.dispose();this.#insights=undefined;this.#automation?.dispose();this.#automation=undefined;this.#peer?.close('disposed');
     this.launcherUnsubscribe?.();this.launcherUnsubscribe=undefined;
-    this.#disposePromise=(async()=>{await this.launcher?.dispose();await this.#operation;await this.#stop?.();this.#publish({state:'unavailable',reason:'disposed',connected:false})})();return this.#disposePromise;
+    this.#disposePromise=(async()=>{if(this.authorityMode!=='self-managed')await this.launcher?.dispose();await this.pool?.dispose();await this.#operation;await this.#stop?.();this.#publish({state:'unavailable',reason:'disposed',connected:false})})();return this.#disposePromise;
   }
 }
 /** EOF first, then signals only the exact owned ChildProcess, never a discovered PID. */
