@@ -6,6 +6,9 @@ import {ProtocolPeer} from './protocol.mjs';
 import {stopOwned} from './runtime.mjs';
 
 const fault=(code,sent=false)=>Object.assign(new BridgeError(code),{sent});
+// The app-server emits unfragmented single-line RPC responses far above the v4 gateway's 1MB
+// client-facing frame cap (rowsRange pages of 200 rows reach 1.6MB+ on real sessions).
+const APP_SERVER_MAX_FRAME_BYTES=64*1024*1024;
 const emit=(listeners,value)=>{for(const listener of listeners){try{listener(value)}catch{ /* Observers cannot interrupt ownership cleanup. */ }}};
 // A waiter's cancellation never cancels the shared installation/spawn/handshake flight.
 function waitFor(flight,signal){
@@ -146,7 +149,7 @@ export class AppServerPool {
     child.once('close',()=>{lost();resolveExit()});
     child.stderr.on('data',buffer=>{entry.stderrBytes+=buffer.length});
     child.once('error',()=>entry.peer?.close('launch-failed'));
-    const peer=entry.peer=new ProtocolPeer(child.stdout,child.stdin,{onAuthUnavailable:()=>{},onClose:reason=>{
+    const peer=entry.peer=new ProtocolPeer(child.stdout,child.stdin,{onAuthUnavailable:()=>{},maxFrameBytes:APP_SERVER_MAX_FRAME_BYTES,maxQueueBytes:APP_SERVER_MAX_FRAME_BYTES,onClose:reason=>{
       if(entry.peer!==peer)return;
       entry.error=reason;lost();
       // A child may keep running after closing stdout. Reap it so lazy recovery can proceed.

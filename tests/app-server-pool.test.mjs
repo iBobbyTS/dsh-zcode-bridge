@@ -365,3 +365,13 @@ test('S02 wave4: real factory rollback after accepted create releases abandoned 
   assert.equal(abandoned.closed,true);assert.equal(unitsAfterRollback,0);assert.equal(holdsAfterRollback,0);assert.equal(transport.holders.size,0);
   assert.deepEqual(unitCounts,[1,1,1],'each retry takes one fresh unit after the previous rollback released it');assert.equal(f.pool.size,1);
 });
+
+test('post-acceptance repair: rowsRange-scale frames above the 1MB protocol default pass through the pool peer',options,async t=>{
+  const f=await setup(t),peer=await f.pool.acquire(f.root);
+  // Real sessions answer rowsRange with unfragmented single lines up to 1.6MB+; both directions of
+  // the app-server peer must tolerate them (ProtocolPeer's own default frame cap is 1MB).
+  const payload='x'.repeat(3*1024*1024);
+  const result=await peer.request('fixture/echo',{payload});
+  assert.equal(result.params.payload,payload);
+  assert.equal(f.children.length,1);assert.ok(!f.children[0].closed,'an oversized frame must not kill the child');
+});
