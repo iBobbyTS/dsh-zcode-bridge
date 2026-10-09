@@ -132,6 +132,15 @@ app.whenReady().then(()=>{
   });
   child.on('spawn',()=>publish({mainPid:process.pid,hostPid:child.pid,electron:process.versions.electron}));
   child.on('exit',code=>{if(!closing){publish({phase:'failed',channelAvailable:false,reason:'host-exited',hostExitCode:code});void stop(2)}});
+  // The headless launcher has no browser backend. The official host still probes one on every
+  // prompt-shaped command (v4 sendText and legacy sendPrompt collect browser ambient context via
+  // this request) and its bridge waits the full 30s transport budget for a result. Mirror the
+  // official main's default-implementation fallback — reply backend_unavailable immediately so the
+  // channel is open but never blocks (desktopHostProcess.ts BrowserExecuteRequest handler).
+  child.on('message',message=>{
+    if(message?.type!=='browser-execute-request'||typeof message.requestId!=='string')return;
+    child.postMessage({type:'browser-execute-result',requestId:message.requestId,result:{ok:false,error:{code:'backend_unavailable',message:'browser executor not ready'},elapsedMs:0}});
+  });
   authority.onDatabase=(_id,database)=>publish({database});
   authority.register({hostId:config.hostId,child,workspaceKeys:[],deliveryKind:config.deliveryKind});
   channel=new HostChannel(port1,{...(liveHttp?{allowCalls:new Set([...LIVE_HTTP_READ_CALLS,...LIVE_HTTP_SEND_CALLS,...EXECUTION_CALLS])}:{}),allowEvents:new Set([...EXECUTION_EVENTS,'provider-settings.onDidChange']),onClose:reason=>{if(!closing){publish({phase:'failed',channelAvailable:false,reason});void stop(2)}},onReady:async()=>{
