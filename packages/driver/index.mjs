@@ -4,6 +4,7 @@ import {join} from 'node:path';
 import {homedir} from 'node:os';
 import {installDriver} from './factory.mjs';
 import {installZCodeLlm} from '../host/zcode-llm.mjs';
+import {STATIC_SEED_CATALOG} from '../host/zcode-runtime.mjs';
 import {readSelfManagedCatalog} from './self-catalog.mjs';
 import {DriverTransport} from './transport.mjs';
 import {installSessionCommandSeams} from './session-commands.mjs';
@@ -64,9 +65,13 @@ export async function apply(ctx){
   const bindings=new ConversationBindingIndex();
   const store=new DriverStateStore(process.env.DSH_HOME??join(homedir(),'.dsh'));
   const transport=new DriverTransport(host);transport.store=store;
+  host.driverStateStore=store;
   if(host.authorityMode==='self-managed'||host.pool){
-    host.driverStateStore=store;host.driverBindings=bindings;
+    host.driverBindings=bindings;
     host.selfCatalogProvider=async()=>{await store.ensureLoaded();bindings.attach(store);return readSelfManagedCatalog({pool:host.pool,store,authority:host.status.sessionAuthority,logger:ctx.logger})};
+  }
+  if(host.authorityMode==='self-managed'){
+    host.zcodeModelCatalog=async()=>{await store.ensureLoaded();return store.readModelCatalog()??STATIC_SEED_CATALOG;};
   }
   const driver=installDriver(ctx,{createScope,agentEvents,interruptedTurnClosers,bindings,transport,hostDiagnostics:host.driverDiagnostics??=new Map()});
   host.driverState=driver.state;
@@ -135,7 +140,10 @@ export async function apply(ctx){
           return;
         }
         legacyCtx.fiber.assertActive();
-        if(host.authorityMode==='self-managed'||host.pool)await store.ensureLoaded();else await store.load();
+        await store.ensureLoaded();
+        if(host.authorityMode==='self-managed'&&!store.readModelCatalog()){
+          await store.writeModelCatalog(STATIC_SEED_CATALOG);
+        }
         bindings.attach(store);
         try{
           const archive=await runNativeArchive({

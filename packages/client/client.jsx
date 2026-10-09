@@ -56,7 +56,7 @@ export function StatusCard({controller,view}){
     <ZCodeVersionBanner compatibility={state.compatibility} store={compatibilityStore}/>
     {state.failSafe?.incompatible&&<p role="alert" data-testid="zcode-failsafe-core">Core protocol incompatibility: new side effects are stopped; reconnect to retry.</p>}
     {state.failSafe?.level==='non-core'&&<p data-testid="zcode-failsafe-isolated">Optional capabilities isolated: {state.failSafe.isolated.map(item=>item.capability).join(', ')}. Other paths keep working.</p>}
-    <p>Account: {state.auth==='authenticated'?'Authenticated by official Host':state.auth==='unavailable'?'Official authentication source unavailable':state.auth==='signed-out'?'Signed out':'Unconfirmed'}</p>
+    <p>Account: {state.auth==='authenticated'?'Authenticated by official Host':state.auth==='unavailable'?(state.connected===true&&state.reason==='direct-storage'?'Direct connection · unverified login state':'Official authentication source unavailable'):state.auth==='signed-out'?'Signed out':'Unconfirmed'}</p>
     {install&&<dl style={{overflowWrap:'anywhere'}}>
       <dt>Official installation</dt><dd>{install.appPath}</dd>
       <dt>Version / build</dt><dd>{install.version} / {install.build}</dd>
@@ -66,7 +66,7 @@ export function StatusCard({controller,view}){
     </dl>}
     {state.roundTrip&&<p>Official {state.roundTrip.method} response validated · {state.sessionCount} sessions in test workspace · {state.roundTrip.at}</p>}
     <p>{state.auth==='authenticated'?'Shared official task store · read-only':'Shared official GUI sessions: unverified (CLI default storage).'}</p>
-    <p>{state.auth==='authenticated'?'ZCode session execution uses the official Host.':'Model execution is unavailable until a supported official authentication path is verified.'}</p>
+    {!(state.connected===true&&state.reason==='direct-storage')&&<p>{state.auth==='authenticated'?'ZCode session execution uses the official Host.':'Model execution is unavailable until a supported official authentication path is verified.'}</p>}
     <p role="note">Auto-start: the official runtime connects automatically when this plugin opens; one attempt per reconnect.</p>
   </section>;
 }

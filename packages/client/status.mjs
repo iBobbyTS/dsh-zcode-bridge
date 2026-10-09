@@ -1,5 +1,6 @@
 export const initialClientStatus=()=>({state:'unavailable',reason:'host-unreachable',auth:'unconfirmed',connected:false});
 const reasons={
+ 'direct-storage':'官方直连（登录态未验证）',
  'launcher-config-required':'Launcher configuration requires scratch, runtime, Electron and provider paths',
  'launcher-mode-invalid':'Launcher mode must be scratch or live-http',
  'live-http-desktop-home-invalid':'The desktop settings HOME must be an absolute path',

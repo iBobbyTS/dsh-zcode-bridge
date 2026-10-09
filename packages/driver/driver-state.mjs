@@ -2,6 +2,23 @@ import {mkdir, readFile, writeFile, rename} from 'node:fs/promises';
 import {join} from 'node:path';
 
 const validBinding=value=>typeof value==='string'||value!==null&&typeof value==='object'&&!Array.isArray(value)&&typeof value.sessionId==='string';
+export const validModelCatalog=value=>{
+  if(value===null||typeof value!=='object'||Array.isArray(value))return false;
+  if(!Array.isArray(value.providers))return false;
+  for(const provider of value.providers){
+    if(provider===null||typeof provider!=='object'||Array.isArray(provider))return false;
+    if(typeof provider.id!=='string'||!provider.id)return false;
+    if(!Array.isArray(provider.models))return false;
+    for(const model of provider.models){
+      if(model===null||typeof model!=='object'||Array.isArray(model))return false;
+      if(typeof model.id!=='string'||!model.id)return false;
+      if(model.reasoningLevels!==undefined&&!Array.isArray(model.reasoningLevels))return false;
+      if(model.defaultReasoningLevel!==undefined&&typeof model.defaultReasoningLevel!=='string')return false;
+    }
+  }
+  if(value.refreshedAt!==undefined&&typeof value.refreshedAt!=='number')return false;
+  return true;
+};
 const fault=code=>Object.assign(new Error(code),{code});
 
 /** Driver-owned durable state: the one-shot native-archive snapshot, the per-session legacy
@@ -15,11 +32,23 @@ export class DriverStateStore {
     try{
       const data=JSON.parse(await readFile(this.file,'utf8'));
       if(data.version!==1||typeof data!=='object'||data.legacy!==undefined&&typeof data.legacy!=='object'||data.bindings!==undefined&&typeof data.bindings!=='object')throw fault('driver-state-invalid');
-      this.value={version:1,nativeArchive:data.nativeArchive??null,legacy:data.legacy??{},bindings:Object.fromEntries(Object.entries(data.bindings??{}).filter(([,value])=>validBinding(value))),...(typeof data.executionWorkspace==='string'?{executionWorkspace:data.executionWorkspace}:{})};
+      this.value={
+        version:1,
+        nativeArchive:data.nativeArchive??null,
+        legacy:data.legacy??{},
+        bindings:Object.fromEntries(Object.entries(data.bindings??{}).filter(([,value])=>validBinding(value))),
+        ...(typeof data.executionWorkspace==='string'?{executionWorkspace:data.executionWorkspace}:{}),
+        ...(validModelCatalog(data.modelCatalog)?{modelCatalog:data.modelCatalog}:{})
+      };
     }catch(error){if(error.code!=='ENOENT')throw error}
     return this.value;
   }
   ensureLoaded(){return this.loading??=this.load()}
+  readModelCatalog(){return this.value.modelCatalog}
+  writeModelCatalog(catalog){
+    this.value.modelCatalog=catalog;
+    return this.save();
+  }
   save(){
     const bytes=JSON.stringify(this.value);
     this.writing=this.writing.then(async()=>{await mkdir(join(this.file,'..'),{recursive:true,mode:0o700});const temporary=this.file+'.tmp';await writeFile(temporary,bytes,{mode:0o600});await rename(temporary,this.file)});

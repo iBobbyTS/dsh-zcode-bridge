@@ -23,10 +23,77 @@ export class RuntimeStore {
   save(){const bytes=JSON.stringify({version:1,records:[...this.records.values()]});this.writing=this.writing.then(async()=>{await mkdir(join(this.file,'..'),{recursive:true,mode:0o700});const temporary=this.file+'.tmp';await writeFile(temporary,bytes,{mode:0o600});await rename(temporary,this.file)});return this.writing}
 }
 
+export const STATIC_SEED_PROVIDERS = Object.freeze([
+  Object.freeze({
+    id: 'account:zai-individual-coding-plan',
+    models: Object.freeze([
+      Object.freeze({
+        id: 'GLM-5.3',
+        reasoningLevels: Object.freeze(['low', 'medium', 'high', 'xhigh', 'max']),
+        defaultReasoningLevel: 'max',
+      }),
+      Object.freeze({
+        id: 'GLM-5.3-Flash',
+        reasoningLevels: Object.freeze(['low', 'medium', 'high', 'xhigh', 'max']),
+        defaultReasoningLevel: 'max',
+      }),
+    ]),
+  }),
+]);
+export const STATIC_SEED_CATALOG = Object.freeze({ providers: STATIC_SEED_PROVIDERS });
+
 export class ZCodeRuntime {
   agents=new Map();disposers=new Map();creating=new Map();absent=new Set();disposed=false;persistError=null;historyListeners=new Map();
   executionWorkspace=null;directory=new MirrorState();directoryRead=0;directoryTail=Promise.resolve();
-  constructor(ctx,host,{store=new RuntimeStore(process.env.DSH_HOME??join(homedir(),'.dsh')),createScope,agentEvents,peerFactory=launcher=>new LauncherPeer(launcher),discoverModels,agentOptions={}}={}){Object.assign(this,{ctx,host,store,createScope,agentEvents,peerFactory,agentOptions,settings:new BridgeSettings(store.file?join(store.file,'..','settings.json'):null),discoverModels:discoverModels??(async()=>{await this.ensurePeer();return typeof this.host.launcher.read==='function'?this.host.launcher.read('models'):[]})})}
+  constructor(ctx,host,{store=new RuntimeStore(process.env.DSH_HOME??join(homedir(),'.dsh')),createScope,agentEvents,peerFactory=launcher=>new LauncherPeer(launcher),discoverModels,agentOptions={},...extraOptions}={}){
+    const isSelfManaged = host?.authorityMode === 'self-managed' && !host?.launcher;
+    const defaultDiscover = isSelfManaged
+      ? async () => {
+          if (typeof this.host?.zcodeModelCatalog === 'function') {
+            const catalog = await this.host.zcodeModelCatalog();
+            const providers = Array.isArray(catalog) ? catalog : catalog?.providers;
+            if (providers && providers.length) return providers;
+          }
+          return STATIC_SEED_PROVIDERS;
+        }
+      : async () => {
+          await this.ensurePeer();
+          return typeof this.host.launcher?.read === 'function' ? await this.host.launcher.read('models') : [];
+        };
+    const rawDiscover = discoverModels ?? defaultDiscover;
+    const discover = async () => {
+      const providers = await rawDiscover();
+      if (Array.isArray(providers) && (this.host?.launcher || this.host?.authorityMode !== 'self-managed')) {
+        const driverStore = this.driverStateStore ?? this.host?.driverStateStore ?? (typeof this.store?.writeModelCatalog === 'function' ? this.store : null);
+        if (driverStore && typeof driverStore.writeModelCatalog === 'function') {
+          try {
+            await driverStore.ensureLoaded?.();
+            await driverStore.writeModelCatalog({ providers, refreshedAt: Date.now() });
+          } catch (error) {
+            const diagnostic = {
+              event: 'model-catalog-write-failed',
+              code: error?.code ?? 'catalog-write-failed',
+              error: error?.message ?? String(error),
+            };
+            try {
+              const logger = this.logger ?? this.ctx?.logger;
+              if (typeof logger === 'function') logger(diagnostic);
+              else if (typeof logger?.warn === 'function') logger.warn(diagnostic);
+              else console.warn?.('[zcode-runtime] model catalog write failed:', diagnostic);
+              if (this.host?.driverDiagnostics instanceof Map) {
+                this.host.driverDiagnostics.set('modelCatalogWrite', diagnostic);
+              } else if (this.host?.driverDiagnostics && typeof this.host.driverDiagnostics === 'object') {
+                this.host.driverDiagnostics.modelCatalogWrite = diagnostic;
+              }
+              this.catalogWriteDiagnostic = diagnostic;
+            } catch {}
+          }
+        }
+      }
+      return providers;
+    };
+    Object.assign(this,{ctx,host,store,createScope,agentEvents,peerFactory,agentOptions,driverStateStore:extraOptions.driverStateStore,logger:extraOptions.logger??ctx?.logger,settings:new BridgeSettings(store.file?join(store.file,'..','settings.json'):null),discoverModels:discover});
+  }
   /** Register-or-resolve the launcher's execution workspace in DSH so a mirror Session's cwd can
    * match the official Agent header. The official executor owns the run workspace; DSH only needs
    * a proper workspace row to attach/present it. */
@@ -62,7 +129,22 @@ export class ZCodeRuntime {
     return (value?.tasks??[]).map(task=>({sessionId:task.taskId,workspacePath:task.workspacePath,workspaceIdentity:task.workspaceIdentity,title:task.title,...(typeof task.createdAt==='number'?{createdAt:task.createdAt}:{}),...(typeof task.updatedAt==='number'?{updatedAt:task.updatedAt}:{}),...(task.archived===true?{archived:true}:{})}));
   }
   persist(){const promise=this.store.save();void promise.catch(()=>{this.persistError='runtime-persistence-failed'});return promise}
-  async start(){if(this.host.authorityMode==='self-managed'&&!this.host.launcher){await this.settings.load();this.parity=new ParityService(this);await this.store.load();return}await this.settings.load();this.parity=new ParityService(this);await this.store.load();for(const record of this.store.records.values())for(const retired of record.retiredMirrors??[])this.absent.add(retired.id);for(const record of this.store.records.values()){if(record.catalogSeen&&this.host.listSessions)continue;if(record.officialId||record.localDraft)await this.register(record);else record.error='create-outcome-unknown'}this.offRecovery=this.host.launcher?.subscribe(state=>{if(state.phase!=='ready')this.handshake=null;if(state.phase==='ready')void this.recoverAll().catch(()=>{})});if(this.host.launcher?.state.phase==='ready')await this.recoverAll();if(this.host.listSessions&&!this.host.directorySuspended){await this.refreshDirectory();this.scheduleDirectorySync()}}
+  async start(){
+    if(this.host.authorityMode==='self-managed'&&!this.host.launcher){
+      await this.settings.load();
+      this.parity=new ParityService(this);
+      await this.store.load();
+      const driverStore=this.driverStateStore??this.host?.driverStateStore;
+      if(driverStore&&typeof driverStore.readModelCatalog==='function'){
+        await driverStore.ensureLoaded?.();
+        if(!driverStore.readModelCatalog()){
+          await driverStore.writeModelCatalog(STATIC_SEED_CATALOG);
+        }
+      }
+      return;
+    }
+    await this.settings.load();this.parity=new ParityService(this);await this.store.load();for(const record of this.store.records.values())for(const retired of record.retiredMirrors??[])this.absent.add(retired.id);for(const record of this.store.records.values()){if(record.catalogSeen&&this.host.listSessions)continue;if(record.officialId||record.localDraft)await this.register(record);else record.error='create-outcome-unknown'}this.offRecovery=this.host.launcher?.subscribe(state=>{if(state.phase!=='ready')this.handshake=null;if(state.phase==='ready')void this.recoverAll().catch(()=>{})});if(this.host.launcher?.state.phase==='ready')await this.recoverAll();if(this.host.listSessions&&!this.host.directorySuspended){await this.refreshDirectory();this.scheduleDirectorySync()}
+  }
   scheduleDirectorySync(){clearInterval(this.directoryTimer);if(!this.disposed&&!this.host.directorySuspended&&this.host.listSessions&&this.settings.value.catalogSync){this.directoryTimer=setInterval(()=>{void this.refreshDirectory().catch(()=>{})},5000);this.directoryTimer.unref?.()}}
   /** Withdraw every catalog-imported mirror record and stop the directory poll. Called when the
    * zcode driver occupies the factory: it owns the catalog import (title-only placeholders plus
