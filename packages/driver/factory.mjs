@@ -1,6 +1,7 @@
 import {DriverAgent} from './agent.mjs';
 import {turnBoundaryProjectionDefinition,inboxProjectionDefinition} from './projections.mjs';
 import {createFork,FORK_PROJECTION_EVENT} from './fork.mjs';
+import {mapPreset} from './permission-map.mjs';
 
 export const BINDING_EVENT='zcode-driver/conversation-bound';
 const readEvents=session=>Array.from({length:session.seq},(_,seq)=>session.eventAt(seq));
@@ -114,7 +115,7 @@ export class DriverFactory {
           session=this.ctx.sessions.prepare(id,{seed:[...readEvents(session),projection],meta:session.header,inheritedEventCount:session.inheritedEventCount});
         }else{
           zcodeConversationId=await cancellable(()=>this.transport.create({cwd:session.header.cwd,signal,firstInput:options.firstInput,
-            modelSelection:options.modelSelection??options.agentOptions?.modelSelection,mode:options.mode??options.agentOptions?.mode}),signal);
+            modelSelection:options.modelSelection??options.agentOptions?.modelSelection,mode:options.mode??options.agentOptions?.mode??mapPreset(this.ctx.get?.('permissionPresets')?.defaultPreset)}),signal);
         }
         // The durable index entry must exist before the conversation can surface in the catalog
         // (first-turn materialization), or the directory poll would import it as a second record.
@@ -168,7 +169,8 @@ export class DriverFactory {
       try{
         detachSession=agent.ctx.sessions.enter(session);
         detachAgent=this.ctx.agents.enter(agent,options.parentAgent);
-        agent.ctx.sessions.announce(session);
+        agent.initializing=true;
+        try{agent.ctx.sessions.announce(session)}finally{agent.initializing=false}
         signal.throwIfAborted();
         await this.ctx.agents.announce(agent,source,signal);
         signal.throwIfAborted();

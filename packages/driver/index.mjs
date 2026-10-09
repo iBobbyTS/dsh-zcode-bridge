@@ -9,6 +9,7 @@ import {readSelfManagedCatalog} from './self-catalog.mjs';
 import {DriverTransport} from './transport.mjs';
 import {installSessionCommandSeams} from './session-commands.mjs';
 import {installDefaultModelCover,installModelSeat} from './model-seat.mjs';
+import {installPermissionModeSeam} from './permission-mode-seam.mjs';
 import {DriverStateStore,ConversationBindingIndex} from './driver-state.mjs';
 import {runNativeArchive} from './legacy-archive.mjs';
 import {installLegacyDirectory} from './legacy-directory.mjs';
@@ -123,6 +124,7 @@ export async function apply(ctx){
     });
     if(ctx.get('sessionController')&&ctx.get('sessionTitle'))await seams.await();
     installDefaultModelCover(ctx);
+    if(host.authorityMode==='self-managed')installPermissionModeSeam(ctx,driver.factory);
     // Legacy migration + catalog import: the native archive is one-shot (snapshot semantics), the
     // directory lists placeholders at startup and backfills content at the resume gate, and the
     // host mirror directory is retired at occupation (the driver owns the catalog surface).
