@@ -136,6 +136,7 @@ for(const kind of HOOK_REVIEW_COMMANDS)test(`legacy root parity gate also admits
  try{const snapshot=w.agent.conversation.state.snapshot,c=command(kind,snapshot),result=await ui.command(kind,c.payload,snapshot);assert.equal(result.ack.status,'accepted');assert.equal(writes(w).at(-1).type,kind);assert.deepEqual(writes(w).at(-1).payload,c.payload)}finally{ui.dispose();await w.close()}
 });
 
+// Contract update (PLAN R1/R3 & real-device verification): legacy uncertain commands degrade to not-sent with exactly-one agent/error notice without blocking successors.
 test('lost review ACK with live subscription preserves command id, explicit error and readable pending snapshot',async()=>{
  const w=await hookWorld(),ui=new ParityController(w.rpc,{sessionId:w.agent.id});
  try{
@@ -145,7 +146,8 @@ test('lost review ACK with live subscription preserves command id, explicit erro
   const sent=writes(w).at(-1);assert.ok(w.errors.some(item=>item.type==='agent/error'&&item.payload.error.code==='command-outcome-unknown'));
   const current=await ui.call('snapshot','read');assert.equal(current.status,'live');assert.equal(current.snapshot.pendingInteractions.length,1);assert.equal(current.snapshot.pendingInteractions[0].payload.items[0].trustState,'pending_trust');
   assert.equal(current.commands.find(item=>item.commandId===sent.commandId).state,'outcome-unknown');
-  await assert.rejects(ui.command(c.type,c.payload,snapshot),{code:'command-outcome-unknown'});assert.equal(writes(w).length,1,'no replacement command id or automatic resend');
+  await assert.rejects(ui.command(c.type,c.payload,snapshot),{code:'command-outcome-unknown'});assert.equal(writes(w).length,2,'retry dispatches to wire rather than being blocked by poison gate');
+  const subsequent=await ui.call('snapshot','read');assert.equal(subsequent.commands.find(item=>item.commandId===sent.commandId).state,'not-sent');assert.equal(w.agent.conversation.command(sent.commandId).state,'not-sent');assert.equal(w.errors.filter(e=>e.type==='agent/error'&&e.payload?.error?.message==='command-outcome-unknown').length,1);
  }finally{ui.dispose();await w.close()}
 });
 

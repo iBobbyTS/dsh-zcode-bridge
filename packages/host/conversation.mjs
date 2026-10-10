@@ -47,6 +47,7 @@ const availabilityCommands={editQueueItem:'queueEdit',reorderQueueItem:'queueEdi
 // the queued input's original sourceCommandId, so its control ID cannot await a turn header.
 const ackSettledControls=new Set(['editQueueItem','sendQueuedNow','reorderQueueItem','setAutoDrain','setFollowupMode','switchCollaborationMode','pauseGoal','resumeGoal','setAssistantFeedback','renameSession']);
 const terminal=new Set(['completed','failed','interrupted','rejected','stale','noop','not-sent']);
+export const terminalCommandStates=terminal;
 export const INPUT_COMMANDS=new Set(['sendText','sendGoalCommand','stop','sendQueuedNow','editQueueItem','reorderQueueItem','deleteQueueItem','setAutoDrain','switchModelConfig','switchCollaborationMode','setFollowupMode','pauseGoal','resumeGoal']);
 const workspaceCarriers={
   presentation:['workspace/readPresentation',zcodeWorkspaceReadPresentationParamsSchema,zcodeWorkspacePresentationSchema],
@@ -255,6 +256,25 @@ export class V4Conversation {
     throw new BridgeError('command-pending-limit');
   }
   command(commandId){const record=this.#commands.get(commandId);return record?structuredClone(record):null}
+  registerCommand({commandId,type='sendText',state='outcome-unknown',logEpoch,revision}={}){
+    if(!nonempty(commandId))throw new BridgeError('command-invalid');
+    let record=this.#commands.get(commandId);
+    if(!record){
+      this.#reserveCommand();
+      record={commandId,type,sessionId:this.address.sessionId,logEpoch:logEpoch??this.#state.snapshot?.logEpoch,revision:revision??this.#state.snapshot?.revision,state};
+      this.#commands.set(commandId,record);
+      this.#publish();
+    }
+    return structuredClone(record);
+  }
+  settleCommand(commandId,state,extra={}){
+    const record=this.#commands.get(commandId);
+    if(!record)return null;
+    record.state=state;
+    Object.assign(record,extra);
+    this.#publish();
+    return structuredClone(record);
+  }
   /** Scoped official workspace carrier. No local persistence, defaults, or automatic retry. */
   async workspaceConfiguration(kind,preferences,{signal}={}){
     const carrier=Object.hasOwn(workspaceCarriers,kind)?workspaceCarriers[kind]:null;
@@ -467,7 +487,9 @@ export class V4Conversation {
     if(!admission.allowed)throw new BridgeError(admission.reason);
     if(baseRevision!==undefined&&!int(baseRevision))throw new BridgeError('command-invalid');
     if(!nonempty(commandId))throw new BridgeError('command-invalid');
-    if(this.#commands.has(commandId))throw new BridgeError('command-already-tracked');
+    const existing=this.#commands.get(commandId);
+    if(existing&&existing.state!=='not-sent')throw new BridgeError('command-already-tracked');
+    if(existing)this.#commands.delete(commandId);
     if(signal?.aborted)throw new BridgeError('cancelled');
     const snapshot=this.#state.snapshot;
     if(baseLogEpoch!==undefined&&baseLogEpoch!==snapshot.logEpoch)throw new BridgeError('proto.staleLogEpoch');

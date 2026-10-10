@@ -1,6 +1,7 @@
 import {inboxProjectionDefinition} from './projections.mjs';
 import {commandFault,rejectOperation,validateMessage} from './commands.mjs';
 import {queueSteerTransfer} from './queue-steer.mjs';
+import {terminalCommandStates} from '../host/conversation.mjs';
 
 /** Only the standard durable splice log stores inbox state. No command settlement lives here. */
 export class DriverInbox {
@@ -68,6 +69,10 @@ export class DriverInbox {
     for(const [id,queueId] of this.queueIds){
       if(items.some(item=>item.queueItemId===queueId))continue;
       if(deferConsumption&&snapshot.rows.window.some(row=>row.sourceCommandId===this.agent.inputs.get(id)?.commandId))continue;
+      // An unsettled command still owns this queue slot's outcome: an empty official queue
+      // alone must not consume the input — recovery resolves, replaces or delivers it.
+      const ledger=this.agent.conversation.command(this.agent.inputs.get(id)?.commandId??'');
+      if(ledger&&!terminalCommandStates.has(ledger.state))continue;
       const location=this.locate(id);if(location)this.commit(location.target,location.index,1,[]);
       this.queueIds.delete(id);
     }
@@ -83,6 +88,10 @@ export class DriverInbox {
       const updated={...message,content:[{type:'text',text:item.text},...message.content.filter(part=>part.type!=='text')]};
       if(!existing)this.admit('next-turn',updated);
       else if(JSON.stringify(this.current()[existing.target][existing.index].content)!==JSON.stringify(updated.content))this.commit(existing.target,existing.index,1,[updated]);
+      // The durable inbox is the content authority: a confirmed official edit must also
+      // reach the input association, or a later discard-replacement re-dispatch would send
+      // the pre-edit text on the wire while the inbox shows the edited one.
+      if(association)association[1].message=updated;
       this.queueIds.set(id,item.queueItemId);
     }
     for(const [id,input] of this.agent.inputs){

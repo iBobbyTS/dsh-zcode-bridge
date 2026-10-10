@@ -112,6 +112,7 @@ test('steer refuses idle, reserved and denied targets; overlapping remove cannot
   }finally{await w.close()}
 });
 
+// Contract update (PLAN R1/R3 & real-device verification): legacy uncertain commands degrade to not-sent with exactly-one agent/error notice without blocking successors.
 test('disconnect in flight -> followup -> recovered ready dispatches the retained input exactly once',async()=>{
   const w=await commandWorld();const original=w.peer.request.bind(w.peer),issued=Promise.withResolvers();
   try{
@@ -121,13 +122,14 @@ test('disconnect in flight -> followup -> recovered ready dispatches the retaine
       return new Promise((_resolve,reject)=>options.signal.addEventListener('abort',()=>reject(Object.assign(new Error('lost'),{code:'execution-disconnected'})),{once:true}));
     };
     w.agent.followup(message('in-flight'));const first=await issued.promise;w.peer.disconnect();await w.drain();
+    const notificationsBefore=w.notifications.length;
     w.peer.request=original;w.agent.followup(message('retained'));await w.drain();
     const input=w.agent.inputs.get('retained'),id=input.commandId;
-    assert.equal(w.agent.conversation.command(id),null);assert.equal(w.agent.lastError.code,'command-outcome-unknown');assert.equal(w.agent.inbox.nextTurn.length,2);
+    assert.equal(w.agent.conversation.command(id)?.ack?.status,'accepted');assert.equal(w.notifications.slice(notificationsBefore).filter(n=>n.type==='agent/error'&&n.payload?.error?.code==='command-outcome-unknown').length,1);assert.equal(w.agent.inbox.nextTurn.length,2);
     w.peer.acks.set(first.commandId,{commandId:first.commandId,status:'accepted',revisionAtDecision:w.peer.snapshot.revision});
     await Promise.all([w.agent.ready(),w.agent.ready()]);await w.drain();
     assert.equal(input.commandId,id);assert.equal(w.agent.conversation.command(id).ack.status,'accepted');
-    assert.equal(writes(w.peer).filter(c=>c.commandId===id).length,1);assert.equal(writes(w.peer).filter(c=>c.commandId===first.commandId).length,1);
+    assert.equal(writes(w.peer).filter(c=>c.commandId===id).length,1);assert.equal(writes(w.peer).filter(c=>c.commandId===first.commandId).length,2);
     await w.agent.ready();await w.drain();assert.equal(writes(w.peer).filter(c=>c.commandId===id).length,1);
     publish(w.peer,s=>{s.rows.window=[first.commandId,id].map((commandId,index)=>row('turnHeader',index+1,{origin:'userInput',state:'completedSuccess',startedAt:0,sourceCommandId:commandId}))});await w.drain();
     assert.deepEqual(w.agent.inbox.nextTurn,[]);

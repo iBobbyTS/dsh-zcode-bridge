@@ -5,11 +5,15 @@ import {row} from './helpers/zcode-runtime-fixture.mjs';
 
 // Write-path oracle only. Outcome is the injected peer decision. Guards dominate
 // impossible combinations; an accepted peer stimulus cannot bypass local admission.
+// Contract update (PLAN R1/R3 & real-device verification):
+// Under transport-lost recovery, legacy uncertain control commands degrade to not-sent
+// and do not block subsequent operations. Successor operations face only their normal
+// state guards rather than being poisoned by prior uncertain commands.
 export const writeOracle=Object.freeze({
-  prompt:{idle:null,'turn-running':null,'queue-paused':'held-queue-confirmation-required','transport-lost':'command-outcome-unknown'},
-  'queue-edit':{idle:'queue-item-unconfirmed','turn-running':'queue-item-unconfirmed','queue-paused':null,'transport-lost':'command-outcome-unknown'},
-  steer:{idle:null,'turn-running':null,'queue-paused':'held-queue-confirmation-required','transport-lost':'command-outcome-unknown'},
-  stop:{idle:'stop-target-unconfirmed','turn-running':null,'queue-paused':'stop-target-unconfirmed','transport-lost':'command-outcome-unknown'},
+  prompt:{idle:null,'turn-running':null,'queue-paused':'held-queue-confirmation-required','transport-lost':null},
+  'queue-edit':{idle:'queue-item-unconfirmed','turn-running':'queue-item-unconfirmed','queue-paused':null,'transport-lost':'queue-item-unconfirmed'},
+  steer:{idle:null,'turn-running':null,'queue-paused':'held-queue-confirmation-required','transport-lost':null},
+  stop:{idle:'stop-target-unconfirmed','turn-running':null,'queue-paused':'stop-target-unconfirmed','transport-lost':'stop-target-unconfirmed'},
   disconnect:{idle:'outcome-unknown','turn-running':'outcome-unknown','queue-paused':'outcome-unknown','transport-lost':'outcome-unknown'},
 });
 const outcomes=['accepted','committed','outcome-unknown','explicit-reject'];
@@ -19,6 +23,7 @@ for(const [entry,states] of Object.entries(writeOracle))for(const [state,guard] 
   test(`write oracle: ${entry} / ${state} / ${outcome}`,async()=>{
     const w=await commandWorld(state==='transport-lost'?'idle':state);
     const original=w.peer.request.bind(w.peer);
+    let notificationsBefore=0;
     try{
       if(state==='transport-lost'||entry==='disconnect'){
         let issued;const sent=new Promise(resolve=>{issued=resolve});
@@ -31,6 +36,7 @@ for(const [entry,states] of Object.entries(writeOracle))for(const [state,guard] 
         assert.equal(w.agent.conversation.command('uncertain-original').state,'outcome-unknown','classification is synchronous, before reconnect or successor');
         await assert.rejects(pending,{code:'command-outcome-unknown',commandId:'uncertain-original',state:'outcome-unknown'});
         if(entry==='disconnect'){assert.equal(w.peer.calls.filter(c=>c.method==='v4/command').length,1);return}
+        notificationsBefore=w.notifications.length;
         w.peer.request=original;
       }else{
         w.peer.request=async(method,params,options)=>{
@@ -58,9 +64,21 @@ for(const [entry,states] of Object.entries(writeOracle))for(const [state,guard] 
         }else if(entry==='queue-edit')result=await w.agent.queueAction({queueItemId:'queue-1',action:'edit',newText:'edited'});
         else result=await w.agent.submitControl({type:'stop',payload:{expectedForegroundExecutionId:'foreground-1'}});
       }catch(caught){error=caught}
-      if(guard){
+      if(state==='transport-lost'){
+        assert.equal(w.agent.conversation.command('uncertain-original').state,'not-sent');
+        assert.equal(w.notifications.slice(notificationsBefore).filter(n=>n.type==='agent/error'&&n.payload?.error?.code==='command-outcome-unknown').length,1);
+        if(guard){
+          assert.equal(error?.code,guard);assert.equal(result,undefined);
+          assert.equal(w.peer.calls.filter(c=>c.method==='v4/command').length,1);
+        }else{
+          assert.equal(error,undefined);
+          assert.equal(result?.ack?.status,'accepted');
+          assert.equal(result?.state,'accepted-awaiting-terminal');
+          assert.equal(w.peer.calls.filter(c=>c.method==='v4/command').length,2);
+        }
+      }else if(guard){
         assert.equal(error?.code,guard);assert.equal(result,undefined);
-        assert.equal(w.peer.calls.filter(c=>c.method==='v4/command').length,state==='transport-lost'?1:0);
+        assert.equal(w.peer.calls.filter(c=>c.method==='v4/command').length,0);
       }else if(['queue-edit','stop'].includes(entry)&&['outcome-unknown','explicit-reject'].includes(outcome)){
         assert.equal(result,undefined);assert.equal(error?.code,outcome==='outcome-unknown'?'command-outcome-unknown':'oracle.explicitReject');
         const receipt=w.agent.conversation.command(error.commandId);assert.equal(receipt.state,outcome==='outcome-unknown'?'outcome-unknown':'rejected');
