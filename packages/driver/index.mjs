@@ -10,7 +10,7 @@ import {DriverTransport} from './transport.mjs';
 import {installSessionCommandSeams} from './session-commands.mjs';
 import {installDefaultModelCover,installModelSeat} from './model-seat.mjs';
 import {installPermissionModeSeam} from './permission-mode-seam.mjs';
-import {DriverStateStore,ConversationBindingIndex} from './driver-state.mjs';
+import {DriverStateStore,ConversationBindingIndex,RecoveryKeyIndex} from './driver-state.mjs';
 import {runNativeArchive} from './legacy-archive.mjs';
 import {installLegacyDirectory} from './legacy-directory.mjs';
 import {installObservationGate} from './observation-gate.mjs';
@@ -22,7 +22,7 @@ export {installSessionCommandSeams} from './session-commands.mjs';
 export {coverDefaultModel,installDefaultModelCover,installModelSeat} from './model-seat.mjs';
 export {ConversationEventTranslator,mergeEventWindows,turnEndReason} from './events.mjs';
 export {HISTORY_MUTATION_COMMANDS,historyOperation} from './history.mjs';
-export {DriverStateStore,ConversationBindingIndex} from './driver-state.mjs';
+export {DriverStateStore,ConversationBindingIndex,RecoveryKeyIndex} from './driver-state.mjs';
 export {runNativeArchive} from './legacy-archive.mjs';
 export {LegacyDirectory,installLegacyDirectory} from './legacy-directory.mjs';
 export {collectHistoryPages,historySnapshots,historyAttachmentReader,HISTORY_PAGE_LIMIT} from './history-backfill.mjs';
@@ -64,17 +64,18 @@ export async function apply(ctx){
   // Shared before the factory install: the factory records bindings from its first create while
   // the legacy wiring below is still loading the state file the index eventually persists to.
   const bindings=new ConversationBindingIndex();
+  const recovery=new RecoveryKeyIndex();
   const store=new DriverStateStore(process.env.DSH_HOME??join(homedir(),'.dsh'));
   const transport=new DriverTransport(host);transport.store=store;
   host.driverStateStore=store;
   if(host.authorityMode==='self-managed'||host.pool){
     host.driverBindings=bindings;
-    host.selfCatalogProvider=async()=>{await store.ensureLoaded();bindings.attach(store);return readSelfManagedCatalog({pool:host.pool,store,authority:host.status.sessionAuthority,logger:ctx.logger})};
+    host.selfCatalogProvider=async()=>{await store.ensureLoaded();bindings.attach(store);recovery.attach(store);return readSelfManagedCatalog({pool:host.pool,store,authority:host.status.sessionAuthority,logger:ctx.logger})};
   }
   if(host.authorityMode==='self-managed'){
     host.zcodeModelCatalog=async()=>{await store.ensureLoaded();return store.readModelCatalog()??STATIC_SEED_CATALOG;};
   }
-  const driver=installDriver(ctx,{createScope,agentEvents,interruptedTurnClosers,bindings,transport,hostDiagnostics:host.driverDiagnostics??=new Map()});
+  const driver=installDriver(ctx,{createScope,agentEvents,interruptedTurnClosers,bindings,recovery,transport,hostDiagnostics:host.driverDiagnostics??=new Map()});
   host.driverState=driver.state;
   if(driver.state.state==='occupied'){
     // The occupied driver owns the official catalog import. Retire the host mirror directory
@@ -146,7 +147,7 @@ export async function apply(ctx){
         if(host.authorityMode==='self-managed'&&!store.readModelCatalog()){
           await store.writeModelCatalog(STATIC_SEED_CATALOG);
         }
-        bindings.attach(store);
+        bindings.attach(store);recovery.attach(store);
         try{
           const archive=await runNativeArchive({
             store,

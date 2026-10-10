@@ -37,10 +37,11 @@ function cancellable(call,signal,abandoned=()=>{}){
 export class DriverFactory {
   accepting=true;transactions=new Set();
   gate={state:'open',fn:null,error:null,waiters:[]};
-  constructor(ctx,{transport,createScope,agentEvents,interruptedTurnClosers,beforeResume,hostDiagnostics,bindings}){
+  constructor(ctx,{transport,createScope,agentEvents,interruptedTurnClosers,beforeResume,hostDiagnostics,bindings,recovery}){
     Object.assign(this,{ctx,transport,createScope,agentEvents,interruptedTurnClosers});
     if(hostDiagnostics)this.hostDiagnostics=hostDiagnostics;
     if(bindings)this.bindings=bindings;
+    if(recovery)this.recovery=recovery;
     if(beforeResume)this.gate={state:'bound',fn:beforeResume,error:null,waiters:[]};
   }
   /** Claim the legacy write gate synchronously when the factory becomes callable. Until the gate is

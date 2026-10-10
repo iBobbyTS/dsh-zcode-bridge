@@ -1,4 +1,5 @@
 import {randomUUID} from 'node:crypto';
+import {debuglog} from 'node:util';
 import {commandFault} from './commands.mjs';
 import {renderAttachments,sniffImageType} from './attachment-render.mjs';
 import {decodeBase64} from '../host/attachment.mjs';
@@ -6,6 +7,7 @@ import {inboxProjectionDefinition} from './projections.mjs';
 import {FORK_PROJECTION_EVENT} from './fork.mjs';
 
 const clean=value=>JSON.parse(JSON.stringify(value));
+const debug=debuglog('dsh-zcode-events');
 export const eventRowKey=(epoch,id)=>JSON.stringify([epoch,id]);
 const WAITING_MARKER_KIND_LABELS={subagent:'后台Subagent',bash:'后台终端命令',workflow:'后台Workflow'};
 const WAITING_MARKER_KIND_BY_LABEL=Object.fromEntries(Object.entries(WAITING_MARKER_KIND_LABELS).map(([kind,label])=>[label,kind]));
@@ -98,9 +100,11 @@ export function mergeEventWindows(windows){
  * zcode metadata is JSON on standard events, never a second command ACK ledger.
  */
 export class ConversationEventTranslator {
+  completedInputs=new Set();
   turns=new Map();responses=new Map();users=new Set();calls=new Map();results=new Map();streams=new Map();revision=0;nextTurn=1;tail=Promise.resolve();lifetime=new AbortController();generation=randomUUID();title=null;epoch=null;
-  constructor({session,dispatch,conversation,attachments=()=>undefined,input=()=>undefined,claim=()=>{},syncInbox=()=>{},acceptInput=()=>true,history=false,clock=Date.now}){
-    Object.assign(this,{session,dispatch,conversation,attachments,input,claim,syncInbox,acceptInput,history,clock});
+  constructor({session,dispatch,conversation,attachments=()=>undefined,input=()=>undefined,claim=()=>{},syncInbox=()=>{},acceptInput=()=>true,history=false,clock=Date.now,completedInputs=[],onInputCompleted=()=>{}}){
+    Object.assign(this,{session,dispatch,conversation,attachments,input,claim,syncInbox,acceptInput,history,clock,onInputCompleted});
+    for(const commandId of completedInputs)this.completedInputs.add(commandId);
     const events=session.snapshotEvents?.()??Array.from({length:session.seq},(_,seq)=>session.eventAt(seq));
     for(const event of events){
       const data=event.data,meta=data.zcode;
@@ -264,6 +268,39 @@ export class ConversationEventTranslator {
       meta:{zcode:{status,toolName:row.toolName,...(row.display?{callDisplay:row.display}:{}),...(row.output?.display?{display:row.output.display}:{})}},zcode:{rowKey:key,status}};
     const event=this.append('tool/result',data,'append');this.results.set(key,{seq:event.seq,status});
   }
+  projectionRows(rows){
+    // History/legacy folds legitimately extend already-closed turns with late rows; the
+    // replay suppression belongs to the live projection path only (R4/R5 recovery scope).
+    if(this.history)return rows;
+    const header=rows.find(row=>row.kind==='turnHeader');
+    const inputs=rows.filter(row=>row.kind==='userInput');
+    // Autonomous wake-ups are not delivered user inputs. Their trigger markers retain
+    // the existing turn-identity dedupe, even if the header names an earlier command.
+    if(!inputs.length&&header?.origin!=='userInput')return rows;
+    const commandId=[header?.sourceCommandId,inputs[0]?.sourceCommandId].find(id=>this.completedInputs.has(id));
+    if(commandId===undefined)return rows;
+    // Inspect authoritative rows BEFORE rowKey dedupe or response grouping. A replay
+    // often rehydrates the same user row while minting fresh assistant row identities.
+    // Append-only completed keys and stable row order keep this boundary moving only
+    // forward, so a guide arriving later cannot release an already suppressed prefix.
+    const boundary=rows.findIndex(row=>row.kind==='userInput'
+      &&!this.completedInputs.has(row.sourceCommandId??header?.sourceCommandId)
+      &&this.acceptInput({...row,sourceCommandId:row.sourceCommandId??header?.sourceCommandId}));
+    const visible=boundary<0?[]:rows.slice(boundary);
+    debug('suppressed replay prefix: sourceCommandId=%s turnId=%s rows=%d',commandId,header?.turnId??rows[0]?.turnId,rows.length-visible.length);
+    return visible;
+  }
+  completeInputs(rows){
+    if(this.history)return;
+    const header=rows.find(row=>row.kind==='turnHeader');
+    for(const row of rows){
+      if(row.kind!=='userInput'&&(row!==header||header.origin!=='userInput'))continue;
+      const sourceCommandId=row.sourceCommandId??header?.sourceCommandId;
+      if(typeof sourceCommandId!=='string'||!sourceCommandId||this.completedInputs.has(sourceCommandId)
+        ||!this.acceptInput({...row,sourceCommandId}))continue;
+      this.onInputCompleted(sourceCommandId);this.completedInputs.add(sourceCommandId);
+    }
+  }
   async translate(snapshot){
     this.lifetime.signal.throwIfAborted();
     // The conversation snapshot is authoritative for the title: the task-registry catalog can
@@ -276,7 +313,7 @@ export class ConversationEventTranslator {
     const cumulative=snapshot.usage?.cumulative;
     const candidates=[];
     for(const [turnKey,rows] of groups){
-      const responses=responseGroups(rows,snapshot.logEpoch),end=turnEndReason(terminalState(rows,snapshot,turnKey===[...groups.keys()].at(-1)),snapshot.control.lastError);
+      const responses=responseGroups(this.projectionRows(rows),snapshot.logEpoch),end=turnEndReason(terminalState(rows,snapshot,turnKey===[...groups.keys()].at(-1)),snapshot.control.lastError);
       for(const [key,visible] of responses)if((end||visible.every(row=>row.kind==='toolCall'?row.status!=='inputStreaming':row.state!=='streaming'))&&end?.kind!=='aborted'&&end?.kind!=='error'&&(!this.responses.has(key)||this.responses.get(key).interrupted))candidates.push(key);
     }
     const active=candidates.length===1?this.streams.get(candidates[0]):undefined;
@@ -284,10 +321,14 @@ export class ConversationEventTranslator {
     const baseline=active?active.baseline:prior?prior.data.zcode.baseline:this.cumulative;
     const delta=baseline&&cumulative?Object.fromEntries(Object.keys(cumulative).map(key=>[key,cumulative[key]-baseline[key]])):null;
     const credit=candidates.length===1&&delta&&Object.values(delta).every(value=>value>=0)&&Object.values(delta).some(value=>value>0)?candidates[0]:null;
-    for(const [turnKey,rows] of groups){
-      const header=rows.find(row=>row.kind==='turnHeader'),end=turnEndReason(terminalState(rows,snapshot,turnKey===[...groups.keys()].at(-1)),snapshot.control.lastError);
+    for(const [turnKey,sourceRows] of groups){
+      const header=sourceRows.find(row=>row.kind==='turnHeader'),end=turnEndReason(terminalState(sourceRows,snapshot,turnKey===[...groups.keys()].at(-1)),snapshot.control.lastError);
       if(header&&!this.acceptInput(header))continue;
-      const phase=terminalState(rows,snapshot,turnKey===[...groups.keys()].at(-1));
+      const accepted=sourceRows.filter(row=>this.acceptInput({...row,sourceCommandId:row.sourceCommandId??header?.sourceCommandId}));
+      this.syncInbox({...snapshot,rows:{...snapshot.rows,window:accepted}});
+      const rows=this.projectionRows(sourceRows);
+      if(!rows.length)continue;
+      const phase=terminalState(sourceRows,snapshot,turnKey===[...groups.keys()].at(-1));
       const responses=responseGroups(rows,snapshot.logEpoch);
       // A resync can find rows a previous pass never delivered for a turn the persisted log
       // already CLOSED (a still-running conversation backfilled by an older build settled a
@@ -305,8 +346,6 @@ export class ConversationEventTranslator {
             try{return this.continuation(visible,previous).length>0}catch{return false}
           }));
       const turn=this.turn(turnKey,phase==='running'||phase==='prewarming'||late);
-      const accepted=rows.filter(row=>this.acceptInput({...row,sourceCommandId:row.sourceCommandId??header?.sourceCommandId}));
-      this.syncInbox({...snapshot,rows:{...snapshot.rows,window:accepted}});
       for(const row of rows){
         const rowKey=eventRowKey(snapshot.logEpoch,row.rowId);
         if(row.kind==='userInput'&&!this.users.has(rowKey)&&this.acceptInput({...row,sourceCommandId:row.sourceCommandId??header?.sourceCommandId})){
@@ -402,6 +441,7 @@ export class ConversationEventTranslator {
         const pending=(snapshot?.backgroundWorks??[]).filter(work=>work&&(work.status==='running'||work.status==='resultPending'));
         this.closeTurn(turn,end,pending.length?{works:pending,epoch:snapshot.logEpoch}:undefined);
       }
+      if(end?.kind==='completed')this.completeInputs(sourceRows);
     }
     // v4 reports cumulative session counters, not per-row usage. Attribute only a
     // nonnegative observed delta to ONE newly completed successful response.

@@ -145,16 +145,10 @@ test('recovery outcome 3: terminal discard auto-resends with new commandId, pers
     const newN = input.commandId;
     assert.notEqual(newN, originalC, 'new commandId allocated');
 
-    // Check durable replacement event logged in session
-    const replacementEvents = [];
-    for (let s = 0; s < w.agent.session.seq; s++) {
-      const ev = w.agent.session.eventAt(s);
-      if (ev.type === 'agent/input/command-replaced') replacementEvents.push(ev);
-    }
-    assert.equal(replacementEvents.length, 1, 'replacement event persisted');
-    assert.equal(replacementEvents[0].data.commandId, newN);
-    assert.equal(replacementEvents[0].data.originalCommandId, originalC);
-    assert.equal(replacementEvents[0].data.messageId, 'msg3-discard');
+    // Check the replacement identity was durably recorded in the driver recovery index
+    const replacements = w.agent.recovery.replacementsOf(w.agent.id);
+    assert.equal(replacements.get('msg3-discard'), newN, 'replacement identity persisted');
+    assert.notEqual(newN, originalC);
 
     // Check resubmission with new commandId N
     const nWrites = writes(w).filter(c => c.commandId === newN);
@@ -325,7 +319,7 @@ test('reconstruction path: agent/input/command-replaced persistent event retains
     const newN = input.commandId;
     assert.notEqual(newN, originalC);
 
-    // Reconstruct driver using the same session (has durable replacement event)
+    // Reconstruct driver sharing the same recovery index (durable replacement identities)
     const reconstructedAgent = new DriverAgent(
       w.agent.ctx,
       w.agent.session,
@@ -335,6 +329,7 @@ test('reconstruction path: agent/input/command-replaced persistent event retains
         createScope: () => ({ctx: w.agent.ctx}),
         agentEvents: () => ({emit: () => {}, waterfall: () => Promise.resolve('unavailable')}),
         conversation: w.agent.conversation,
+        recovery: w.agent.recovery,
       }
     );
 

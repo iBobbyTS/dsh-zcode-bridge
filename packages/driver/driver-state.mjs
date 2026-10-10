@@ -20,6 +20,70 @@ export const validModelCatalog=value=>{
   return true;
 };
 const fault=code=>Object.assign(new Error(code),{code});
+const validRecoveryEntry=value=>value!==null&&typeof value==='object'&&!Array.isArray(value)
+  &&typeof value.replacements==='object'&&value.replacements!==null&&!Array.isArray(value.replacements)
+  &&Array.isArray(value.completedInputs)&&value.completedInputs.every(id=>typeof id==='string');
+
+/** Per-session recovery keys: replacement input identities and completed-input fingerprints.
+ * These must live outside session events — the host persistence vocabulary refuses unknown
+ * event types on cold read and Session.append cannot stamp the envelope `ignorable` — so the
+ * driver keeps them in its own durable file next to the binding index. */
+export class RecoveryKeyIndex {
+  // Internal maps keep arbitrary message ids safe from prototype members (`constructor`,
+  // `toString`, `__proto__`); plain objects exist only at the JSON file boundary.
+  #sessions=new Map();#store=null;#pending=[];
+  attach(store){
+    if(this.#store)return;
+    this.#store=store;
+    const recovery=store.value.recovery??{};
+    store.value.recovery=recovery;
+    for(const [sessionId,entry] of Object.entries(recovery)){
+      if(this.#sessions.has(sessionId)||!validRecoveryEntry(entry))continue;
+      this.#sessions.set(sessionId,{replacements:new Map(Object.entries(entry.replacements)),completedInputs:new Set(entry.completedInputs)});
+    }
+    if(this.#pending.length){
+      for(const op of this.#pending)op();
+      this.#pending=[];
+      // The drain must serialize the buffered keys into the store value before saving:
+      // memory alone would leave a rebuilt index empty on the next cold start.
+      // The drain must serialize the buffered keys into the store value before saving:
+      // memory alone would leave a rebuilt index empty on the next cold start.
+      const write=this.#persist();
+      void (write?write.catch(()=>{}):Promise.resolve());
+    }
+  }
+  #entry(sessionId){
+    let entry=this.#sessions.get(sessionId);
+    if(!entry){entry={replacements:new Map(),completedInputs:new Set()};this.#sessions.set(sessionId,entry)}
+    return entry;
+  }
+  #persist(){
+    if(!this.#store)return;
+    this.#store.value.recovery=Object.fromEntries([...this.#sessions]
+      .map(([sessionId,{replacements,completedInputs}])=>[sessionId,{replacements:Object.fromEntries(replacements),completedInputs:[...completedInputs]}]));
+    return this.#store.save();
+  }
+  /** Current replacement commandIds by message id for one session (copy for read-only use). */
+  replacementsOf(sessionId){return new Map(this.#sessions.get(sessionId)?.replacements??[])}
+  /** Completed-input fingerprints recorded for one session (copy for read-only use). */
+  completedInputsOf(sessionId){return new Set(this.#sessions.get(sessionId)?.completedInputs)}
+  /** Durably record a discard-replacement identity; resolves once the key is persisted. */
+  recordReplacement(sessionId,messageId,commandId){
+    if(typeof sessionId!=='string'||!sessionId||typeof messageId!=='string'||!messageId||typeof commandId!=='string'||!commandId)return Promise.resolve();
+    const op=()=>{this.#entry(sessionId).replacements.set(messageId,commandId)};
+    if(!this.#store){this.#pending.push(op);op();return Promise.resolve()}
+    op();
+    return this.#persist()??Promise.resolve();
+  }
+  /** Append-only completed-input fingerprint; best-effort persistence like the binding index. */
+  recordCompletion(sessionId,sourceCommandId){
+    if(typeof sessionId!=='string'||!sessionId||typeof sourceCommandId!=='string'||!sourceCommandId)return;
+    const op=()=>{this.#entry(sessionId).completedInputs.add(sourceCommandId)};
+    if(!this.#store){this.#pending.push(op);op();return}
+    op();
+    void this.#persist().catch(()=>{});
+  }
+}
 
 /** Driver-owned durable state: the one-shot native-archive snapshot, the per-session legacy
  * backfill state machine and the conversation binding index. Kept separate from the host mirror
@@ -38,7 +102,9 @@ export class DriverStateStore {
         legacy:data.legacy??{},
         bindings:Object.fromEntries(Object.entries(data.bindings??{}).filter(([,value])=>validBinding(value))),
         ...(typeof data.executionWorkspace==='string'?{executionWorkspace:data.executionWorkspace}:{}),
-        ...(validModelCatalog(data.modelCatalog)?{modelCatalog:data.modelCatalog}:{})
+        ...(validModelCatalog(data.modelCatalog)?{modelCatalog:data.modelCatalog}:{}),
+        ...(data.recovery!==undefined&&data.recovery!==null&&typeof data.recovery==='object'&&!Array.isArray(data.recovery)
+          ?{recovery:Object.fromEntries(Object.entries(data.recovery).filter(([,value])=>validRecoveryEntry(value)))}:{})
       };
     }catch(error){if(error.code!=='ENOENT')throw error}
     return this.value;

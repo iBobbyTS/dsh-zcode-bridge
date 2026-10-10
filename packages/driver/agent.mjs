@@ -10,20 +10,18 @@ import {ConversationEventTranslator} from './events.mjs';
 import {installCompactCommand,compactOperation} from './compact.mjs';
 import {historyOperation} from './history.mjs';
 import {newCommandId} from '../host/conversation.mjs';
+import {RecoveryKeyIndex} from './driver-state.mjs';
 
 export class DriverAgent {
   status='idle';disposed=false;activity=null;tasks=new Set();inputs=new Map();approvals=new Map();idleWaiters=[];lastError=null;wasError=false;resolvingInputs=false;
-  constructor(ctx,session,options,zcodeConversationId,{createScope,agentEvents,parentAgent,transport,conversation}){
+  constructor(ctx,session,options,zcodeConversationId,{createScope,agentEvents,parentAgent,transport,conversation,recovery}){
     Object.assign(this,{id:session.id,session,options:Object.freeze({...options}),zcodeConversationId,transport});
     this.scope=createScope(ctx,this,parentAgent?{parent:parentAgent}:undefined);
     this.ctx=this.scope.ctx;this.dispatch=agentEvents(ctx,this);this.inbox=new DriverInbox(this);
-    const replacements=new Map();
-    for(let seq=0;seq<session.seq;seq++){
-      const event=session.eventAt(seq);
-      if(event.type==='agent/input/command-replaced'&&event.data?.messageId&&event.data?.commandId){
-        replacements.set(event.data.messageId,event.data.commandId);
-      }
-    }
+    // Recovery keys live in the driver-owned durable index (host session events cannot carry
+    // unknown types through a cold read); an unattached index still works in memory.
+    this.recovery=recovery??new RecoveryKeyIndex();
+    const replacements=this.recovery.replacementsOf(session.id);
     for(const target of ['next-turn','next-step'])for(const message of this.inbox.current()[target]){
       if(!message.id.startsWith('zcode-queue:')){
         const commandId=replacements.get(message.id)??inputCommandId(this.id,message.id);
@@ -32,6 +30,8 @@ export class DriverAgent {
     }
     this.conversation=conversation??transport?.conversation?.({zcodeConversationId,cwd:session.header.cwd});
     if(this.conversation)this.translator=new ConversationEventTranslator({session,dispatch:this.dispatch,conversation:this.conversation,
+      completedInputs:this.recovery.completedInputsOf(session.id),
+      onInputCompleted:commandId=>this.recovery.recordCompletion(session.id,commandId),
       attachments:()=>this.ctx.get?this.ctx.get('attachments'):this.ctx.attachments,
       input:commandId=>[...this.inputs.values()].find(input=>input.commandId===commandId)?.message,
       acceptInput:row=>this.conversation.command(row.sourceCommandId)?.ack?.status!=='rejected',
@@ -168,7 +168,7 @@ export class DriverAgent {
         }
         if(queryResult?.state==='failed'&&(queryResult.ack?.reasonCode==='fault.command.inputDiscardedOnRestart'||queryResult.error==='fault.command.inputDiscardedOnRestart')){
           const newId=newCommandId();
-          this.session.append('agent/input/command-replaced',{messageId:input.message.id,originalCommandId:input.commandId,commandId:newId});
+          await this.recovery.recordReplacement(this.id,input.message.id,newId);
           input.commandId=newId;
           this.inbox.queueIds.delete(id);
           this.reportError(commandFault('fault.command.inputDiscardedOnRestart'));
